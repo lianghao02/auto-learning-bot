@@ -352,6 +352,7 @@ def _fill_answers(driver, answers):
     """
     for name, val in answers.items():
         try:
+            # 優先使用原有的 value 屬性精確匹配
             r = driver.find_element(By.CSS_SELECTOR,
                 f'input[type=radio][name="{name}"][value="{val}"]')
             driver.execute_script("arguments[0].click();", r)
@@ -359,6 +360,32 @@ def _fill_answers(driver, answers):
                 "arguments[0].checked=true;"
                 "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
         except Exception as e:
+            # 💡 防禦性填答：當 value 對不上時（例如題庫 1-based 與網頁 0-based 不一致）
+            try:
+                # 尋找該題名下所有的 radio 按鈕
+                radios = driver.find_elements(By.CSS_SELECTOR, f'input[type=radio][name="{name}"]')
+                if radios:
+                    # 嘗試將 val 轉為整數
+                    val_int = int(val)
+                    target_idx = -1
+                    
+                    # 情況一：題庫存的是 1-based (1~4)，網頁是 0-based。當 val=4 且 radios 有 4 個時，目標 index 為 3
+                    if 1 <= val_int <= len(radios):
+                        target_idx = val_int - 1
+                    # 情況二：如果 val 剛好是 0-based 的 index (0~3)
+                    elif 0 <= val_int < len(radios):
+                        target_idx = val_int
+                    
+                    if target_idx != -1:
+                        r = radios[target_idx]
+                        driver.execute_script("arguments[0].click();", r)
+                        driver.execute_script(
+                            "arguments[0].checked=true;"
+                            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
+                        print(f'  [填答] 💡 透過索引重新填答成功：{name} 第 {target_idx + 1} 個選項 (val={val})')
+                        continue
+            except Exception:
+                pass
             print(f'  [填答] ✗ {name}={val}: {e}')
 
 def _submit_quiz(driver, wait):
