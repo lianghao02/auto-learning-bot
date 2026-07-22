@@ -1,6 +1,6 @@
 # 行政效能領航員 (AdminEfficiencyPilot)
 
-**版本 V2.1.8** | 數位研習輔助工具
+**版本 V2.1.9** | 數位研習輔助工具
 
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -71,7 +71,7 @@ https://drive.google.com/drive/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g?usp=sha
 ## 開發環境
 
 ```cmd
-git clone https://github.com/waynelord0628-beep/auto-learning-bot.git
+git clone https://github.com/lianghao02/auto-learning-bot.git
 cd auto-learning-bot
 uv run ui.py
 ```
@@ -193,6 +193,7 @@ V2.1.8 仍沿用 GitHub Release 作為主要更新來源；Release 內的 `.exe`
 
 | 版本 | 內容 |
 |---|---|
+| V2.1.9 | 個人 Fork 版本同步，更新相依工具與本地設定。 |
 | V2.1.8 | 僅處理開放式課程，自動略過微學習/SPOC/專班等非開放式課程；課程清單低筆數時會同步 session 後重抓，降低漏課機率；同步調整帳號列表捲動與下拉箭頭顯示。 |
 | V2.1.7 | 修補 eCPA 多頁測驗/問卷流程，讓已達時數但仍需測驗或問卷的課程可繼續處理；改善課程 API 回傳異常時的重抓與續跑穩定性。 |
 | V2.1.6 | 新增匿名使用統計與在線人數顯示；更新下載恢復優先使用 GitHub Release；包含臺北E大題幹污染清理 |
