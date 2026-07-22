@@ -402,7 +402,7 @@ class AdminEfficiencyPilot:
     def kill_orphan_drivers(self):
         """
         啟動前清理：只殺「孤立的 chromedriver」。
-        判斷標準：行程名稱是 chromedriver，但父行程不是本程式（即上次執行殘留的）。
+        判斷標準：行程名稱是 chromedriver，且它的父行程已經不存在 (或不是 Python 相關行程)。
         完全不碰使用者自己開的 chrome.exe。
         """
         my_pid = os.getpid()
@@ -412,17 +412,32 @@ class AdminEfficiencyPilot:
                 name = (proc.info["name"] or "").lower()
                 if "chromedriver" not in name:
                     continue
-                # 父行程不是本程式 → 視為上次殘留的孤立 driver
-                if proc.info["ppid"] != my_pid:
-                    # 連同它啟動的 chrome 子行程一起清掉
-                    for child in proc.children(recursive=True):
-                        try:
-                            child.kill()
-                            killed.append(f"{child.name()}(PID {child.pid})")
-                        except (psutil.NoSuchProcess, psutil.AccessDenied):
-                            pass
-                    proc.kill()
-                    killed.append(f"{proc.name()}(PID {proc.pid})")
+                
+                ppid = proc.info["ppid"]
+                parent_alive = False
+                if ppid and ppid != my_pid:
+                    try:
+                        parent_proc = psutil.Process(ppid)
+                        p_name = parent_proc.name().lower()
+                        # 若父行程是 python、行政效能領航員或 pilot 且還活著，代表是另一個正在運行的多開實例
+                        if "python" in p_name or "行政效能領航員" in p_name or "pilot" in p_name:
+                            parent_alive = True
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        parent_alive = False
+
+                # 若是本行程建立的，或父行程依然存活且為多開實例，則保留不予清理
+                if ppid == my_pid or parent_alive:
+                    continue
+
+                # 連同它啟動的 chrome 子行程一起清掉
+                for child in proc.children(recursive=True):
+                    try:
+                        child.kill()
+                        killed.append(f"{child.name()}(PID {child.pid})")
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                proc.kill()
+                killed.append(f"{proc.name()}(PID {proc.pid})")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         if killed:
@@ -967,6 +982,15 @@ class AdminEfficiencyPilot:
                 logger.info("   📝 已點擊「測驗/考試」")
             except Exception as e:
                 logger.warning(f"   ⚠️ 找不到測驗連結（mooc_sysbar）: {e}")
+                # 💡 雙重保險：檢查是否因為已下架/準備中導致找不到連結
+                try:
+                    self.driver.switch_to.default_content()
+                    page_source = self.driver.page_source
+                    if any(word in page_source for word in ["課程準備中", "已下架", "尚未上架"]):
+                        logger.warning(f"   ⚠️ 偵測到課程「{course.get('caption', '')}」網頁含有『已下架』或『準備中』關鍵字，標記為已下架跳過")
+                        self._completed_in_session.add(course_id)
+                except Exception:
+                    pass
                 return False
 
             time.sleep(2)
@@ -2715,12 +2739,30 @@ class AdminEfficiencyPilot:
                             self.driver.get(self.stat_url)
                             if not self.safe_sleep(3):
                                 break
+                            c_id = str(c.get("course_id", ""))
                             try:
                                 self.driver.execute_script(
                                     f"gotoCourse({c['course_id']})"
                                 )
                                 if not self.safe_sleep(5):
                                     break
+                                
+                                # 💡 檢查是否有 alert 彈窗 (例如「課程尚未上架，無法進入教室介面」)
+                                alert_text = self._accept_alert_if_present()
+                                if alert_text:
+                                    logger.warning(f"   ⚠️ 進入教室時偵測到彈窗訊息: {alert_text}")
+                                    if any(word in alert_text for word in ["尚未上架", "無法進入", "已下架"]):
+                                        logger.warning(f"   ⚠️ 課程「{c.get('caption', '')}」尚未上架或已下架，將在本工作階段永久跳過")
+                                        self._completed_in_session.add(c_id)
+                                        continue
+                                
+                                # 💡 檢查頁面內容是否顯示下架
+                                page_source = self.driver.page_source
+                                if any(word in page_source for word in ["課程準備中", "已下架"]):
+                                    logger.warning(f"   ⚠️ 課程教室顯示準備中或已下架，將在本工作階段永久跳過")
+                                    self._completed_in_session.add(c_id)
+                                    continue
+
                                 # 點「開始上課」按鈕（如有）
                                 # 教室在同一視窗載入（不開新視窗），直接繼續
                                 try:

@@ -239,47 +239,95 @@ def get_course_list(driver, wait):
         except Exception:
             return cell.text.strip()
 
-    courses = []
-    last_row_count = 0
-    for attempt in range(1, 16):
-        rows = driver.find_elements(By.CSS_SELECTOR, 'table tbody tr')
-        last_row_count = len(rows)
-        parsed = []
-        blank_rows = 0
+    all_courses = []
+    page_num = 1
 
-        for row in rows:
-            cells = row.find_elements(By.CSS_SELECTOR, 'td')
-            if len(cells) < 12:
-                continue
+    while True:
+        parsed_page = []
+        last_row_count = 0
+        
+        # 最多嘗試 15 次等待當前頁面資料載入完成 (仿照原作者邏輯)
+        for attempt in range(1, 16):
+            rows = driver.find_elements(By.CSS_SELECTOR, 'table tbody tr')
+            last_row_count = len(rows)
+            parsed_page = []
+            blank_rows = 0
 
-            values = [td_text(cell) for cell in cells]
-            if not any(values):
-                blank_rows += 1
-                continue
+            for row in rows:
+                cells = row.find_elements(By.CSS_SELECTOR, 'td')
+                if len(cells) < 12:
+                    continue
 
-            name = values[0]
-            done = values[11]
-            study = values[3]
-            cert_hrs = values[4]
-            score = values[8]
-            quest = values[10]
-            links = cells[0].find_elements(By.CSS_SELECTOR, 'a[href]')
-            href = links[0].get_attribute('href') if links else ''
-            parsed.append({
-                'name': name, 'done': done, 'href': href,
-                'cert_hrs': cert_hrs, 'score': score,
-                'quest': quest, 'study': study,
-            })
+                values = [td_text(cell) for cell in cells]
+                if not any(values):
+                    blank_rows += 1
+                    continue
 
-        if parsed:
-            return parsed
+                name = values[0]
+                done = values[11]
+                study = values[3]
+                cert_hrs = values[4]
+                score = values[8]
+                quest = values[10]
+                links = cells[0].find_elements(By.CSS_SELECTOR, 'a[href]')
+                href = links[0].get_attribute('href') if links else ''
+                parsed_page.append({
+                    'name': name, 'done': done, 'href': href,
+                    'cert_hrs': cert_hrs, 'score': score,
+                    'quest': quest, 'study': study,
+                })
 
-        if rows:
-            print(f'  [掃描] 第 {attempt} 次讀到 {len(rows)} 列，但文字尚未載入，等待中...')
-        time.sleep(1)
+            if parsed_page:
+                break
 
-    print(f'  [掃描] 課程表格未讀到有效文字，row_count={last_row_count}')
-    return courses
+            if rows:
+                print(f'  [掃描] 頁面 {page_num} - 第 {attempt} 次讀到 {len(rows)} 列，但文字尚未載入，等待中...')
+            time.sleep(1)
+
+        if not parsed_page:
+            print(f'  [掃描] 頁面 {page_num} 課程表格未讀到有效文字，row_count={last_row_count}')
+            break
+
+        all_courses.extend(parsed_page)
+        print(f'  [掃描] 成功讀取第 {page_num} 頁，共 {len(parsed_page)} 門課程')
+
+        # 嘗試翻到下一頁
+        try:
+            # 取得點擊前的活動頁碼
+            active_elem = driver.find_elements(By.CSS_SELECTOR, "a.paginate-page.active")
+            current_page_text = active_elem[0].text.strip() if active_elem else ""
+
+            # 尋找包含下一頁箭頭的 a 標籤
+            next_btns = driver.find_elements(By.XPATH, '//a[contains(@class, "paginate-page")][./i[contains(@class, "fa-angle-right")]]')
+            if not next_btns:
+                break # 沒有下一頁按鈕，停止翻頁
+            
+            next_btn = next_btns[0]
+            
+            # 使用 JS 進行點擊以避免元素被遮擋的錯誤
+            driver.execute_script("arguments[0].click();", next_btn)
+            
+            # 等待當前活動頁碼改變 (代表切頁完成)，最多等 5 秒
+            page_changed = False
+            for _ in range(5):
+                time.sleep(1)
+                new_active_elem = driver.find_elements(By.CSS_SELECTOR, "a.paginate-page.active")
+                new_page_text = new_active_elem[0].text.strip() if new_active_elem else ""
+                if new_page_text and new_page_text != current_page_text:
+                    page_changed = True
+                    break
+            
+            if not page_changed:
+                break # 頁碼未改變，停止翻頁
+            
+            page_num += 1
+            
+        except Exception as e:
+            # 若有任何翻頁異常，視同已到最後一頁，結束迴圈
+            break
+
+    print(f'  [掃描] 翻頁掃描完成，總共取得 {len(all_courses)} 門課程')
+    return all_courses
 
 
 def _clean_status(text):
