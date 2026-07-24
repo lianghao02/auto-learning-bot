@@ -13092,5 +13092,105 @@
       "查找解讀檔案、陪伴協力機制、徵集個案、地圖工作坊"
     ],
     "course": "【轉型正義教育工作坊】機關協力—從相關經歷分享機關推動轉型正義教育之多元性與可能性"
+  },
+  {
+    "question": "末期心臟衰竭的患者，其安寧緩和療護需要心臟科團隊和安寧緩和團隊的共同合作。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "慢性阻塞性肺疾病的患者，只會有喘的症狀，「不會」有痛的症狀。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "臨床衰弱量表（Clinical Frailty Scale，CFS）評估長者衰弱已進展到極嚴重衰弱（第八級）及末期病況（第九級），可以判斷預期存活時間短。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "支持性及緩和療護指標工具(Supportive &amp; Palliative Care Indicators Tool, SPICT）是設計來做存活預估的工具。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "支持性及緩和療護指標工具(Supportive &amp; Palliative Care Indicators Tool, SPICT）包括了一般性指標及特定臨床指標。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "使用植入式心臟去顫器 (implantable cardioverter defibrillator, ICD), 心室輔助器&nbsp;(ventricular assist device, VAD) 是末期心臟衰竭病人安寧療護可能會遇到的臨床倫理問題。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "對於心臟衰竭病人提供預立醫療計畫(advance care planing) 及醫療共享決策 (shared decision making)至為重要，包含醫療人員跨團隊合作、醫病溝通。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "慢性阻塞性肺疾病最棘手的症狀是「呼吸困難」，它無法單純以肺功能檢查、血氧濃度等客觀數據來評估。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "針對慢性阻塞性肺疾病其呼吸困難之非藥物處置方法，如：手持式電風扇、身體姿勢擺位、轉移注意力等均有助於緩解。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
+  },
+  {
+    "question": "對於末期疾病病人之呼吸困難症狀使用成癮性麻醉藥品(narcotic analgesics)具有緩解作用。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "老人及十大末期疾病的安寧緩和療護(下集)"
   }
 ]
