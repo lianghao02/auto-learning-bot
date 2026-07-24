@@ -13312,5 +13312,35 @@
       "公法人"
     ],
     "course": "資訊安全"
+  },
+  {
+    "question": "資安意識訓練課程通常會讓組織的所有人一起參與？",
+    "answer": "是",
+    "type": "是非",
+    "options": [
+      "是",
+      "否"
+    ],
+    "course": "雲端應用安全實務"
+  },
+  {
+    "question": "資料可根據機密性來分類？",
+    "answer": "是",
+    "type": "是非",
+    "options": [
+      "是",
+      "否"
+    ],
+    "course": "雲端應用安全實務"
+  },
+  {
+    "question": "Netflix、Disney+、YouTube都是屬於雲端服務的一種",
+    "answer": "是",
+    "type": "是非",
+    "options": [
+      "是",
+      "否"
+    ],
+    "course": "雲端應用安全實務"
   }
 ]
