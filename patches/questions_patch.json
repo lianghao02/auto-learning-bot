@@ -16264,5 +16264,55 @@
       "每月一檢修"
     ],
     "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "人工智慧 (AI) 是指讓機器模擬像人類一樣自我思考及學習的一種先端技術 。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "AI智慧辦公全攻略：ChatGPT辦公應用教育訓練"
+  },
+  {
+    "question": "根據講義，「反應式機器」(Reactive machines) 具有內存記憶，可利用以往數據經驗為未來決策提供資訊 。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "AI智慧辦公全攻略：ChatGPT辦公應用教育訓練"
+  },
+  {
+    "question": "Napkin AI 是一款強大的工具，其主要功能是將文字內容轉化為多款視覺化圖表，以提升表達效果 。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "AI智慧辦公全攻略：ChatGPT辦公應用教育訓練"
+  },
+  {
+    "question": "Gamma是一款簡報生成軟體，Gamma 除了具備一鍵生成簡報的功能外，也支援生成網頁。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "AI智慧辦公全攻略：ChatGPT辦公應用教育訓練"
+  },
+  {
+    "question": "提問 ChatGPT 的小技巧包括：角色定位、指定文本格式、訴求內容、情境語氣及受文對象 。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "AI智慧辦公全攻略：ChatGPT辦公應用教育訓練"
   }
 ]
