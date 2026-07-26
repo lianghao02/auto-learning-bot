@@ -18424,5 +18424,17 @@
       "右鍵→移除儲存格"
     ],
     "course": "ODF Calc 實務操作應用"
+  },
+  {
+    "question": "在 LibreOffice Calc 中，若想快速輸入「今天的日期」，可使用什麼快速鍵？",
+    "answer": "Ctrl + 分號（;）",
+    "type": "單選",
+    "options": [
+      "Ctrl + Shift + 逗號（,）",
+      "Alt + 分號（;）",
+      "Ctrl + 分號（;）",
+      "Shift + Enter"
+    ],
+    "course": "ODF Calc 實務操作應用"
   }
 ]
