@@ -21629,5 +21629,63 @@
       "manager of ceremony"
     ],
     "course": "第一次英語主持就上手"
+  },
+  {
+    "question": "He asked us not to _____ his failure.",
+    "answer": "3. mention",
+    "type": "單選",
+    "options": [
+      "mention about",
+      "mention on",
+      "mention",
+      "mention with"
+    ],
+    "course": "英檢中級單字對話及文法精粹"
+  },
+  {
+    "question": "Will you _____ me the passage from Shakespeare?",
+    "answer": "1. explain to",
+    "type": "單選",
+    "options": [
+      "explain to",
+      "explain in",
+      "explain with",
+      "explain"
+    ],
+    "course": "英檢中級單字對話及文法精粹"
+  },
+  {
+    "question": "overcrowded是指「過於擁擠的」?",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "英檢中級單字對話及文法精粹"
+  },
+  {
+    "question": "You’ll _____ yourself a lot of time if you take the car.",
+    "answer": "3. save",
+    "type": "單選",
+    "options": [
+      "give",
+      "obtain",
+      "save",
+      "induce"
+    ],
+    "course": "英檢中級單字對話及文法精粹"
+  },
+  {
+    "question": "She will _____ him a good wife.",
+    "answer": "4. make",
+    "type": "單選",
+    "options": [
+      "take",
+      "put",
+      "do",
+      "make"
+    ],
+    "course": "英檢中級單字對話及文法精粹"
   }
 ]
