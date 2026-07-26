@@ -42,7 +42,7 @@ from selenium.common.exceptions import NoAlertPresentException, UnexpectedAlertP
 
 from quiz_bank import do_quiz_with_bank, do_feedback
 
-urllib3.disable_warnings()
+from utils.helpers import set_driver_window_visibility
 
 _ACTIVE_DRIVER = None
 
@@ -55,6 +55,11 @@ def force_close_active_driver():
             driver.quit()
         except Exception:
             pass
+
+def toggle_taipei_driver_visibility(visible: bool):
+    global _ACTIVE_DRIVER
+    if _ACTIVE_DRIVER:
+        set_driver_window_visibility(_ACTIVE_DRIVER, visible)
 
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
@@ -99,16 +104,51 @@ def parse_study_time(study_str):
     return hrs * 3600 + mins * 60 + secs
 
 def solve_captcha(img_bytes):
-    arr = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    kernel = np.array([[0,-1,0],[-1,5,-1],[0,-1,0]])
-    sharp = cv2.filter2D(gray, -1, kernel)
-    _, buf = cv2.imencode('.png', sharp)
-    raw = _ocr.classification(buf.tobytes())
-    digits = ''.join(c for c in raw if c.isdigit())
-    return digits if len(digits) == 4 else ''
+    if not img_bytes:
+        return ''
+    
+    # 策略 1: 直接以原圖進行 ddddocr 辨識 (預設無損辨識率最高)
+    try:
+        raw = _ocr.classification(img_bytes)
+        digits = ''.join(c for c in raw if c.isdigit())
+        if len(digits) == 4:
+            return digits
+    except Exception:
+        pass
+
+    # 策略 2: 放大兩倍 + 灰階轉換 (處理低對比度圖像)
+    try:
+        arr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is not None:
+            img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            _, buf = cv2.imencode('.png', gray)
+            raw = _ocr.classification(buf.tobytes())
+            digits = ''.join(c for c in raw if c.isdigit())
+            if len(digits) == 4:
+                return digits
+    except Exception:
+        pass
+
+    # 策略 3: 銳化濾鏡 (備用防護)
+    try:
+        arr = np.frombuffer(img_bytes, np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        if img is not None:
+            img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            kernel = np.array([[0,-1,0],[-1,5,-1],[0,-1,0]])
+            sharp = cv2.filter2D(gray, -1, kernel)
+            _, buf = cv2.imencode('.png', sharp)
+            raw = _ocr.classification(buf.tobytes())
+            digits = ''.join(c for c in raw if c.isdigit())
+            if len(digits) == 4:
+                return digits
+    except Exception:
+        pass
+
+    return ''
 
 def get_requests_session(driver):
     s = requests.Session()
@@ -191,27 +231,53 @@ def do_login(driver, wait, username='T124478221', password='A870628a'):
     time.sleep(0.8)
     driver.execute_script("refreshCaptcha();")
     time.sleep(0.8)
-    for attempt in range(15):
-        captcha_src = driver.execute_script("return document.querySelector('.captcha-img').src;")
-        s = get_requests_session(driver)
-        img_bytes = s.get(captcha_src, verify=False).content
-        digits = solve_captcha(img_bytes)
+
+    max_submit_attempts = 15
+    for attempt in range(max_submit_attempts):
+        digits = ''
+        # 最多嘗試 5 次自動刷新圖像，直到精確取得 4 位數驗證碼
+        for refresh_retry in range(5):
+            try:
+                captcha_src = driver.execute_script("return document.querySelector('.captcha-img').src;")
+                s = get_requests_session(driver)
+                img_bytes = s.get(captcha_src, verify=False, timeout=5).content
+                digits = solve_captcha(img_bytes)
+            except Exception:
+                digits = ''
+            if digits:
+                break
+            driver.execute_script("refreshCaptcha();")
+            time.sleep(0.8)
+
         print(f'  captcha [{attempt+1}]: {digits!r}')
         if not digits:
-            driver.execute_script("refreshCaptcha();"); time.sleep(0.8); continue
+            print(f'  [警告] 第 {attempt+1} 次無法自動辨識 4 位數驗證碼，重新載入登入頁面...')
+            driver.get('https://elearning.taipei/mpage/login')
+            wait.until(EC.presence_of_element_located((By.ID, 'pid')))
+            driver.execute_script("refreshCaptcha();")
+            time.sleep(0.8)
+            continue
+
         for fid in ['pid', 'password', 'auth']:
-            driver.find_element(By.ID, fid).clear()
+            try:
+                driver.find_element(By.ID, fid).clear()
+            except Exception:
+                pass
         driver.find_element(By.ID, 'pid').send_keys(username)
         driver.find_element(By.ID, 'password').send_keys(password)
         driver.find_element(By.ID, 'auth').send_keys(digits)
         driver.find_element(By.CSS_SELECTOR, 'button[type=submit]').click()
-        time.sleep(2)
+        time.sleep(2.5)
+
         if 'login' not in driver.current_url:
             print(f'  Login OK -> {driver.current_url}')
             return True
+
         driver.get('https://elearning.taipei/mpage/login')
         wait.until(EC.presence_of_element_located((By.ID, 'pid')))
-        driver.execute_script("refreshCaptcha();"); time.sleep(0.8)
+        driver.execute_script("refreshCaptcha();")
+        time.sleep(0.8)
+
     return False
 
 # 課程清單
@@ -356,7 +422,8 @@ def is_quiz_passed(course):
             nums.append(float(raw))
         except Exception:
             pass
-    return bool(nums) and max(nums) >= 100
+    # 修正：只要分數達到標準及格線 (>= 60 分) 即視為測驗通過，無需硬性要求 100 分
+    return bool(nums) and max(nums) >= 60
 
 def is_quiz_pending(course):
     score = _clean_status(course.get('score')).replace(' ', '')

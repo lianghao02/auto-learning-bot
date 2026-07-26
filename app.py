@@ -41,10 +41,12 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException
-from colorama import Fore, Style, init
+from colorama import Fore, Style
 
-from utils.helpers import get_logger, to_sec, sec_to_str, draw_bar
+from utils.helpers import get_logger, to_sec, sec_to_str, draw_bar, set_driver_window_visibility
 from utils.webdriver_mgr import download_best_chromedriver
+
+GLOBAL_DB_LOCK = threading.Lock()
 
 # 禁用冗長日誌與警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -74,6 +76,40 @@ class UILogHandler(logging.Handler):
             self.callback(msg)
 
 
+class ThreadBoundUILogHandler(logging.Handler):
+    """🧠 線程綁定全自動日誌路由轉接器 (Thread-Bound Log Router)
+    自動精確過濾目前 Thread 產生的任何 logger.info 訊息，100% 準確分流至各自控制台，零跨頁污染！
+    """
+    _active_pilots = {}
+    _lock = threading.Lock()
+
+    @classmethod
+    def register(cls, thread_id, pilot):
+        with cls._lock:
+            cls._active_pilots[thread_id] = pilot
+
+    @classmethod
+    def unregister(cls, thread_id):
+        with cls._lock:
+            cls._active_pilots.pop(thread_id, None)
+
+    def emit(self, record):
+        tid = threading.get_ident()
+        with self._lock:
+            pilot = self._active_pilots.get(tid)
+        if pilot and pilot.ui_handler:
+            pilot.ui_handler.emit(record)
+
+
+# 全域註冊 ThreadBound Router 確保任何地方 logger.info 都能精確導向該平臺 UI
+_global_router = ThreadBoundUILogHandler()
+_global_router.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+)
+if not any(isinstance(h, ThreadBoundUILogHandler) for h in logger.handlers):
+    logger.addHandler(_global_router)
+
+
 def _version_tuple(version):
     nums = re.findall(r"\d+", str(version or ""))
     return tuple(int(n) for n in nums[:3]) if nums else (0,)
@@ -95,7 +131,9 @@ class AdminEfficiencyPilot:
         "• 新增匿名使用統計與在線人數顯示"
     )
 
-    def __init__(self, config_path=None, log_callback=None, config_override=None):
+    def __init__(self, config_path=None, log_callback=None, config_override=None, progress_callback=None):
+        self.progress_callback = progress_callback
+        self._auto_healing_count = 0
         self.config = self.load_config(config_path)
 
         # ⭐ 重要：config_override 要完整覆蓋
@@ -267,25 +305,34 @@ class AdminEfficiencyPilot:
         self._keep_awake_stop = threading.Event()
         self._keep_awake_thread = None
 
+        # 🔒 獨立日誌管道 (Instance-Scoped Isolated Logger)
+        self.login_type = self.config.get("login_type", "default")
+        self.instance_id = f"{self.login_type}_{id(self)}"
+        self.log_instance = logging.getLogger(f"Pilot.{self.instance_id}")
+        self.log_instance.setLevel(logging.INFO)
+        self.log_instance.propagate = False  # 阻止日誌向 Root Logger 擴散造成頻道污染！
+        self.logger = self.log_instance  # 使 self.logger 指向專屬實例！
+
         if self.log_callback:
-            if not any(isinstance(h, UILogHandler) for h in logger.handlers):
-                ui_handler = UILogHandler(self.log_callback)
-                ui_handler.setFormatter(
-                    logging.Formatter(
-                        "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
-                    )
+            self.ui_handler = UILogHandler(self.log_callback)
+            self.ui_handler.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"
                 )
-                logger.addHandler(ui_handler)
+            )
+            self.logger.addHandler(self.ui_handler)
+        else:
+            self.ui_handler = None
 
         # 初始化日誌檔案 (每次覆蓋)
-        self.log_file = os.path.join(base_dir, "debug.log")
+        self.log_file = os.path.join(base_dir, f"debug_{self.config.get('login_type', 'default')}.log")
 
-        if not any(isinstance(h, logging.FileHandler) for h in logger.handlers):
+        if not any(isinstance(h, logging.FileHandler) for h in self.log_instance.handlers):
             fh = logging.FileHandler(self.log_file, mode="w", encoding="utf-8")
             fh.setFormatter(
                 logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
             )
-            logger.addHandler(fh)
+            self.log_instance.addHandler(fh)
 
         # 無論怎麼結束（Ctrl+C、關視窗、正常結束）都會清理
         atexit.register(self._cleanup)
@@ -397,6 +444,12 @@ class AdminEfficiencyPilot:
             except Exception:
                 pass
             self.driver = None
+        if getattr(self, "ui_handler", None):
+            try:
+                logger.removeHandler(self.ui_handler)
+                self.ui_handler = None
+            except Exception:
+                pass
         self._kill_managed_processes()
 
     def kill_orphan_drivers(self):
@@ -441,10 +494,10 @@ class AdminEfficiencyPilot:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         if killed:
-            logger.info(f"🧹 已清除孤立 driver 行程：{', '.join(killed)}")
+            logger.info(f"🧹 已清理殘留的背景 WebDriver 進程：{', '.join(killed)}")
             time.sleep(0.5)
         else:
-            logger.info("✅ 無殘留 driver 行程。")
+            logger.info("✅ 無任何殘留的背景 Driver 進程。")
 
     def _kill_managed_processes(self):
         """結束時清理：只殺本次自己記錄的 PID 樹，不影響使用者其他 Chrome。"""
@@ -456,11 +509,11 @@ class AdminEfficiencyPilot:
                 for child in proc.children(recursive=True):
                     try:
                         child.kill()
-                        logger.info(f"🧹 終止子行程：{child.name()}(PID {child.pid})")
+                        logger.info(f"🧹 釋放背景子進程：{child.name()}(PID {child.pid})")
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         pass
                 proc.kill()
-                logger.info(f"🧹 終止主行程：{proc.name()}(PID {pid})")
+                logger.info(f"🧹 釋放背景主進程：{proc.name()}(PID {pid})")
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         self._managed_pids.clear()
@@ -565,6 +618,10 @@ class AdminEfficiencyPilot:
             "正確答案選項編號："
         )
 
+        # 若本階段已經觸發過 429 熔斷，直接秒級返回 None（使用本地題庫速答）
+        if getattr(self, "_ai_circuit_broken", False):
+            return None
+
         for model in chain:
             try:
                 if provider == "Claude":
@@ -600,10 +657,19 @@ class AdminEfficiencyPilot:
                         verify=False,
                     )
 
-                # 429 / 503 → 嘗試下一個模型；其他錯誤直接拋出
-                if resp.status_code in (429, 503):
-                    logger.warning(f"   ⚠️ AI [{model}] 回傳 {resp.status_code}，嘗試下一個模型")
+                # 🛡️ 429 配額耗盡：開啟熔斷機制，當次執行階段不再重試，自動降級為純本地題庫速答
+                if resp.status_code == 429:
+                    if not getattr(self, "_ai_circuit_broken", False):
+                        self._ai_circuit_broken = True
+                        self.logger.warning(
+                            "⚠️ 偵測到 Gemini API 超出限額 (429)，本工作階段自動暫停 AI 呼叫，切換為『純本地 2503 題庫速答』模式"
+                        )
+                    return None
+
+                if resp.status_code in (500, 502, 503, 504):
+                    logger.debug(f"   ⚠️ AI [{model}] 回傳 {resp.status_code}，嘗試下一個模型")
                     continue
+
                 resp.raise_for_status()
 
                 if provider == "Claude":
@@ -636,43 +702,88 @@ class AdminEfficiencyPilot:
         )
         db_path = os.path.join(_base, "questions.db")
         try:
-            conn = sqlite3.connect(db_path)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS questions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    question TEXT UNIQUE NOT NULL,
-                    option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
-                    answer TEXT
-                )
-            """)
-            added = 0
-            for q_text, ans_str in answers.items():
-                cur = conn.execute(
-                    "SELECT id FROM questions WHERE question = ?", (q_text,)
-                ).fetchone()
-                if cur:
-                    conn.execute(
-                        "UPDATE questions SET answer = ? WHERE question = ?",
-                        (ans_str, q_text),
+            with GLOBAL_DB_LOCK:
+                conn = sqlite3.connect(db_path, timeout=30.0)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS questions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        question TEXT UNIQUE NOT NULL,
+                        option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
+                        answer TEXT
                     )
-                else:
-                    conn.execute(
-                        "INSERT INTO questions (question, answer) VALUES (?, ?)",
-                        (q_text, ans_str),
-                    )
-                    added += 1
-                # 同步記憶體（不論新增或更新都要覆蓋，避免記憶體留有舊錯誤答案）
-                nk = _normalize_q(q_text)
-                if nk:
-                    if nk not in self._answer_map:
-                        self._answer_keys.append(nk)
-                    self._answer_map[nk] = {"answer": ans_str, "options": [], "question": q_text}
-            conn.commit()
-            conn.close()
+                """)
+                added = 0
+                for q_text, ans_str in answers.items():
+                    cur = conn.execute(
+                        "SELECT id FROM questions WHERE question = ?", (q_text,)
+                    ).fetchone()
+                    if cur:
+                        conn.execute(
+                            "UPDATE questions SET answer = ? WHERE question = ?",
+                            (ans_str, q_text),
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT INTO questions (question, answer) VALUES (?, ?)",
+                            (q_text, ans_str),
+                        )
+                        added += 1
+                    # 同步記憶體（不論新增或更新都要覆蓋，避免記憶體留有舊錯誤答案）
+                    nk = _normalize_q(q_text)
+                    if nk:
+                        if nk not in self._answer_map:
+                            self._answer_keys.append(nk)
+                        self._answer_map[nk] = {"answer": ans_str, "options": [], "question": q_text}
+                conn.commit()
+                conn.close()
             tag = f"（{source}）" if source else ""
             logger.info(f"   💾 已同步 {len(answers)} 題到 questions.db{tag}（新增 {added} 題）")
         except Exception as e:
             logger.warning(f"   ⚠️ 寫入 questions.db 失敗: {e}")
+
+    def toggle_chrome_visibility(self, show: bool):
+        """控制 Chrome 視窗顯示與隱藏"""
+        self._is_chrome_hidden = not show
+        if hasattr(self, "driver") and self.driver:
+            set_driver_window_visibility(self.driver, show)
+
+    def _auto_hide_popups_if_needed(self):
+        """若目前處於隱藏模式，自動連同新開的考試與問卷彈出視窗一併無痕隱藏"""
+        if getattr(self, "_is_chrome_hidden", False) and hasattr(self, "driver") and self.driver:
+            try:
+                set_driver_window_visibility(self.driver, False)
+            except Exception:
+                pass
+
+    def _try_auto_healing(self, reason_msg: str) -> bool:
+        """全自動靜默修復 (Auto-Healing) 網絡與 WebDriver 連線異常，防護網最多重試 3 次"""
+        if getattr(self, "_auto_healing_count", 0) >= 3:
+            logger.error(f"❌ 已達到 Auto-Healing 最大自動修復重連上限 (3 次)，自動安全暫停以保護資源。原因：{reason_msg}")
+            return False
+
+        self._auto_healing_count = getattr(self, "_auto_healing_count", 0) + 1
+        logger.warning(f"🔄 偵測到連線異常（{reason_msg}），正在啟動全自動靜默修復 (Auto-Healing 第 {self._auto_healing_count}/3 次)...")
+
+        try:
+            # 1. 徹底清理舊死 Driver 資源
+            self._cleanup()
+            time.sleep(2)
+
+            # 2. 重新初始化 WebDriver 引擎
+            if not self.init_engine():
+                logger.error("❌ Auto-Healing：引擎重建失敗")
+                return False
+
+            # 3. 自動重新登入
+            if not self.login():
+                logger.error("❌ Auto-Healing：重新登入失敗")
+                return False
+
+            logger.info("✅ Auto-Healing：瀏覽器連線已成功靜默修復，恢復修課流程！")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Auto-Healing 過程發生例外: {e}")
+            return False
 
     # ── GAS 題庫同步 URL（送出缺題 + 下載更新共用同一個 endpoint）──
     _GAS_DB_URL = "https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1M6rL2gM8nTGicmEjfh_1TNiBo12YcVsb37J7Cl/exec"
@@ -1044,6 +1155,7 @@ class AdminEfficiencyPilot:
                 return False
 
             self.driver.switch_to.window(exam_window)
+            self._auto_hide_popups_if_needed()
             logger.info("   📝 已切換至考試視窗")
 
             # 等待考試頁面載入完成（最多 15 秒）
@@ -1132,7 +1244,7 @@ class AdminEfficiencyPilot:
             except Exception as _dom_e:
                 logger.info(f"   [DOM] 診斷失敗: {_dom_e}")
 
-            for row in rows:
+            for q_idx, row in enumerate(rows):
                 try:
                     # ── 題目文字擷取 ──
                     # 頁面結構：<td align="left"> 純文字節點（題目）<ol>選項</ol></td>
@@ -1269,9 +1381,10 @@ class AdminEfficiencyPilot:
                                 ans = ai_ans
                                 _ai_answered[q_text] = ai_ans
 
-                    logger.info(f"   題目: {q_text[:50]!r}")
-                    logger.info(f"   選項: {[t[:20] for t in option_texts]!r}")
-                    logger.info(f"   答案: {ans!r}")
+                    logger.debug(f"   題目: {q_text[:50]!r}")
+                    logger.debug(f"   選項: {[t[:20] for t in option_texts]!r}")
+                    logger.debug(f"   答案: {ans!r}")
+                    logger.info(f"   📝 作答進度：[{q_idx + 1}/{len(rows)} 題] 已填答")
                     if checkboxes:
                         if ans is not None:
                             ans_text = (
@@ -1512,7 +1625,8 @@ class AdminEfficiencyPilot:
                     "missing": _missing_dedup,
                 }
 
-                import threading as _threading, requests as _req
+                import threading as _threading
+                import requests as _req
 
                 def _post_gas(url, payload):
                     try:
@@ -1774,6 +1888,7 @@ class AdminEfficiencyPilot:
                 return False
 
             self.driver.switch_to.window(q_window)
+            self._auto_hide_popups_if_needed()
             logger.info("   📋 已切換至問卷視窗")
             time.sleep(2)
 
@@ -1884,7 +1999,7 @@ class AdminEfficiencyPilot:
                 logger.error(f"找不到驅動程式檔案: {driver_path}")
                 return False
 
-            logger.info(f"🚀 正在啟動輔助引擎...")
+            logger.info("🚀 正在啟動輔助引擎...")
             options = Options()
             options.add_argument("--mute-audio")
             # 加速啟動
@@ -2149,35 +2264,82 @@ class AdminEfficiencyPilot:
             self.driver.get(
                 "https://www.cp.gov.tw/portal/Clogin.aspx?ReturnUrl=https://elearn.hrd.gov.tw/egov_login.php&ver=Simple&Level=1"
             )
+            time.sleep(2)
 
-            # 等 modal 出現（關鍵）
-            self.wait.until(EC.presence_of_element_located((By.ID, "modal1")))
+            # 多重防禦性定位帳號欄位
+            user_f = None
+            user_selectors = [
+                (By.ID, "AccountPassword_simple_txt_account"),
+                (By.CSS_SELECTOR, "input[placeholder*='帳號']"),
+                (By.CSS_SELECTOR, "input[type='text']"),
+                (By.CSS_SELECTOR, "input[id*='account']"),
+            ]
+            for by_type, val in user_selectors:
+                try:
+                    user_f = WebDriverWait(self.driver, 3).until(EC.presence_of_element_located((by_type, val)))
+                    if user_f and user_f.is_displayed():
+                        break
+                except Exception:
+                    pass
 
-            # 用 ID 抓
-            user_f = self.wait.until(
-                EC.element_to_be_clickable(
-                    (By.ID, "AccountPassword_simple_txt_account")
-                )
-            )
-            pass_f = self.wait.until(
-                EC.element_to_be_clickable(
-                    (By.ID, "AccountPassword_simple_txt_password")
-                )
-            )
+            # 多重防禦性定位密碼欄位
+            pass_f = None
+            pass_selectors = [
+                (By.ID, "AccountPassword_simple_txt_password"),
+                (By.CSS_SELECTOR, "input[type='password']"),
+                (By.CSS_SELECTOR, "input[placeholder*='密碼']"),
+                (By.CSS_SELECTOR, "input[id*='password']"),
+            ]
+            for by_type, val in pass_selectors:
+                try:
+                    pass_f = WebDriverWait(self.driver, 3).until(EC.presence_of_element_located((by_type, val)))
+                    if pass_f and pass_f.is_displayed():
+                        break
+                except Exception:
+                    pass
+
+            if not user_f or not pass_f:
+                logger.error("❌ 找不到我的E政府帳號或密碼輸入框")
+                return False
 
             user_f.clear()
+            user_f.send_keys(str(self.config["account"]))
+            time.sleep(0.5)
+
             pass_f.clear()
+            pass_f.send_keys(str(self.config["password"]))
+            time.sleep(0.5)
 
-            user_f.send_keys(self.config["account"])
-            pass_f.send_keys(self.config["password"])
+            # 登入按鈕多重定位
+            login_btn = None
+            btn_selectors = [
+                (By.ID, "AccountPassword_simple_btn_LoginHandler"),
+                (By.CSS_SELECTOR, "input[type='submit']"),
+                (By.CSS_SELECTOR, "button[type='submit']"),
+                (By.CSS_SELECTOR, "a.btn-login"),
+                (By.XPATH, "//a[contains(text(), '登入')]"),
+                (By.XPATH, "//button[contains(text(), '登入')]"),
+                (By.XPATH, "//input[@value='登入']"),
+            ]
+            for by_type, val in btn_selectors:
+                try:
+                    btns = self.driver.find_elements(by_type, val)
+                    for b in btns:
+                        if b.is_displayed():
+                            login_btn = b
+                            break
+                    if login_btn:
+                        break
+                except Exception:
+                    pass
 
-            # 登入按鈕
-            login_btn = self.driver.find_element(
-                By.ID, "AccountPassword_simple_btn_LoginHandler"
-            )
-
-            # 用 JS 點（避免被擋）
-            self.driver.execute_script("arguments[0].click();", login_btn)
+            if login_btn:
+                try:
+                    login_btn.click()
+                except Exception:
+                    self.driver.execute_script("arguments[0].click();", login_btn)
+            else:
+                pass_f.submit()
 
             return self._wait_for_redirect_and_sync("✅ E政府登入成功")
 
@@ -2304,7 +2466,7 @@ class AdminEfficiencyPilot:
                 # 1. 檢查單次累計時數是否超過 2 小時 (7200秒)
                 if time.time() - session_start > 7200:
                     logger.warning(
-                        f"   ⚠️ 單一課程研習已達 2 小時，為避免異常，將切換課程。"
+                        "   ⚠️ 單一課程研習已達 2 小時，為避免異常，將切換課程。"
                     )
                     break
 
@@ -2319,11 +2481,11 @@ class AdminEfficiencyPilot:
                         last_prog_time = time.time()
                     elif time.time() - last_prog_time > 600:
                         logger.error(
-                            f"   🛑 進度停滯超過 10 分鐘，正在強制執行重啟救回機制。"
+                            "   🛑 進度停滯超過 10 分鐘，正在強制執行重啟救回機制。"
                         )
                         return "STALLED"
                     elif time.time() - last_prog_time > 300:
-                        logger.warning(f"   ⚠️ 進度已停滯 5 分鐘，請注意連線狀態。")
+                        logger.warning("   ⚠️ 進度已停滯 5 分鐘，請注意連線狀態。")
 
                     if prog["cur_sec"] >= prog["target_sec"]:
                         logger.info(f"   ✨ {Fore.GREEN}時數已達標！{Style.RESET_ALL}")
@@ -2350,20 +2512,20 @@ class AdminEfficiencyPilot:
                     frame_fail_count = 0
 
                     all_links = [
-                        l
-                        for l in self.driver.find_elements(By.TAG_NAME, "a")
-                        if l.text.strip()
+                        link
+                        for link in self.driver.find_elements(By.TAG_NAME, "a")
+                        if link.text.strip()
                     ]
                     links = [
-                        l for l in all_links
-                        if l.text.strip() not in self.config["blacklist"]
+                        link for link in all_links
+                        if link.text.strip() not in self.config["blacklist"]
                     ]
                     # 診斷：若無可用 link，記錄原始清單
                     if not links:
-                        all_texts = [l.text.strip() for l in all_links]
+                        all_texts = [link.text.strip() for link in all_links]
                         logger.warning(f"   ⚠️ pathtree 無可選單元，原始清單({len(all_texts)}筆): {all_texts[:20]}")
                     target = next(
-                        (l for l in links if l.text not in attempted),
+                        (link for link in links if link.text not in attempted),
                         random.choice(links) if links else None,
                     )
                     # 所有單元都已嘗試過 → 重置讓下一輪重新輪
@@ -2430,7 +2592,7 @@ class AdminEfficiencyPilot:
                         logger.warning(f"   🔍 診斷失敗: {diag_e}")
                     if frame_fail_count >= 5:
                         logger.error(
-                            f"   ❌ 連續 5 次找不到課程選單，視窗可能已毀損，嘗試重啟。"
+                            "   ❌ 連續 5 次找不到課程選單，視窗可能已毀損，嘗試重啟。"
                         )
                         return "STALLED"
                     for _ in range(30):
@@ -2540,6 +2702,9 @@ class AdminEfficiencyPilot:
 
     def run(self):
         """⭐ 正確位置：在類內"""
+        tid = threading.get_ident()
+        ThreadBoundUILogHandler.register(tid, self)
+
         if self.config.get("login_type") == "taipei_eda":
             self._start_keep_awake()
             try:
@@ -2561,6 +2726,7 @@ class AdminEfficiencyPilot:
                 logger.error(f"⚠️ 臺北E大流程發生錯誤: {e}")
                 logger.debug(traceback.format_exc())
             finally:
+                ThreadBoundUILogHandler.unregister(tid)
                 self._cleanup()
             return
 
@@ -2759,7 +2925,7 @@ class AdminEfficiencyPilot:
                                 # 💡 檢查頁面內容是否顯示下架
                                 page_source = self.driver.page_source
                                 if any(word in page_source for word in ["課程準備中", "已下架"]):
-                                    logger.warning(f"   ⚠️ 課程教室顯示準備中或已下架，將在本工作階段永久跳過")
+                                    logger.warning("   ⚠️ 課程教室顯示準備中或已下架，將在本工作階段永久跳過")
                                     self._completed_in_session.add(c_id)
                                     continue
 
@@ -2841,7 +3007,7 @@ class AdminEfficiencyPilot:
                             c_id = str(pending[0].get("course_id", ""))
                             if c_id:
                                 self._completed_in_session.add(c_id)
-                            logger.info(f"⏭️ 已永久跳過課程，繼續下一門...")
+                            logger.info("⏭️ 已永久跳過課程，繼續下一門...")
                         elif res == "ERROR":
                             logger.info("⏳ 發生研習異常，稍後嘗試下一門課程...")
                             time.sleep(5)
@@ -2857,16 +3023,9 @@ class AdminEfficiencyPilot:
                         or "WebDriver" in err_str
                         or "chrome not reachable" in err_str.lower()
                     ):
-                        logger.warning(
-                            "🔄 偵測到瀏覽器 session 失效，嘗試重建引擎並重新登入..."
-                        )
-                        self._cleanup()
-                        if not self.safe_sleep(5):
+                        if not self._try_auto_healing(err_str):
                             break
-                        if not self.init_engine() or not self.login():
-                            logger.error("❌ 引擎重啟或登入失敗，無法繼續。")
-                            break
-                        logger.info("✅ 引擎重建成功，從當前課程繼續...")
+                        continue
                     else:
                         self.safe_sleep(10)
 
@@ -2886,6 +3045,7 @@ class AdminEfficiencyPilot:
                     f"\n{Fore.RED}❌ 發生嚴重錯誤，請查看 debug.log 並按 Enter 退出...{Style.RESET_ALL}"
                 )
         finally:
+            ThreadBoundUILogHandler.unregister(tid)
             self._cleanup()
 
 

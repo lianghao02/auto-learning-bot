@@ -15,6 +15,8 @@ if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
 from app import AdminEfficiencyPilot
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
+    QComboBox,
     QDialog,
     QFormLayout,
     QFrame,
@@ -34,7 +36,6 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
-    QComboBox,
 )
 from PySide6.QtCore import (
     Qt,
@@ -606,14 +607,27 @@ class EntryPage(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.bg_label.setGeometry(0, 0, self.width(), self.height())
+        w = self.width()
+        h = self.height()
+        self.bg_label.setGeometry(0, 0, w, h)
+
+        # 動態按原 900x600 設計基準計算比例，確保毛玻璃手機框與背景手機螢幕永遠完美貼合
+        rx = w / 900.0
+        ry = h / 600.0
+        sx = int(421 * rx)
+        sy = int(132 * ry)
+        sw = int(263 * rx)
+        sh = int(473 * ry)
+
+        self.account_container.setGeometry(sx, sy, sw, sh)
+
         if hasattr(self, "_version_label"):
             lw = self._version_label.width()
             lh = self._version_label.height()
-            self._version_label.move(8, self.height() - lh - 6)
+            self._version_label.move(8, h - lh - 6)
         if hasattr(self, "_update_btn"):
             bw = self._update_btn.width()
-            self._update_btn.move(self.width() - bw - 20, 6)
+            self._update_btn.move(w - bw - 20, 6)
 
     def delete_account(self):
         if not self.accounts:
@@ -2266,234 +2280,188 @@ Log "ps1 done"
 # =========================
 # 主執行頁面
 # =========================
-class ImmersivePage(QWidget):
+from PySide6.QtWidgets import QTabWidget
+
+class PlatformTabPanel(QWidget):
     log_signal = Signal(str)
 
-    def __init__(self, on_stop):
+    def __init__(self, platform_key, platform_title, on_start, on_stop, on_toggle_browser):
         super().__init__()
+        self.platform_key = platform_key
+        self.platform_title = platform_title
+        self.on_start = on_start
         self.on_stop = on_stop
+        self.on_toggle_browser = on_toggle_browser
+        self.browser_visible = False
 
-        root = QVBoxLayout(self)
-        root.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(10)
 
-        # 中央區
-        container = QFrame()
+        # Windows 11 經典進度與統計卡片
+        progress_card = QFrame()
+        progress_card.setStyleSheet("""
+            QFrame {
+                background: #F9FAFB;
+                border: 1px solid #E5E7EB;
+                border-radius: 8px;
+                padding: 6px 12px;
+            }
+            QLabel {
+                color: #1F2937; font-size: 13px; font-weight: bold; background: transparent;
+            }
+        """)
+        prog_layout = QHBoxLayout(progress_card)
+        prog_layout.setContentsMargins(8, 4, 8, 4)
 
-        # 螢幕圖片
-        self.screen_bg = QLabel()
-        pixmap = QPixmap(resource_path("screen.png"))
-
-        # ⭐ 加入強力安全檢查
-        if pixmap.isNull() or pixmap.width() <= 0 or pixmap.height() <= 0:
-            # 如果圖片不存在或尺寸為 0，使用預設值
-            logger.warning("⚠️ screen.png 不存在或尺寸無效，使用預設尺寸")
-            self.w = 1024
-            self.h = 768
-            # 創建一個空的 pixmap（不會顯示，但不會崩潰）
-            pixmap = QPixmap(self.w, self.h)
-            pixmap.fill(QColor(200, 200, 200))  # 灰色背景
-        else:
-            self.w = pixmap.width()
-            self.h = pixmap.height()
-
-        # === 螢幕比例（保護除以零）
-        if self.w > 0 and self.h > 0:
-            self.rx = 255 / self.w
-            self.ry = 138 / self.h
-            self.rw = 580 / self.w
-            self.rh = 280 / self.h
-        else:
-            self.rx = 0.25
-            self.ry = 0.18
-            self.rw = 0.57
-            self.rh = 0.36
-
-        container.setMinimumSize(400, 300)
-
-        self.screen_bg.setScaledContents(True)
-        self.screen_bg.setPixmap(pixmap)
-        self.screen_bg.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-
-        container_layout = QVBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-        container_layout.addWidget(self.screen_bg)
-
-        root.addWidget(container)
-
-        # ===== Mac 標題列（正確版本）=====
-        self.mac_bar = QWidget(self.screen_bg)
-        self.mac_bar.setStyleSheet("""
-            background-color: rgba(255,255,255,0.05);
-            border-top-left-radius: 6px;
-            border-top-right-radius: 6px;
+        self.stats_lbl = QLabel("📊 研習時數與課程進度：準備就緒")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFixedHeight(16)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #E5E7EB;
+                border: 1px solid #D1D5DB;
+                border-radius: 8px;
+                text-align: center;
+                color: #1F2937;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0067C0, stop:1 #10B981);
+                border-radius: 7px;
+            }
         """)
 
-        mac_layout = QHBoxLayout(self.mac_bar)
-        mac_layout.setContentsMargins(8, 0, 8, 0)
-        mac_layout.setSpacing(6)
+        prog_layout.addWidget(self.stats_lbl)
+        prog_layout.addStretch()
+        prog_layout.addWidget(self.progress_bar)
+        layout.addWidget(progress_card)
 
-        blur = QGraphicsBlurEffect()
-        blur.setBlurRadius(6)
-        self.mac_bar.setGraphicsEffect(blur)
+        # 操作列
+        btn_bar = QHBoxLayout()
+        self.info_lbl = QLabel(f"{platform_title}控制台")
+        self.info_lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 14px; background: transparent;")
 
-        def make_dot(color):
-            dot = QWidget()
-            dot.setFixedSize(10, 10)
-            dot.setStyleSheet(f"""
-                background-color: {color};
-                border-radius: 5px;
-            """)
-            return dot
-
-        mac_layout.addWidget(make_dot("#FF5F57"))
-        mac_layout.addWidget(make_dot("#FEBC2E"))
-        mac_layout.addWidget(make_dot("#28C840"))
-
-        title = QLabel("行政效能領航員")
-        title.setStyleSheet("""
-            color: rgba(255,255,255,0.85);
-            font-size: 11px;
-            background: transparent;
-            letter-spacing: 0.5px;
+        self.start_btn = QPushButton("▶️ 開始執行")
+        self.start_btn.setStyleSheet("""
+            QPushButton {
+                background: #10B981; color: #FFFFFF; border-radius: 8px;
+                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+            }
+            QPushButton:hover { background: #059669; }
         """)
-        title.setAlignment(Qt.AlignCenter)
+        self.start_btn.clicked.connect(self._handle_start)
 
-        mac_layout.addSpacing(200)
-        mac_layout.addWidget(title)
-        mac_layout.addStretch()
-
-        self.mac_bar.setGeometry(244, 128, 578, 24)
-
-        # 🔴 stop 按鈕
-        self.stop_btn = QPushButton("⏹ Stop", self.screen_bg)
-        self.stop_btn.setObjectName("ghost")
-
-        self.stop_btn.clicked.connect(self.on_stop)
+        self.stop_btn = QPushButton("⏹ 停止")
         self.stop_btn.setStyleSheet("""
-            background-color: rgba(255,255,255,0.2);
-            color: white;
-            border-radius: 6px;
+            QPushButton {
+                background: #EF4444; color: #FFFFFF; border-radius: 8px;
+                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+            }
+            QPushButton:hover { background: #DC2626; }
         """)
+        self.stop_btn.clicked.connect(self._handle_stop)
 
-        # 建立 info（一定要先建）
-        self.info = QLabel(self.screen_bg)
-        self.info.setStyleSheet("""
-        color: white;
-        font-size: 14px;
-        font-weight: 600;
-        background: transparent;
+        self.toggle_browser_btn = QPushButton("👁️ 顯示瀏覽器")
+        self.toggle_browser_btn.setStyleSheet("""
+            QPushButton {
+                background: #3B82F6; color: #FFFFFF; border-radius: 8px;
+                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+            }
+            QPushButton:hover { background: #2563EB; }
         """)
-        self.info.hide()
+        self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
-        self.log_view = QTextEdit(self.screen_bg)
+        btn_bar.addWidget(self.info_lbl)
+        btn_bar.addStretch()
+        btn_bar.addWidget(self.start_btn)
+        btn_bar.addWidget(self.stop_btn)
+        btn_bar.addWidget(self.toggle_browser_btn)
+        layout.addLayout(btn_bar)
+
+        # Log 視窗
+        self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
-        self.log_view.document().setMaximumBlockCount(200)
+        self.log_view.document().setMaximumBlockCount(300)
         self.log_view.setStyleSheet("""
-        QTextEdit {
-            background: transparent;
-            border: none;
-            color: #E5E7EB;
-            font-size: 13px;
-        }
-
-        QScrollBar:vertical {
-            background: transparent;
-            width: 5px;
-            margin: 4px 0px 4px 0px;
-        }
-
-        QScrollBar::handle:vertical {
-            background: rgba(255, 255, 255, 0.7);
-            border-radius: 2px;
-            min-height: 40px;
-        }
-
-        QScrollBar::handle:vertical:hover {
-            background: rgba(255, 255, 255, 0.6);
-        }
-
-        QScrollBar::add-line:vertical,
-        QScrollBar::sub-line:vertical {
-            height: 0px;
-        }
-
-        QScrollBar::add-page:vertical,
-        QScrollBar::sub-page:vertical {
-            background: transparent;
-        }
+            QTextEdit {
+                background: rgba(36, 41, 51, 0.7);
+                border: 1px solid rgba(216, 222, 233, 0.15);
+                border-radius: 10px;
+                color: #ECEFF4;
+                font-size: 13px;
+                padding: 8px;
+            }
+            QScrollBar:vertical {
+                background: transparent;
+                width: 6px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(216, 222, 233, 0.3);
+                border-radius: 3px;
+            }
         """)
-
-        # 螢幕區域
-        self.screen_x = 255
-        self.screen_y = 138
-        self.screen_w = 580
-        self.screen_h = 280
+        layout.addWidget(self.log_view)
 
         self.log_signal.connect(self._append_text_safe)
 
+    def update_account_info(self, name: str, account: str):
+        """動態更新控制台頂部的暱稱與帳號資訊"""
+        display_name = name.strip() if name and name.strip() else "預設使用者"
+        display_acc = f" / {account.strip()}" if account and account.strip() else ""
+        self.info_lbl.setText(f"{self.platform_title}控制台（使用者：{display_name}{display_acc}）")
+
+    def update_progress(self, current: int, total: int, status_text: str = None):
+        """更新視覺化進度條與統計數字（防除零保護）"""
+        pct = int((current / total) * 100) if total > 0 else 0
+        self.progress_bar.setValue(pct)
+        if status_text:
+            self.stats_lbl.setText(f"📊 {status_text}")
+        else:
+            self.stats_lbl.setText(f"📊 研習進度：{current} / {total} 門課程 ({pct}%)")
+
+    def _handle_start(self):
+        if self.on_start:
+            self.on_start(self.platform_key)
+
+    def _handle_stop(self):
+        if self.on_stop:
+            self.on_stop(self.platform_key)
+
+    def _handle_toggle_browser(self):
+        self.browser_visible = not self.browser_visible
+        if self.browser_visible:
+            self.toggle_browser_btn.setText("🙈 隱藏瀏覽器")
+            self.toggle_browser_btn.setStyleSheet("""
+                QPushButton {
+                    background: #6B7280; color: white; border-radius: 8px;
+                    padding: 8px 16px; font-weight: bold; font-size: 13px; border: none;
+                }
+                QPushButton:hover { background: #4B5563; }
+            """)
+        else:
+            self.toggle_browser_btn.setText("👁️ 顯示瀏覽器")
+            self.toggle_browser_btn.setStyleSheet("""
+                QPushButton {
+                    background: #3B82F6; color: white; border-radius: 8px;
+                    padding: 8px 16px; font-weight: bold; font-size: 13px; border: none;
+                }
+                QPushButton:hover { background: #2563EB; }
+            """)
+        if self.on_toggle_browser:
+            self.on_toggle_browser(self.platform_key, self.browser_visible)
+
     def append_text(self, text):
-        """接收外部的日志文本"""
         self.log_signal.emit(text)
 
-    def start(self, account: str):
-        """開始顯示學習页面"""
-        self._init_position()
-        self.info.setText(f"上課人員 {account}")
-        self.info.show()
-        self.log_view.clear()
-
-    def resizeEvent(self, event):
-        """窗口大小改变时的处理"""
-        super().resizeEvent(event)
-
-        w = self.width()
-
-        screen_x = self.screen_x
-        screen_y = self.screen_y
-        screen_w = self.screen_w
-        screen_h = self.screen_h
-
-        pad_x = 70
-        pad_top = 70
-        pad_info = 30
-        pad_bottom = 40
-
-        # stop
-        self.stop_btn.move(w - 120, 25)
-
-        # log_view 區域
-        self.log_view.move(screen_x + pad_x, screen_y + pad_top)
-        self.log_view.resize(screen_w - pad_x * 2, screen_h - pad_top - pad_bottom)
-
-        # account
-        self.info.move(screen_x + pad_x, screen_y + pad_info)
-        self.info.resize(screen_w - pad_x * 2, 25)
-
-    def _init_position(self):
-        """初始化位置"""
-        # stop（右上）
-        self.stop_btn.move(self.screen_bg.width() - 120, 25)
-
-        # log_view（文字區）
-        self.log_view.setGeometry(248, 195, 578, 220)
-
-        # account（帳號）
-        self.info.move(248, 162)
-
     def _format_taipei_log_line(self, text):
-        """把臺北E大的 console 輸出整理成與 eCPA 流程相同的 UI log 風格。"""
         raw = (text or "").strip()
-        if not raw:
+        if not raw or re.fullmatch(r"[-=─\s]{8,}", raw) or raw.startswith("SCORM URL:") or raw.startswith("Player URL:"):
             return None
-
-        if re.fullmatch(r"[-=─\s]{8,}", raw):
-            return None
-
-        if raw.startswith("SCORM URL:") or raw.startswith("Player URL:"):
-            return None
-
         replacements = [
             (r"^===\s*登入\s*===$", "INFO", "🔑 正在登入臺北E大..."),
             (r"^===\s*掃描課程清單\s*===$", "INFO", "📋 正在掃描課程清單..."),
@@ -2502,148 +2470,16 @@ class ImmersivePage(QWidget):
             (r"^登入失敗$", "ERROR", "❌ 臺北E大登入失敗"),
             (r"^沒有未完成課程！$", "INFO", "✅ 沒有未完成課程"),
             (r"^完成！$", "INFO", "🏆 臺北E大所有任務完成！"),
-            (r"^無測驗$", "INFO", "📝 無測驗"),
-            (r"^無問卷$", "INFO", "📋 無問卷"),
-            (r"^重新掃描 feedback URL\.\.\.$", "INFO", "🔎 重新掃描問卷連結..."),
-            (r"^找不到 SCORM 連結，跳過$", "WARNING", "⚠️ 找不到 SCORM 連結，跳過"),
-            (r"^使用者已停止臺北E大流程$", "WARNING", "🛑 使用者已停止臺北E大流程"),
         ]
         for pattern, level, msg in replacements:
             if re.match(pattern, raw):
                 return level, msg
-
-        m = re.match(r"^captcha \[\d+\]: ['\"]?([^'\"]*)['\"]?$", raw)
-        if m:
-            code = m.group(1) or "未辨識"
-            return "INFO", f"🔐 驗證碼辨識：{code}"
-
-        m = re.match(r"^\[config\]\s*已載入:", raw)
-        if m:
-            return "INFO", "⚙️ 已載入臺北E大設定"
-
-        m = re.match(r"^\[掃描\]\s*(.+)$", raw)
-        if m:
-            return "WARNING", f"🔎 {m.group(1)}"
-
-        m = re.match(r"^\[模組\]\s*course_id=([^\s]+).*quiz=([^\s]+).*fb=([^\s]+)", raw)
-        if m:
-            quiz = "有測驗" if m.group(2) not in ("None", "") else "無測驗"
-            fb = "有問卷" if m.group(3) not in ("None", "") else "無問卷"
-            return "INFO", f"🔎 已偵測課程模組：course_id={m.group(1)}，{quiz}，{fb}"
-
-        m = re.match(r"^共\s*(\d+)\s*門未完成課程，開始依序處理", raw)
-        if m:
-            return "INFO", f"⏳ 待處理課程 {m.group(1)} 門，開始依序處理..."
-
-        m = re.match(r"^課程總數:\s*(\d+)\s*筆，未完成:\s*(\d+)\s*筆$", raw)
-        if m:
-            return "INFO", f"📋 課程總數 {m.group(1)} 筆，未完成 {m.group(2)} 筆"
-
-        m = re.match(r"^尚未完成:\s*(.+)$", raw)
-        if m:
-            return "WARNING", f"⏳ 尚未完成：{m.group(1)}"
-
-        m = re.match(r"^▶️\s*點擊課程按鈕:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"▶️ 點擊課程按鈕：{m.group(1)}"
-
-        m = re.match(r"^點擊課程按鈕:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"▶️ 點擊課程按鈕：{m.group(1)}"
-
-        m = re.match(r"^處理:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"▶️ 處理課程：{m.group(1)}"
-
-        m = re.match(r"^課程:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"📘 課程：{m.group(1)}"
-
-        m = re.match(r"^目標:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"⏱️ {m.group(1)}"
-
-        m = re.match(r"^研習進度：(.+)$", raw)
-        if m:
-            return "INFO", f"📊 研習進度：{m.group(1)}"
-
-        m = re.match(r"^進入單元：(.+)$", raw)
-        if m:
-            return "INFO", f"📍 進入單元：{m.group(1)}"
-
-        m = re.match(r"^章節總數:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"📚 章節總數：{m.group(1)}"
-
-        m = re.match(r"^第\s*(\d+)\s*輪（補認證時數）\|\s*已補:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"🔄 第 {m.group(1)} 輪補認證時數｜已補 {m.group(2)}"
-
-        m = re.match(r"^第\s*(\d+)\s*輪(.+)$", raw)
-        if m:
-            return "INFO", f"🔄 第 {m.group(1)} 輪{m.group(2)}"
-
-        m = re.match(r"^\[([✓○])\]\s*(.+)$", raw)
-        if m:
-            icon = "✅" if m.group(1) == "✓" else "○"
-            return "INFO", f"   {icon} {m.group(2)}"
-
-        m = re.match(r"^\[(已完成|未完成)\]\s*(.+?)\s*\|\s*修課:(.*?)\s*\|\s*測驗:(.*)$", raw)
-        if m:
-            icon = "✅" if m.group(1) == "已完成" else "⏳"
-            return "INFO", f"{icon} {m.group(2)}｜修課 {m.group(3).strip()}｜測驗 {m.group(4).strip()}"
-
-        m = re.match(r"^(已完成|未完成)\s+(.+?)\s{2,}(.+)$", raw)
-        if m:
-            icon = "✅" if m.group(1) == "已完成" else "⏳"
-            return "INFO", f"{icon} {m.group(2)}"
-
-        m = re.match(r"^→\s*測驗\s*(.*)$", raw)
-        if m:
-            return "INFO", f"📝 開始測驗 {m.group(1).strip()}".rstrip()
-
-        m = re.match(r"^測驗結果:\s*(.+)$", raw)
-        if m:
-            return "INFO", f"📝 測驗結果：{m.group(1)}"
-
-        m = re.match(r"^→\s*問卷$", raw)
-        if m:
-            return "INFO", "📋 開始填寫問卷"
-
-        m = re.match(r"^\[題庫\]\s*GAS 目前沒有此課程題庫（course_id=(.+?)），將用 AI/猜題建立題庫$", raw)
-        if m:
-            return "WARNING", f"📚 GAS 尚無此課程題庫（course_id={m.group(1)}），將建立題庫"
-
-        m = re.match(r"^\[題庫\]\s*從 GAS 載入 (\d+) 題（course_id=(.+?)）$", raw)
-        if m:
-            return "INFO", f"📚 從 GAS 載入 {m.group(1)} 題（course_id={m.group(2)}）"
-
-        m = re.match(r"^\[題庫\]\s*正在從 GAS 載入 course_id=(.+)$", raw)
-        if m:
-            return "INFO", f"📚 正在載入 GAS 題庫（course_id={m.group(1)}）"
-
-        m = re.match(r"^\[測驗\]\s*讀到 (\d+) 題$", raw)
-        if m:
-            return "INFO", f"📝 測驗讀到 {m.group(1)} 題"
-
-        m = re.match(r"^\[測驗\]\s*⚠️\s*沒讀到題目", raw)
-        if m:
-            return "WARNING", "📝 沒讀到測驗題目，已記錄頁面預覽"
-
-        if raw in ("○ 未完成", "[○] 未完成") or raw.endswith("] 未完成"):
-            return None
-
         if "⚠️" in raw:
             return "WARNING", raw
-        if raw.startswith("✅"):
-            return "INFO", raw
-
         return "INFO", raw
 
     def _append_text_safe(self, text):
-        """添加日志文本（HTML 上色，直接 append 到 QTextEdit）"""
         text = re.sub(r"\x1b\[[0-9;]*m", "", text)
-
         m = re.match(r"(\d{2}:\d{2}:\d{2}) \[(.*?)\] (.*)", text)
 
         def esc(s):
@@ -2658,25 +2494,396 @@ class ImmersivePage(QWidget):
             level_part, msg_part = formatted
             time_part = datetime.now().strftime("%H:%M:%S")
 
+        # 🧠 Log 智慧進度攔截器 (Auto Progress Interceptor)
+        try:
+            # 1. 攔截總課程門數進度：例如 "[3/10] 正在協助研習：..."
+            m_course = re.search(r"\[(\d+)/(\d+)\]\s*(.*)", msg_part)
+            if m_course:
+                c_curr, c_tot, c_name = int(m_course.group(1)), int(m_course.group(2)), m_course.group(3).strip()
+                pct = int((c_curr / c_tot) * 100) if c_tot > 0 else 0
+                self.progress_bar.setValue(pct)
+                self.stats_lbl.setText(f"📊 研習進度：{c_curr} / {c_tot} 門 ({pct}%) - 正在處理: {c_name[:12]}...")
+
+            # 2. 攔截單門課程觀看時數與趴數：例如 "研習進度：00:28:55 / 02:06:00 [----] 22.9%"
+            m_time = re.search(r"研習進度\s*[:：]\s*(\d{2}:\d{2}:\d{2}\s*/\s*\d{2}:\d{2}:\d{2}).*?([\d\.]+)%", msg_part)
+            if m_time:
+                time_str, pct_float = m_time.group(1), float(m_time.group(2))
+                pct_int = min(100, max(0, int(pct_float)))
+                # 實時無條件動態驅動右側進度條！
+                self.progress_bar.setValue(pct_int)
+                self.stats_lbl.setText(f"📊 當前單元時數：{time_str} ({pct_float:.1f}%)")
+
+            # 3. 攔截「進入單元...」
+            m_unit = re.search(r"進入單元\s*[:：]\s*(.*)", msg_part)
+            if m_unit:
+                unit_name = m_unit.group(1).strip()
+                cur_text = self.stats_lbl.text()
+                if "研習進度" in cur_text:
+                    prefix = cur_text.split(" - ")[0]
+                    self.stats_lbl.setText(f"{prefix} - 單元: {unit_name[:10]}...")
+        except Exception:
+            pass
+
         level_colors = {
-            "INFO": "#3B82F6",
-            "WARNING": "#F59E0B",
-            "WARN": "#F59E0B",
-            "ERROR": "#EF4444",
-            "CRITICAL": "#F97316",
-            "DEBUG": "#9CA3AF",
+            "INFO": "#0284C7",
+            "WARNING": "#D97706",
+            "WARN": "#D97706",
+            "ERROR": "#DC2626",
+            "CRITICAL": "#EA580C",
+            "DEBUG": "#6B7280",
         }
-        level_color = level_colors.get(level_part, "#9CA3AF")
+        level_color = level_colors.get(level_part, "#6B7280")
 
         html = (
-            f'<span style="color:#9CA3AF;">{esc(time_part)}</span> '
-            f'<span style="color:{level_color};">[{esc(level_part)}]</span> '
-            f'<span style="color:#E5E7EB;">{esc(msg_part)}</span>'
+            f'<span style="color:#6B7280;">{esc(time_part)}</span> '
+            f'<span style="color:{level_color}; font-weight:bold;">[{esc(level_part)}]</span> '
+            f'<span style="color:#111827;">{esc(msg_part)}</span>'
         )
 
         self.log_view.append(html)
         bar = self.log_view.verticalScrollBar()
         bar.setValue(bar.maximum())
+
+
+class AccountSettingsTabPanel(QWidget):
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        lbl = QLabel("⚙️ 帳號管理與系統設定")
+        lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 16px; background: transparent;")
+        layout.addWidget(lbl)
+
+        form_card = QFrame()
+        form_card.setStyleSheet("""
+            QFrame {
+                background: #FFFFFF;
+                border: 1px solid #E5E5E5;
+                border-radius: 12px;
+                padding: 20px;
+            }
+            QLabel {
+                color: #374151;
+                font-weight: bold;
+                font-size: 13px;
+                background: transparent;
+                min-height: 28px;
+                padding: 2px 0px;
+            }
+        """)
+        form_layout = QFormLayout(form_card)
+        form_layout.setSpacing(14)
+        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+        input_style = """
+            QLineEdit, QComboBox {
+                background: #F9FAFB;
+                color: #1F2937;
+                border: 1px solid #D1D5DB;
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 13px;
+                min-height: 20px;
+            }
+            QLineEdit:focus, QComboBox:focus {
+                border: 2px solid #0067C0;
+                background: #FFFFFF;
+            }
+        """
+
+        self.name_input = QLineEdit()
+        self.name_input.setPlaceholderText("請輸入顯示名稱 (例如：E大或E等)")
+        self.name_input.setStyleSheet(input_style)
+
+        self.type_combo = QComboBox()
+        self.type_combo.addItem("臺北E大 (taipei_eda)", "taipei_eda")
+        self.type_combo.addItem("e等公務員 / eCPA (ecpa)", "ecpa")
+        self.type_combo.addItem("我的E政府 (egov)", "egov")
+        self.type_combo.setStyleSheet(input_style)
+
+        self.acc_input = QLineEdit()
+        self.acc_input.setPlaceholderText("請輸入登入帳號 (身分證字號或帳號)")
+        self.acc_input.setStyleSheet(input_style)
+
+        self.pwd_input = QLineEdit()
+        self.pwd_input.setEchoMode(QLineEdit.Password)
+        self.pwd_input.setPlaceholderText("請輸入登入密碼")
+        self.pwd_input.setStyleSheet(input_style)
+
+        self.headless_cb = QCheckBox("背景執行 (Headless 隱藏瀏覽器視窗)")
+        self.headless_cb.setStyleSheet("""
+            QCheckBox {
+                color: #1F2937;
+                font-weight: bold;
+                font-size: 13px;
+                background: transparent;
+                spacing: 8px;
+            }
+            QCheckBox::indicator {
+                width: 18px;
+                height: 18px;
+                border: 2px solid #9CA3AF;
+                border-radius: 4px;
+                background-color: #FFFFFF;
+            }
+            QCheckBox::indicator:hover {
+                border-color: #0067C0;
+            }
+            QCheckBox::indicator:checked {
+                background-color: #0067C0;
+                border-color: #0067C0;
+            }
+        """)
+
+        self.ai_key_input = QLineEdit()
+        self.ai_key_input.setPlaceholderText("可選：填入 Gemini API Key 以開啟 AI 自動考試作答功能")
+        self.ai_key_input.setStyleSheet(input_style)
+
+        form_layout.addRow(QLabel("顯示名稱:"), self.name_input)
+        form_layout.addRow(QLabel("預設登入平台:"), self.type_combo)
+        form_layout.addRow(QLabel("登入帳號:"), self.acc_input)
+        form_layout.addRow(QLabel("登入密碼:"), self.pwd_input)
+        form_layout.addRow(QLabel("執行模式:"), self.headless_cb)
+        form_layout.addRow(QLabel("Gemini API Key:"), self.ai_key_input)
+
+        layout.addWidget(form_card)
+
+        btn_bar = QHBoxLayout()
+        self.save_btn = QPushButton("💾 儲存並套用設定")
+        self.save_btn.setStyleSheet("""
+            QPushButton {
+                background: #0067C0; color: #FFFFFF; border-radius: 8px;
+                padding: 10px 24px; font-weight: bold; font-size: 14px; border: none;
+            }
+            QPushButton:hover { background: #005A9E; }
+        """)
+        self.save_btn.clicked.connect(self.save_settings)
+        btn_bar.addStretch()
+        btn_bar.addWidget(self.save_btn)
+        layout.addLayout(btn_bar)
+
+        self.load_settings()
+
+    def load_settings(self):
+        try:
+            if os.path.exists("config.json"):
+                with open("config.json", "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                accounts = data.get("accounts", [])
+                if accounts:
+                    acc = accounts[0]
+                    self.name_input.setText(acc.get("name", ""))
+                    self.acc_input.setText(acc.get("account", ""))
+                    self.pwd_input.setText(acc.get("password", ""))
+                    ltype = acc.get("login_type", "taipei_eda")
+                    idx = self.type_combo.findData(ltype)
+                    if idx != -1:
+                        self.type_combo.setCurrentIndex(idx)
+                settings = data.get("settings", {})
+                self.headless_cb.setChecked(settings.get("headless", False))
+                self.ai_key_input.setText(settings.get("ai_api_key", ""))
+        except Exception:
+            pass
+
+    def save_settings(self):
+        try:
+            if os.path.exists("config.json"):
+                with open("config.json", "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            else:
+                data = {"accounts": [], "settings": {}}
+
+            acc_data = {
+                "name": self.name_input.text().strip() or "預設帳號",
+                "login_type": self.type_combo.currentData() or "taipei_eda",
+                "account": self.acc_input.text().strip(),
+                "password": self.pwd_input.text().strip()
+            }
+            
+            accounts = data.get("accounts", [])
+            if accounts:
+                accounts[0] = acc_data
+            else:
+                accounts = [acc_data]
+            data["accounts"] = accounts
+
+            settings = data.get("settings", {})
+            settings["headless"] = self.headless_cb.isChecked()
+            ai_key = self.ai_key_input.text().strip()
+            if ai_key:
+                settings["ai_api_key"] = ai_key
+                settings["ai_provider"] = "Gemini"
+                if "ai_keys" not in settings:
+                    settings["ai_keys"] = {}
+                settings["ai_keys"]["Gemini"] = ai_key
+            data["settings"] = settings
+
+            with open("config.json", "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+
+            if hasattr(self, "on_settings_saved") and callable(self.on_settings_saved):
+                self.on_settings_saved()
+
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.information(self, "成功", "✅ 帳號與系統設定已成功儲存並套用！")
+        except Exception as e:
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.critical(self, "錯誤", f"❌ 儲存失敗：{e}")
+
+
+class ImmersivePage(QWidget):
+    def __init__(self, on_stop):
+        super().__init__()
+        self.on_stop = on_stop
+        self.on_start_platform = None
+        self.on_stop_platform = None
+        self.on_toggle_browser = None
+        self.on_start_all = None
+
+        # Windows 11 經典 Mica 輕量化主背景
+        self.setStyleSheet("background-color: #F3F3F3;")
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(12)
+
+        # 頂部控制列
+        top_bar = QHBoxLayout()
+        title_lbl = QLabel("行政效能領航員 - 控制中心")
+        title_lbl.setStyleSheet("color: #1C1C1E; font-weight: bold; font-size: 17px; background: transparent;")
+
+        self.start_all_btn = QPushButton("🚀 一鍵全自動雙開")
+        self.start_all_btn.setStyleSheet("""
+            QPushButton {
+                background: #0067C0; color: #FFFFFF; border-radius: 8px;
+                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+            }
+            QPushButton:hover { background: #005A9E; }
+        """)
+        self.start_all_btn.clicked.connect(self._handle_start_all)
+
+        self.stop_all_btn = QPushButton("🛑 停止全部")
+        self.stop_all_btn.setStyleSheet("""
+            QPushButton {
+                background: #D13438; color: #FFFFFF; border-radius: 8px;
+                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+            }
+            QPushButton:hover { background: #A80000; }
+        """)
+        self.stop_all_btn.clicked.connect(self.on_stop)
+
+        self.account_mgr_btn = QPushButton("⚙️ 帳號與系統設定")
+        self.account_mgr_btn.setStyleSheet("""
+            QPushButton {
+                background: #FFFFFF; color: #1C1C1E; border-radius: 8px;
+                padding: 8px 16px; font-weight: bold; font-size: 13px; border: 1px solid #D1D1D1;
+            }
+            QPushButton:hover { background: #F3F4F6; }
+        """)
+        self.account_mgr_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
+
+        top_bar.addWidget(title_lbl)
+        top_bar.addStretch()
+        top_bar.addWidget(self.start_all_btn)
+        top_bar.addWidget(self.stop_all_btn)
+        top_bar.addWidget(self.account_mgr_btn)
+        root.addLayout(top_bar)
+
+        # 多頁籤面板 (QTabWidget - Win11 經典風格)
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #E5E5E5;
+                border-radius: 12px;
+                background: #FFFFFF;
+            }
+            QTabBar::tab {
+                background: #E5E7EB;
+                color: #4B5563;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                padding: 10px 24px;
+                font-weight: bold;
+                font-size: 14px;
+                margin-right: 4px;
+            }
+            QTabBar::tab:selected {
+                background: #0067C0;
+                color: #FFFFFF;
+            }
+            QTabBar::tab:hover:!selected {
+                background: #D1D5DB;
+                color: #1F2937;
+            }
+        """)
+
+        self.taipei_panel = PlatformTabPanel("taipei_eda", "臺北E大", self._on_tab_start, self._on_tab_stop, self._on_tab_toggle_browser)
+        self.egov_panel = PlatformTabPanel("ecpa", "e等公務員 (eCPA/eGov)", self._on_tab_start, self._on_tab_stop, self._on_tab_toggle_browser)
+        self.settings_panel = AccountSettingsTabPanel()
+        self.settings_panel.on_settings_saved = self.load_accounts_into_tabs
+
+        self.tabs.addTab(self.taipei_panel, "🏫 臺北E大")
+        self.tabs.addTab(self.egov_panel, "🏛️ e等公務員")
+        self.tabs.addTab(self.settings_panel, "⚙️ 帳號與系統設定")
+        root.addWidget(self.tabs)
+
+        self.load_accounts_into_tabs()
+
+    def load_accounts_into_tabs(self):
+        """讀取 config.json 自動動態將使用者名稱與帳號帶入各頁籤標題中"""
+        try:
+            if os.path.exists("config.json"):
+                with open("config.json", "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                accounts = data.get("accounts", [])
+                
+                # 臺北E大帳號
+                taipei_acc = next((a for a in accounts if a.get("login_type") == "taipei_eda"), None)
+                if not taipei_acc and accounts:
+                    taipei_acc = accounts[0]
+                if taipei_acc:
+                    self.taipei_panel.update_account_info(taipei_acc.get("name", ""), taipei_acc.get("account", ""))
+                else:
+                    self.taipei_panel.update_account_info("未設定帳號", "")
+
+                # e等公務員帳號
+                egov_acc = next((a for a in accounts if a.get("login_type") in ("ecpa", "egov")), None)
+                if not egov_acc and accounts:
+                    egov_acc = accounts[0]
+                if egov_acc:
+                    self.egov_panel.update_account_info(egov_acc.get("name", ""), egov_acc.get("account", ""))
+                else:
+                    self.egov_panel.update_account_info("未設定帳號", "")
+        except Exception:
+            pass
+
+        self.w = 1000
+        self.h = 650
+
+    def _handle_start_all(self):
+        if self.on_start_all:
+            self.on_start_all()
+
+    def _on_tab_start(self, key):
+        if self.on_start_platform:
+            self.on_start_platform(key)
+
+    def _on_tab_stop(self, key):
+        if self.on_stop_platform:
+            self.on_stop_platform(key)
+
+    def _on_tab_toggle_browser(self, key, visible):
+        if self.on_toggle_browser:
+            self.on_toggle_browser(key, visible)
+
+    def start(self, account_name: str):
+        self.taipei_panel.info_lbl.setText(f"臺北E大控制台（帳號：{account_name}）")
+        self.egov_panel.info_lbl.setText(f"e等公務員控制台（帳號：{account_name}）")
+
+    def _init_position(self):
+        pass
 
 
 # =========================
@@ -2686,35 +2893,155 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("行政效能領航員")
+        self.setStyleSheet("background-color: #F3F3F3;")
 
         self.stack = QStackedLayout(self)
 
         self.entry = EntryPage(self.go_immersive)
-        self.immersive = ImmersivePage(self.go_entry)
+        self.immersive = ImmersivePage(self._stop_all_platforms)
 
-        # ⭐ 重要：先檢查 w 和 h 是否有效
-        if self.immersive.w > 0 and self.immersive.h > 0:
-            self.resize(int(self.immersive.w * 0.7), int(self.immersive.h * 0.7))
-        else:
-            # 如果無法取得，使用預設值
-            self.resize(900, 600)
+        # 綁定頁籤與按鈕事件
+        self.immersive.on_start_platform = self._start_single_platform
+        self.immersive.on_stop_platform = self._stop_single_platform
+        self.immersive.on_toggle_browser = self._toggle_platform_browser
+        self.immersive.on_start_all = self._start_all_platforms
 
-        # Keep the entry window fixed like the immersive/main screen.
-        self.setFixedSize(self.size())
+        self.resize(1000, 650)
+        self.setMinimumSize(950, 620)
 
-        self.stack.addWidget(self.entry)
         self.stack.addWidget(self.immersive)
 
-        self.pilot = None
-        self.particle_effect = None
+        # 預設展示多頁籤控制中心
+        self.stack.setCurrentWidget(self.immersive)
+        self.immersive.start("預設使用者")
+
+        self.taipei_pilot = None
+        self.taipei_thread = None
+        self.egov_pilot = None
+        self.egov_thread = None
         self.cleanup_thread = None
+
         self.usage_signal = UsageSignal()
         self.usage_signal.online.connect(self.entry.set_online_count)
         self.usage = UsageHeartbeat(AdminEfficiencyPilot.VERSION, self._on_usage_stats)
         self.usage.start()
 
-        # 啟動時立即在背景檢查更新
+        # 啟動時背景檢查更新
         self._run_startup_update_check()
+
+    def _start_single_platform(self, key):
+        config_from_entry = self.entry.load_config()
+        accounts = config_from_entry.get("accounts", [])
+        
+        # 尋找匹配平臺的帳號（對應 ecpa 時兼顧 egov 與 ecpa）
+        if key in ("ecpa", "egov"):
+            acc_data = next((a for a in accounts if a.get("login_type") in ("ecpa", "egov")), None)
+        else:
+            acc_data = next((a for a in accounts if a.get("login_type") == key), None)
+
+        if not acc_data and accounts:
+            acc_data = accounts[0]
+
+        if not acc_data:
+            logger.warning(f"⚠️ 找不到平台 {key} 的對應帳號設定")
+            return
+
+        full_config = acc_data.copy()
+        full_config.update(config_from_entry.get("settings", {}))
+        # 🔒 實時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
+        full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
+
+        if key == "taipei_eda":
+            # 檢查並自動清理已死掉的舊 Thread
+            if self.taipei_thread and not self.taipei_thread.is_alive():
+                self.taipei_thread = None
+                self.taipei_pilot = None
+
+            if self.taipei_thread and self.taipei_thread.is_alive():
+                logger.warning("⚠️ 臺北E大流程已在運行中")
+                return
+            full_config["login_type"] = "taipei_eda"
+            self.taipei_pilot = AdminEfficiencyPilot(
+                config_override=full_config,
+                log_callback=self.immersive.taipei_panel.append_text,
+                progress_callback=self.immersive.taipei_panel.update_progress
+            )
+            self.taipei_pilot.running = True
+            self.taipei_thread = threading.Thread(target=self.taipei_pilot.run, daemon=True)
+            self.taipei_thread.start()
+            logger.info("🚀 臺北E大流程已啟動")
+
+        else:  # ecpa / egov
+            # 檢查並自動清理已死掉的舊 Thread
+            if self.egov_thread and not self.egov_thread.is_alive():
+                self.egov_thread = None
+                self.egov_pilot = None
+
+            if self.egov_thread and self.egov_thread.is_alive():
+                logger.warning("⚠️ e等公務員流程已在運行中")
+                return
+            # 優先保留原帳號的 login_type (例如 egov)，若為 taipei_eda 或未指定，預設給予 egov
+            if full_config.get("login_type") in ("taipei_eda", None, ""):
+                full_config["login_type"] = "egov"
+            self.egov_pilot = AdminEfficiencyPilot(
+                config_override=full_config,
+                log_callback=self.immersive.egov_panel.append_text,
+                progress_callback=self.immersive.egov_panel.update_progress
+            )
+            self.egov_pilot.running = True
+            self.egov_thread = threading.Thread(target=self.egov_pilot.run, daemon=True)
+            self.egov_thread.start()
+            logger.info(f"🚀 e等公務員流程已啟動 (登入模式: {full_config.get('login_type')})")
+
+    def _stop_single_platform(self, key):
+        if key == "taipei_eda":
+            if self.taipei_pilot:
+                self.taipei_pilot.running = False
+                try:
+                    self.taipei_pilot._cleanup()
+                except Exception:
+                    pass
+            self.taipei_pilot = None
+            self.taipei_thread = None
+            logger.info("🛑 已停止臺北E大流程")
+        else:
+            if self.egov_pilot:
+                self.egov_pilot.running = False
+                try:
+                    self.egov_pilot._cleanup()
+                except Exception:
+                    pass
+            self.egov_pilot = None
+            self.egov_thread = None
+            logger.info("🛑 已停止e等公務員流程")
+
+    def _toggle_platform_browser(self, key, visible):
+        if key == "taipei_eda":
+            from taipei_eda_course import toggle_taipei_driver_visibility
+            toggle_taipei_driver_visibility(visible)
+            if self.taipei_pilot:
+                self.taipei_pilot.toggle_chrome_visibility(visible)
+        else:
+            if self.egov_pilot:
+                self.egov_pilot.toggle_chrome_visibility(visible)
+
+    def _start_all_platforms(self):
+        logger.info("🚀 正在啟動全自動一鍵雙開...")
+        self._start_single_platform("taipei_eda")
+        self._start_single_platform("ecpa")
+
+    def _stop_all_platforms(self):
+        logger.info("🛑 正在停止所有平台的自動化流程...")
+        self._stop_single_platform("taipei_eda")
+        self._stop_single_platform("ecpa")
+
+    def go_immersive(self, account_data):
+        self.resize(1000, 650)
+        self.stack.setCurrentWidget(self.immersive)
+        self.immersive.start(account_data.get("name", "使用者"))
+        # 依目前選擇的帳號自動啟動該平臺
+        login_type = account_data.get("login_type", "ecpa")
+        self._start_single_platform(login_type)
 
     def _on_usage_stats(self, stats):
         online = stats.get("online") or stats.get("online_count")
@@ -3068,6 +3395,7 @@ class MainWindow(QWidget):
 
     def go_entry(self):
         """⭐ 修改版：立即返回入口，後臺清理"""
+        self.resize(900, 600)
         # Step 1️⃣：立即設置停止旗標
         self._request_stop_current_pilot()
 
@@ -3086,18 +3414,33 @@ class MainWindow(QWidget):
             )
             self.cleanup_thread.start()
 
+    def _request_stop_current_pilot(self):
+        if hasattr(self, "taipei_pilot") and self.taipei_pilot:
+            self.taipei_pilot.running = False
+            try:
+                self.taipei_pilot._cleanup()
+            except Exception:
+                pass
+        if hasattr(self, "egov_pilot") and self.egov_pilot:
+            self.egov_pilot.running = False
+            try:
+                self.egov_pilot._cleanup()
+            except Exception:
+                pass
+
     def _cleanup_pilot_async(self):
-        """⭐ 新增：在後臺安全清理 pilot，不阻塞 UI"""
+        """在後臺安全清理所有 pilot 資源，不阻塞 UI"""
         try:
-            # 等待 pilot 執行緒結束（最多 5 秒）
-            if hasattr(self, "thread") and self.thread and self.thread.is_alive():
-                self.thread.join(timeout=5)
+            if hasattr(self, "taipei_thread") and self.taipei_thread and self.taipei_thread.is_alive():
+                self.taipei_thread.join(timeout=3)
+            if hasattr(self, "egov_thread") and self.egov_thread and self.egov_thread.is_alive():
+                self.egov_thread.join(timeout=3)
 
-            # 強制清理 driver 和行程
-            if hasattr(self, "pilot") and self.pilot:
-                self.pilot._cleanup()
-
-        except Exception as e:
+            if hasattr(self, "taipei_pilot") and self.taipei_pilot:
+                self.taipei_pilot._cleanup()
+            if hasattr(self, "egov_pilot") and self.egov_pilot:
+                self.egov_pilot._cleanup()
+        except Exception:
             pass
 
 

@@ -14,11 +14,9 @@ if exist ".venv\Scripts\activate.bat" (
 :: 檢查是否有安裝 uv (推薦)
 where uv >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    :: 使用 uv 搭配 pythonw 啟動並立即退出 cmd 視窗
     start "" uv run pythonw ui.py
     exit
 ) else (
-    :: 使用標準 pythonw 啟動並立即退出 cmd 視窗
     start "" pythonw ui.py
     exit
 )

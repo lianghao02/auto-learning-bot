@@ -58,7 +58,7 @@ def download_best_chromedriver(folder_name="drivers"):
                 except Exception:
                     pass
             if cached_major == chrome_major:
-                logger.info(f"✅ 無驚留 driver 行程（版本相符 {chrome_major}.x）: {driver_file}")
+                logger.info(f"✅ 已確認背景 Driver 進程狀態（版本相符 {chrome_major}.x）: {driver_file}")
                 return driver_file
             else:
                 logger.info(f"Chrome 版本已更新（{cached_major} → {chrome_major}），重新下載 driver...")
