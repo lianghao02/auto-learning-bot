@@ -21855,5 +21855,113 @@
       "僅進行理論教育"
     ],
     "course": "從資安防禦邁向數位信任"
+  },
+  {
+    "question": "魚骨圖的英文為「Fishbone Diagram」，是簡報中很重要的視覺工具。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "「A Review Statement」應該於「Conclusion」段詳述。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "簡報者在考慮「To Whom」的問題時，必須考慮的重點是？",
+    "answer": "Audience",
+    "type": "單選",
+    "options": [
+      "Audience",
+      "Sponsor",
+      "Superior",
+      "Cameramen"
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "「Effective Visual Aids」包含了「PPT Making」和「Formal Dressing」。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "下列何者代表Impromptu？",
+    "answer": "即興之作",
+    "type": "單選",
+    "options": [
+      "改善",
+      "正式的演說",
+      "完美的演說",
+      "即興之作"
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "面對休閒的議題或觀眾，簡報者的穿著應該？",
+    "answer": "Casual",
+    "type": "單選",
+    "options": [
+      "Casual",
+      "Formal",
+      "Rigorous",
+      "Rediculous"
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "「A Thesis Statement」應該於「body」段詳述。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "根據講者的講述，大綱的製作應考慮Format, Guidelines及Word Number。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "Audience Status是指觀眾的職業或者職務等身份或地位。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "成功英語簡報祕笈入門"
+  },
+  {
+    "question": "簡報者在考慮「For What」的問題時，所要思考的重點是？",
+    "answer": "Purpose of speech",
+    "type": "單選",
+    "options": [
+      "Reward of speech",
+      "Purpose of speech",
+      "Bonus of speech",
+      "Dressing"
+    ],
+    "course": "成功英語簡報祕笈入門"
   }
 ]
