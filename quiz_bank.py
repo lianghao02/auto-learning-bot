@@ -673,70 +673,102 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
 
 
 def do_feedback(driver, wait, feedback_view_url):
-    """填問卷：radio 選最大值，textarea 填預設文字，送出"""
+    """填問卷：radio 選最大值，textarea 填預設文字，多重搜尋並送出"""
     print(f'\n=== 問卷 ===')
     driver.get(feedback_view_url)
     time.sleep(3)
     _dismiss_alerts(driver)
 
     # 偵測是否已完成
-    page_text = driver.find_element(By.TAG_NAME, 'body').text
-    done_keywords = ['謝謝您的回覆', '您已經完成這活動', '已完成', 'already completed']
+    try:
+        page_text = driver.find_element(By.TAG_NAME, 'body').text
+    except Exception:
+        page_text = ''
+    done_keywords = ['謝謝您的回覆', '您已經完成這活動', '已完成', 'already completed', '感謝您的填寫']
     if any(kw in page_text for kw in done_keywords) or 'completed' in driver.current_url:
         print('  ✅ 問卷已完成（跳過）')
         return True
 
     try:
         start = driver.find_element(By.XPATH,
-            '//a[contains(text(),"開始填寫") or contains(text(),"填寫回答") or contains(text(),"再次填寫")]')
+            '//a[contains(text(),"開始填寫") or contains(text(),"填寫回答") or contains(text(),"再次填寫") or contains(text(),"開始")]')
         driver.get(start.get_attribute('href'))
         time.sleep(3)
         _dismiss_alerts(driver)
-    except: pass
+    except Exception:
+        pass
 
-    radio_groups = {}
-    for r in driver.find_elements(By.CSS_SELECTOR, 'input[type=radio]'):
-        name = r.get_attribute('name') or ''
-        val  = r.get_attribute('value') or ''
-        if name and val:
-            radio_groups.setdefault(name, []).append(val)
+    def fill_and_submit_in_current_context():
+        radio_groups = {}
+        for r in driver.find_elements(By.CSS_SELECTOR, 'input[type=radio]'):
+            name = r.get_attribute('name') or ''
+            val  = r.get_attribute('value') or ''
+            if name and val:
+                radio_groups.setdefault(name, []).append(val)
 
-    for name, vals in radio_groups.items():
-        max_val = max(vals, key=lambda v: int(v) if v.lstrip('-').isdigit() and int(v) >= 0 else -999)
+        for name, vals in radio_groups.items():
+            max_val = max(vals, key=lambda v: int(v) if v.lstrip('-').isdigit() and int(v) >= 0 else -999)
+            try:
+                r = driver.find_element(By.CSS_SELECTOR,
+                    f'input[type=radio][name="{name}"][value="{max_val}"]')
+                driver.execute_script("arguments[0].click();", r)
+            except Exception as e:
+                print(f'    ✗ {name}: {e}')
+
+        for ta in driver.find_elements(By.CSS_SELECTOR, 'textarea'):
+            try:
+                ta.clear()
+                ta.send_keys('課程內容豐富實用，解說清晰易懂，獲益良多，感謝臺北ｅ大提供優質學習資源。')
+            except Exception:
+                pass
+
         try:
-            r = driver.find_element(By.CSS_SELECTOR,
-                f'input[type=radio][name="{name}"][value="{max_val}"]')
-            driver.execute_script("arguments[0].click();", r)
-        except Exception as e:
-            print(f'    ✗ {name}: {e}')
-
-    for ta in driver.find_elements(By.CSS_SELECTOR, 'textarea'):
-        try:
-            ta.clear()
-            ta.send_keys('課程內容豐富實用，解說清晰易懂，獲益良多，感謝臺北ｅ大提供優質學習資源。')
-        except: pass
-
-    try:
-        submitted = driver.execute_script("""
-            var keywords = ['送出並結束', '提交問卷', 'Submit'];
-            var btns = Array.from(document.querySelectorAll(
-                'input[type=submit], button[type=submit], button'));
-            for (var b of btns) {
-                var txt = (b.value || b.textContent || '').trim();
-                if (keywords.some(function(k){ return txt.indexOf(k) >= 0; })) {
-                    b.scrollIntoView(true); b.click(); return txt;
+            submitted = driver.execute_script("""
+                var keywords = ['送出並結束', '提交問卷', '送出問卷', '送出', '提交', '完成回答', '完成', '儲存回答', '儲存', 'Submit', 'Save', '確定'];
+                var btns = Array.from(document.querySelectorAll(
+                    'input[type=submit], button[type=submit], button, input.btn, a.btn, input[type=button]'));
+                for (var b of btns) {
+                    var txt = (b.value || b.textContent || b.innerText || '').trim();
+                    if (keywords.some(function(k){ return txt.indexOf(k) >= 0; })) {
+                        b.scrollIntoView(true); b.click(); return txt;
+                    }
                 }
-            }
-            return null;
-        """)
-        if submitted:
-            time.sleep(3)
-            _dismiss_alerts(driver)
-            print(f'  問卷送出: {submitted!r} | {driver.title}')
-            return True
-        else:
-            print('  ✗ 找不到送出按鈕')
-            return False
-    except Exception as e:
-        print(f'  ✗ 問卷送出失敗: {e}')
-        return False
+                var submits = document.querySelectorAll('input[type=submit], button[type=submit], input[value*="送出"], input[value*="提交"]');
+                if (submits.length > 0) {
+                    var sb = submits[0];
+                    var txt = (sb.value || sb.textContent || 'Submit').trim();
+                    sb.scrollIntoView(true); sb.click(); return txt;
+                }
+                return null;
+            """)
+            return submitted
+        except Exception:
+            return None
+
+    # 最外層 context 嘗試
+    submitted = fill_and_submit_in_current_context()
+    if submitted:
+        time.sleep(3)
+        _dismiss_alerts(driver)
+        print(f'  問卷送出: {submitted!r} | {driver.title}')
+        return True
+
+    # 若最外層沒找到按鈕，嘗試進 iframe 尋找
+    iframes = driver.find_elements(By.TAG_NAME, 'iframe')
+    for idx, frame in enumerate(iframes):
+        try:
+            driver.switch_to.frame(frame)
+            sub_submitted = fill_and_submit_in_current_context()
+            if sub_submitted:
+                time.sleep(3)
+                driver.switch_to.default_content()
+                _dismiss_alerts(driver)
+                print(f'  問卷送出 (iframe {idx}): {sub_submitted!r}')
+                return True
+        except Exception:
+            pass
+        finally:
+            driver.switch_to.default_content()
+
+    print('  ✗ 找不到送出按鈕')
+    return False
