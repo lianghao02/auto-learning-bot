@@ -551,6 +551,7 @@ def get_scorm_player_url(driver, wait, course_url):
         return 'mod/scorm/player.php' in url or bool(get_chapters(driver))
 
     def find_scorm_link():
+        # 1. 在當前頁面尋找 direct scorm 連結
         links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
         for link in links:
             href = link.get_attribute('href') or ''
@@ -560,6 +561,48 @@ def get_scorm_player_url(driver, wait, course_url):
         if links:
             link = links[0]
             return link.get_attribute('href') or '', (link.text or '').strip()
+
+        # 2. 若簡介頁無 mod/scorm 連結，自動搜尋「上課」、「進入教室」、「開始學習」等跳轉按鈕
+        enter_selectors = [
+            'a[href*="course/view.php"]',
+            'a[href*="sso"]',
+            'a[href*="redirect"]',
+            'a.btn', 'button', 'input[type=button]', 'input[type=submit]', 'a'
+        ]
+        for sel in enter_selectors:
+            try:
+                elements = driver.find_elements(By.CSS_SELECTOR, sel)
+            except Exception:
+                elements = []
+            for el in elements:
+                try:
+                    href = el.get_attribute('href') or ''
+                    val = el.get_attribute('value') or ''
+                    txt = ((el.text or '') + ' ' + val + ' ' + href).strip()
+                    if any(k in txt for k in ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course']):
+                        if href and 'javascript' not in href.lower():
+                            print(f'  ▶️ 簡介頁自動跳轉至課程教室: {href[:50]}')
+                            driver.get(href)
+                            time.sleep(3)
+                        else:
+                            print(f'  ▶️ 點擊簡介頁進教室按鈕: {txt[:30]}')
+                            driver.execute_script("arguments[0].click();", el)
+                            time.sleep(3)
+                        
+                        dismiss_alerts(driver)
+                        sub_links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
+                        for sl in sub_links:
+                            shref = sl.get_attribute('href') or ''
+                            stext = (sl.text or sl.get_attribute('title') or '').strip()
+                            if 'mod/scorm/view.php' in shref:
+                                return shref, stext or shref
+                        if sub_links:
+                            sl = sub_links[0]
+                            return sl.get_attribute('href') or '', (sl.text or '').strip()
+                        break
+                except Exception:
+                    pass
+
         return '', ''
 
     def enter_from_scorm_view():
