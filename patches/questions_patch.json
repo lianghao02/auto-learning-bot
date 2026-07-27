@@ -23027,5 +23027,41 @@
       "12月18日"
     ],
     "course": "多元族群與文化發展"
+  },
+  {
+    "question": "多元文化社會的特徵，「不」包括下列何者？",
+    "answer": "社會價值觀單一化",
+    "type": "單選",
+    "options": [
+      "人口背景多樣化",
+      "社會價值觀單一化",
+      "頻繁與親密的差異接觸",
+      "具備多元文化能力的生活方式"
+    ],
+    "course": "多元族群與文化發展"
+  },
+  {
+    "question": "根據 Ogbu (1991) 的社會認同模式，對於本族傳統文化和主流文化採取接受的態度，並有能力加以整合調適的移民，係指下列何種類型？",
+    "answer": "調適者(Acculturative)",
+    "type": "單選",
+    "options": [
+      "分離者(Dissociative)",
+      "調適者(Acculturative)",
+      "邊緣人(Marginal)",
+      "同化者(Assimilative)"
+    ],
+    "course": "多元族群與文化發展"
+  },
+  {
+    "question": "根據 Ogbu (1991) 的社會認同模式，拋棄母文化並完全接受多數族群文化規範的移民，係指下列何種類型？",
+    "answer": "同化者(Assimilative)",
+    "type": "單選",
+    "options": [
+      "分離者(Dissociative)",
+      "調適者(Acculturative)",
+      "邊緣人(Marginal)",
+      "同化者(Assimilative)"
+    ],
+    "course": "多元族群與文化發展"
   }
 ]
