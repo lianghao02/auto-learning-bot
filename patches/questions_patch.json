@@ -27131,5 +27131,105 @@
       "The bottom layer serves as the base, the upper layer is for burning paper, and the middle layer is primarily for smoke discharge."
     ],
     "course": "走進龍頸溪：探索客家百年人文故事"
+  },
+  {
+    "question": "家庭的食農素養，可從家庭飲食做起，在家庭飲食的採買階段，要盡量避免採買「格外品」。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "循環農業是指農業剩餘資源材料轉送給動物食用。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "永續生產是指以購買農產品或參與經營等方式，支持有機、友善、溯源、生態農業等確保永續發展的糧食生產系統，提高土地品質與數量，可促使永續農業發展。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "食農教育可以促進城鄉共好。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "有機農業允許使用基因改造作物。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "食品衛生與食品安全通常不包含在家庭食農教育內涵中。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "生鮮食品的「三章一Q」政策，是指有機、產銷履歷、CAS及溯源追溯碼。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "認識食品的加工與包裝，進而選擇低碳排食品，是家庭食農素養的重要一環。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "農業是全球溫室氣體排放的來源之一。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
+  },
+  {
+    "question": "選擇紅肉比白肉更能降低飲食的碳排放。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "家庭與食農教育"
   }
 ]
