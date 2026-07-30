@@ -120,15 +120,17 @@ def _is_newer_version(latest, current):
 
 
 class AdminEfficiencyPilot:
-    VERSION = "V2.1.8"
+    VERSION = "V2.2.0"
     CHANGELOG = (
-        "‧ 僅處理開放式課程，自動略過微學習/SPOC/專班等非開放式課程\n"
-        "‧ 課程清單低筆數保護：同步 session 後重抓，降低漏課機率\n"
-        "• Gemini 模型更新：優先使用 gemini-3.1-flash-lite（免費額度較高）\n"
-        "• 缺題回報改為背景執行，不再影響考試流程\n"
-        "• 缺題通知顯示使用者姓名，方便辨識\n"
-        "• 更新提示恢復優先從 GitHub Release 下載\n"
-        "• 新增匿名使用統計與在線人數顯示"
+        "V2.2.0 旗艦里程碑：全系統莫蘭迪/Win11美學、無痕托盤與Auto-Healing終極雙開\n"
+        "• 新增全系統 Windows 11 經典 Fluent / 莫蘭迪高質感介面與 QProgressBar 視覺進度條\n"
+        "• 新增 Windows 右下角系統列 (System Tray Icon) 常駐、點擊 X 自動無痕隱藏與托盤右鍵選單\n"
+        "• 新增 Auto-Healing 瀏覽器連線靜默修復機制（最多 3 次上限，零積累、零崩潰）\n"
+        "• 新增多頁籤 Instance-Scoped 獨立日誌頻道隔離，臺北E大與e等公務員訊息 100% 精確分流\n"
+        "• 新增 Gemini AI 429 配額熔斷保護網 (Quota Circuit Breaker) 與 A+B 作答日誌降噪\n"
+        "• 升級臺北E大驗證碼多重影像辨識策略 (ddddocr 原圖+灰階+銳化) 與登入自動刷新重試\n"
+        "• 升級臺北E大 SCORM 簡介頁自動跳轉與問卷多重按鈕定位、iframe 穿透提交\n"
+        "• 支援動態使用者名稱與登入帳號即時連動同步顯示"
     )
 
     def __init__(self, config_path=None, log_callback=None, config_override=None, progress_callback=None):

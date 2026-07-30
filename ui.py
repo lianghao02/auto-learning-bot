@@ -27,12 +27,15 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QProgressBar,
     QPushButton,
     QScrollArea,
     QSizePolicy,
     QStackedLayout,
+    QStyle,
+    QSystemTrayIcon,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -2928,6 +2931,89 @@ class MainWindow(QWidget):
 
         # 啟動時背景檢查更新
         self._run_startup_update_check()
+
+        # 📌 初始化 Windows 右下角系統列 (System Tray) 常駐圖示
+        self._setup_tray_icon()
+
+    def _setup_tray_icon(self):
+        """初始化 Windows 右下角系統列 (System Tray) 圖示與右鍵選單"""
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            return
+
+        icon = self.windowIcon()
+        if icon.isNull():
+            icon = self.style().standardIcon(QStyle.SP_ComputerIcon)
+
+        self.tray_icon = QSystemTrayIcon(icon, self)
+        self.tray_icon.setToolTip("行政效能領航員 - 控制中心")
+
+        # 托盤右鍵選單
+        tray_menu = QMenu(self)
+        
+        show_action = tray_menu.addAction("📖 顯示控制中心")
+        show_action.triggered.connect(self.show_normal_window)
+
+        start_all_action = tray_menu.addAction("🚀 一鍵全自動雙開")
+        start_all_action.triggered.connect(self._start_all_platforms)
+
+        stop_all_action = tray_menu.addAction("🛑 停止全部")
+        stop_all_action.triggered.connect(self._stop_all_platforms)
+
+        tray_menu.addSeparator()
+
+        quit_action = tray_menu.addAction("🚪 完全退出程式")
+        quit_action.triggered.connect(self.quit_app)
+
+        self.tray_icon.setContextMenu(tray_menu)
+        # 單擊或雙擊托盤圖示切換顯示/隱藏
+        self.tray_icon.activated.connect(self._on_tray_icon_activated)
+        self.tray_icon.show()
+
+        self._tray_notice_shown = False
+
+    def _on_tray_icon_activated(self, reason):
+        if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
+            if self.isVisible() and not self.isMinimized():
+                self.hide()
+            else:
+                self.show_normal_window()
+
+    def show_normal_window(self):
+        self.show()
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
+        self.raise_()
+        self.activateWindow()
+
+    def closeEvent(self, event):
+        """按下右上角 X 時，自動無痕縮小至系統列而非直接關閉"""
+        if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
+            self.hide()
+            event.ignore()
+            if not getattr(self, "_tray_notice_shown", False):
+                self.tray_icon.showMessage(
+                    "行政效能領航員",
+                    "程式已縮小至右下角系統列，背景看課繼續運行。\n點擊或雙擊托盤圖示可重新顯示控制中心！",
+                    QSystemTrayIcon.Information,
+                    3000
+                )
+                self._tray_notice_shown = True
+        else:
+            self.quit_app()
+
+    def changeEvent(self, event):
+        """最小化視窗時，自動隱藏視窗縮至右下角系統列"""
+        if event.type() == event.Type.WindowStateChange:
+            if self.isMinimized():
+                if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
+                    QTimer.singleShot(0, self.hide)
+        super().changeEvent(event)
+
+    def quit_app(self):
+        """完全退出程式並釋放所有資源"""
+        self._stop_all_platforms()
+        if hasattr(self, "tray_icon"):
+            self.tray_icon.hide()
+        QApplication.quit()
 
     def _start_single_platform(self, key):
         config_from_entry = self.entry.load_config()
