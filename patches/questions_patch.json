@@ -9544,5 +9544,17 @@
       "將報案手機開啟擴音或視訊，配合119 派遣員的指導進行CPR"
     ],
     "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "Mr. Huang uses a lifebuoy-looking gadget, Aquadlink, a small device that monitors fish farm's water quality.",
+    "answer": "machine",
+    "type": "單選",
+    "options": [
+      "machine",
+      "detective",
+      "operation",
+      "advice"
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
   }
 ]
