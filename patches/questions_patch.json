@@ -15521,5 +15521,77 @@
       ""
     ],
     "course": "自我舒壓與激勵"
+  },
+  {
+    "question": "Which port aligns well with the following description?",
+    "answer": "Keelung Harbor",
+    "type": "單選",
+    "options": [
+      "Shimen Fishing Harbor",
+      "Yehliu Fishing Harbor",
+      "Keelung Harbor",
+      "Su'ao Harbor"
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
+  },
+  {
+    "question": "Which of the following descriptions about “Fish Road Historical Trail” is correct?",
+    "answer": "This road once served as a convenient shortcut between Jinshan and Shilin.",
+    "type": "單選",
+    "options": [
+      "The road was just a path without any historical locations to see as you passed by.",
+      "This road once served as a convenient shortcut between Jinshan and Shilin.",
+      "The road was used by residents to transport goods, including gold and opioids.",
+      "The road serves as an important transportation route for goods nowadays."
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
+  },
+  {
+    "question": "Please complete the dialogue below with the appropriate words in the blanks (with the correct order).",
+    "answer": "scenic / breathtaking / vitality / adventure",
+    "type": "單選",
+    "options": [
+      "adventure / scenic / vitality / breathtaking",
+      "scenic/ vitality / breathtaking / adventure",
+      "adventure / scenic / breathtaking / vitality",
+      "scenic / breathtaking/ vitality / adventure"
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
+  },
+  {
+    "question": "Which of the following reasons for ancient fishermen and farmers using the Fish Road Historical Trail in the evening, rather than in the morning, is accurate?",
+    "answer": "They needed to ensure their products stayed fresh enough during shipping.",
+    "type": "單選",
+    "options": [
+      "There were no morning buses, so they traveled at night to dodge the crowds.",
+      "They need to check the products in the morning, so they can only travel at night.",
+      "They needed to ensure their products stayed fresh enough during shipping.",
+      "There were no fishermen who could wake up in the morning to store food."
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
+  },
+  {
+    "question": "After watching the video, Amy comes up with a sentence using words related to mining and minerals. However, she spilled coffee on the exam paper. Can you help her fill in the blanks?",
+    "answer": "Ore deposit / mineral yield",
+    "type": "單選",
+    "options": [
+      "Smelting / natural gas",
+      "Ore deposit / mineral yield",
+      "Mineral yield / ore deposit",
+      "Natural gas / smelting"
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
+  },
+  {
+    "question": "Please read the following dialogue. Which harbor are Amy and Tom talking about?",
+    "answer": "Su'ao Harbor",
+    "type": "單選",
+    "options": [
+      "Su'ao Harbor",
+      "Shimen Fishing Harbor",
+      "Yehliu Fishing Harbor",
+      "Keelung Harbor"
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
   }
 ]
