@@ -15191,5 +15191,53 @@
       "診斷過度"
     ],
     "course": "自殺高風險個案篩檢及困難個案處遇追蹤"
+  },
+  {
+    "question": "《兒童權利公約》哪一項原則在強調在做出任何影響兒童的決策時，應優先考慮兒童的福利和利益？",
+    "answer": "兒童最佳利益原則(Best interests of the child)",
+    "type": "單選",
+    "options": [
+      "1.不歧視原則(Non-discrimination)",
+      "2.兒童最佳利益原則(Best interests of the child)",
+      "3.生存與發展權(Right to life, survival, and development)",
+      "4.尊重/傾聽兒童表意權(Respect for the views of the child)"
+    ],
+    "course": "兒童權利公約的發展脈絡與一般性原則"
+  },
+  {
+    "question": "史上第一份明列兒童應受保障之項目的國際文件（如：食物、住所、救濟、治療）為何者？",
+    "answer": "日內瓦兒童權利宣言",
+    "type": "單選",
+    "options": [
+      "1.紐約兒童權利宣言",
+      "2.倫敦兒童權利宣言",
+      "3.華盛頓兒童權利宣言",
+      "4.日內瓦兒童權利宣言"
+    ],
+    "course": "兒童權利公約的發展脈絡與一般性原則"
+  },
+  {
+    "question": "我國於哪一年公布施行《兒童權利公約施行法》 ？",
+    "answer": "2014年",
+    "type": "單選",
+    "options": [
+      "1.2008年",
+      "2.2014年",
+      "3.2017年",
+      "4.2022年"
+    ],
+    "course": "兒童權利公約的發展脈絡與一般性原則"
+  },
+  {
+    "question": "《兒童權利公約》哪一項原則在確保每個兒童都有權在一個能夠促進其身心健康、全面發展的環境中成長？",
+    "answer": "生存與發展權(Right to life, survival, and development)",
+    "type": "單選",
+    "options": [
+      "1.不歧視原則(Non-discrimination)",
+      "2.兒童最佳利益原則(Best interests of the child)",
+      "3.生存與發展權(Right to life, survival, and development)",
+      "4.尊重/傾聽兒童表意權(Respect for the views of the child)"
+    ],
+    "course": "兒童權利公約的發展脈絡與一般性原則"
   }
 ]
