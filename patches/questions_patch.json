@@ -14921,5 +14921,105 @@
       ""
     ],
     "course": "兒童權利公約及福利政策法規"
+  },
+  {
+    "question": "病人接受palliative surgery首要考量為緩解症狀。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "緩解性手術(palliative surgery)其目標是改善生活品質或緩解末期疾病引起症狀的外科術式。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "緩解性手術(palliative surgery)成功的定義是偏重於「存活率或死亡率」。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "症狀控制或溝通是屬於第一線安寧緩和照護(Primary palliative care)介入的重點。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "衡量benefit所指的是併發症、死亡率、治療時間等因素。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "本課程期待強化外科醫師的安寧訓練、安排安寧早期介入的時間點，讓外科醫師將「安寧緩和療護」當成治療選項之一，並能與病家進行醫病共享決策(shared decision making)，達成以人為本的照護(patient-centeredcare)。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "palliative care的名詞是由「外科醫師」所創造出來。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "手術前應了解現況、病人期望的結果、照護目標、計畫和不可接受的狀態。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "預期存活短，其Cost更重要；預期存活長，其benefit更為重要。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
+  },
+  {
+    "question": "&nbsp;Do Not Attempt Resuscitation縮寫為DNAR。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "安寧在外科的推動經驗"
   }
 ]
