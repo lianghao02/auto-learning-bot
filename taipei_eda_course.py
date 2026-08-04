@@ -30,7 +30,8 @@ if sys.stdout is not None:
         _console = sys.stdout
 
 _logfile = open("taipei_eda_course.log", "a", encoding="utf-8")
-sys.stdout = _Tee(_console, _logfile)
+# ⚠️ 保留原始 sys.stdout，讓 run_taipei_eda 的 _UILog 作為唯一 UI 路由
+# 不在模組載入時替換 sys.stdout，避免 _Tee 疊套造成訊息重複
 
 import requests, time, urllib3, cv2, numpy as np, ddddocr, json, random, re, os
 from selenium import webdriver
@@ -43,6 +44,55 @@ from selenium.common.exceptions import NoAlertPresentException, UnexpectedAlertP
 from quiz_bank import do_quiz_with_bank, do_feedback
 
 from utils.helpers import set_driver_window_visibility
+
+# ── DOM 語意彈性相容防護網 (Resilient Selector Fallback) ──────────────────────
+def find_element_resilient(driver, css_selector=None, text_keywords=None, tag_names=None, timeout=5):
+    """
+    多層彈性元素定位工具：
+      1. 第一優先：精確 CSS Selector 搜尋。
+      2. 二級語意 Fallback：當 CSS 定位失效（平台改版）時，自動以 HTML5 語意
+         搜尋含有 text_keywords 的 button/a/input 元素。
+
+    Args:
+        css_selector:   CSS 選擇器字串（優先）
+        text_keywords:  備用文字關鍵字清單（如 ['上課', '進入教室']）
+        tag_names:      要搜尋的 HTML 標籤（預設 ['button', 'a', 'input']）
+        timeout:        最長等待秒數（針對 CSS selector）
+
+    Returns:
+        WebElement 或 None
+    """
+    tag_names = tag_names or ['button', 'a', 'input']
+
+    # 優先：CSS Selector
+    if css_selector:
+        try:
+            from selenium.webdriver.support.ui import WebDriverWait
+            from selenium.webdriver.support import expected_conditions as EC
+            el = WebDriverWait(driver, timeout).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, css_selector))
+            )
+            if el and el.is_displayed():
+                return el
+        except Exception:
+            pass
+
+    # 二級：語意文字關鍵字 Fallback
+    if text_keywords:
+        for tag in tag_names:
+            try:
+                elements = driver.find_elements(By.TAG_NAME, tag)
+                for el in elements:
+                    try:
+                        text = (el.text or el.get_attribute('value') or el.get_attribute('title') or '').strip()
+                        if any(kw in text for kw in text_keywords):
+                            if el.is_displayed():
+                                return el
+                    except Exception:
+                        continue
+            except Exception:
+                continue
+    return None
 
 _ACTIVE_DRIVER = None
 
@@ -562,33 +612,24 @@ def get_scorm_player_url(driver, wait, course_url):
             link = links[0]
             return link.get_attribute('href') or '', (link.text or '').strip()
 
-        # 2. 若簡介頁無 mod/scorm 連結，自動搜尋「上課」、「進入教室」、「開始學習」等跳轉按鈕
-        enter_selectors = [
-            'a[href*="course/view.php"]',
-            'a[href*="sso"]',
-            'a[href*="redirect"]',
-            'a.btn', 'button', 'input[type=button]', 'input[type=submit]', 'a'
-        ]
-        for sel in enter_selectors:
-            try:
-                elements = driver.find_elements(By.CSS_SELECTOR, sel)
-            except Exception:
-                elements = []
-            for el in elements:
+        # 2. 若簡介頁無 mod/scorm 連結，以 find_element_resilient 進行語意彈性搜尋
+        #    支援 CSS 優先 + HTML5 語意文字 Fallback，防禦平台改版後按鈕 class 異動
+        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課']
+        # 優先嘗試已知路徑 CSS Selectors
+        for css in ['a[href*="course/view.php"]', 'a[href*="sso"]', 'a[href*="redirect"]', 'a.btn']:
+            el = find_element_resilient(driver, css_selector=css, timeout=1)
+            if el:
                 try:
-                    href = el.get_attribute('href') or ''
-                    val = el.get_attribute('value') or ''
-                    txt = ((el.text or '') + ' ' + val + ' ' + href).strip()
-                    if any(k in txt for k in ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course']):
+                    txt = ((el.text or '') + ' ' + (el.get_attribute('value') or '')).strip()
+                    if any(k in txt for k in ENTER_KEYWORDS):
+                        href = el.get_attribute('href') or ''
                         if href and 'javascript' not in href.lower():
-                            print(f'  ▶️ 簡介頁自動跳轉至課程教室: {href[:50]}')
+                            print(f'  ▶️ 簡介頁自動跳轉至課程教室 (CSS): {href[:50]}')
                             driver.get(href)
-                            time.sleep(3)
                         else:
-                            print(f'  ▶️ 點擊簡介頁進教室按鈕: {txt[:30]}')
+                            print(f'  ▶️ 點擊簡介頁進教室按鈕 (CSS): {txt[:30]}')
                             driver.execute_script("arguments[0].click();", el)
-                            time.sleep(3)
-                        
+                        time.sleep(3)
                         dismiss_alerts(driver)
                         sub_links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
                         for sl in sub_links:
@@ -599,9 +640,34 @@ def get_scorm_player_url(driver, wait, course_url):
                         if sub_links:
                             sl = sub_links[0]
                             return sl.get_attribute('href') or '', (sl.text or '').strip()
-                        break
                 except Exception:
                     pass
+
+        # 最終保底：語意文字 Fallback（即使 CSS class 已改版，憑按鈕文字找到元素）
+        el = find_element_resilient(driver, text_keywords=ENTER_KEYWORDS, timeout=2)
+        if el:
+            try:
+                href = el.get_attribute('href') or ''
+                txt = el.text or ''
+                if href and 'javascript' not in href.lower():
+                    print(f'  ▶️ 簡介頁語意 Fallback 跳轉: {href[:50]}')
+                    driver.get(href)
+                else:
+                    print(f'  ▶️ 簡介頁語意 Fallback 點擊: {txt[:30]}')
+                    driver.execute_script("arguments[0].click();", el)
+                time.sleep(3)
+                dismiss_alerts(driver)
+                sub_links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
+                for sl in sub_links:
+                    shref = sl.get_attribute('href') or ''
+                    stext = (sl.text or sl.get_attribute('title') or '').strip()
+                    if 'mod/scorm/view.php' in shref:
+                        return shref, stext or shref
+                if sub_links:
+                    sl = sub_links[0]
+                    return sl.get_attribute('href') or '', (sl.text or '').strip()
+            except Exception:
+                pass
 
         return '', ''
 
@@ -948,6 +1014,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
     should_continue = should_continue or (lambda: True)
     config = load_config()
 
+    # ── 日誌路由：只建立一層 _UILog，避免 _Tee 疊套造成重複訊息 ──────────────
     original_stdout = sys.stdout
     if log_callback:
         class _UILog(io.TextIOBase):
@@ -956,12 +1023,19 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 if text.strip():
                     for line in text.rstrip().splitlines():
                         log_callback(line)
+                        # 同步寫入 log 檔（單一管道）
+                        try:
+                            _logfile.write(line + "\n")
+                            _logfile.flush()
+                        except Exception:
+                            pass
                 return len(text)
 
             def flush(self):
                 pass
 
-        sys.stdout = _Tee(original_stdout, _UILog())
+        # 只重導向一次 stdout，不再包進 _Tee（避免疊套）
+        sys.stdout = _UILog()
 
     driver = None
     lock_path = _acquire_taipei_run_lock()
@@ -983,8 +1057,20 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         opts.add_argument('--disable-gpu')
         opts.add_argument('--mute-audio')
         opts.add_argument('--no-sandbox')
+        opts.add_argument('--disable-dev-shm-usage')
+        opts.add_argument('--disable-extensions')
 
-        driver = webdriver.Chrome(options=opts)
+        # ── Chrome Driver 路徑：優先使用 app.py 下載的 chromedriver ─────────
+        try:
+            from app import download_best_chromedriver
+            from selenium.webdriver.chrome.service import Service as ChromeService
+            _driver_path = os.path.abspath(download_best_chromedriver())
+            print(f'  🔧 使用 chromedriver: {_driver_path}')
+            driver = webdriver.Chrome(service=ChromeService(_driver_path), options=opts)
+        except Exception as _e:
+            print(f'  ⚠️ 無法取得指定 chromedriver，嘗試系統 PATH: {_e}')
+            driver = webdriver.Chrome(options=opts)
+
         global _ACTIVE_DRIVER
         _ACTIVE_DRIVER = driver
         driver.set_window_size(1400, 900)

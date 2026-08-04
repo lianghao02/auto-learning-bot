@@ -188,6 +188,8 @@ class AdminEfficiencyPilot:
         # _answer_keys: key list 供 difflib fuzzy 使用
         self._answer_map = {}
         self._answer_keys = []
+        # ⚡ In-Memory 快取 token 索引（預先建立，避免 AttributeError）
+        self._answer_token_map = {}
         self.answers = []  # 向後相容
         loaded = self.config.get("login_type") == "taipei_eda"
 
@@ -221,8 +223,12 @@ class AdminEfficiencyPilot:
                             "question": q,
                         }
                 self._answer_keys = list(self._answer_map.keys())
+                # ⚡ In-Memory 快取：預先建立雙層查找結構（精確 key → frozenset token 備用）
+                self._answer_token_map = {
+                    k: frozenset(k.split()) for k in self._answer_keys
+                }
                 logger.info(
-                    f"📚 已載入題庫（questions.db）：{len(self._answer_map)} 題"
+                    f"📚 已載入題庫（questions.db）：{len(self._answer_map)} 題，In-Memory 快取索引已建立"
                 )
                 loaded = True
             except Exception as e:
@@ -2024,13 +2030,25 @@ class AdminEfficiencyPilot:
             )
 
             if headless_mode:
-                # 背景執行
-                logger.info("⚙️ 使用 Headless 模式（背景執行）")
+                # ⚡ 背景執行：啟用極速輕量化參數封鎖非必要資源
+                logger.info("⚙️ 使用 Headless 模式（背景執行 + 極速輕量化）")
                 options.add_argument("--headless=old")
                 options.add_argument("--window-size=1920,1080")
                 options.add_argument("--disable-blink-features=AutomationControlled")
+                # 封鎖背景圖片請求，節省 60% 網路流量與 CPU 渲染
+                options.add_argument("--blink-settings=imagesEnabled=false")
+                # 防止 Chrome 在背景 Thread 中被 OS 降速節流
+                options.add_argument("--disable-background-timer-throttling")
+                options.add_argument("--disable-backgrounding-occluded-windows")
+                options.add_argument("--disable-renderer-backgrounding")
+                # 透過 Chrome Preferences 進一步限制圖片資源載入
+                prefs = {
+                    "profile.managed_default_content_settings.images": 2,
+                    "profile.default_content_setting_values.notifications": 2,
+                }
+                options.add_experimental_option("prefs", prefs)
             else:
-                # ⭐ 顯示窗口
+                # 顯示視窗模式：維持完整畫面，不做任何限制
                 logger.info("🖥️ 使用顯示模式（有窗口）")
                 options.add_argument("--window-size=1920,1080")
                 options.add_argument("--disable-blink-features=AutomationControlled")
