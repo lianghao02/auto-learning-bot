@@ -15593,5 +15593,89 @@
       "Keelung Harbor"
     ],
     "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
+  },
+  {
+    "question": "After watching the video, Tina and Paul are discussing what they just learned. They need to organize the information for their project. However, both of them cannot recall this part. Please help them fill in the blanks.",
+    "answer": "1. cooperation is a more informal term for working together, while collaboration implies a formal agreement to achieve a specific goal",
+    "type": "單選",
+    "options": [
+      "cooperation is a more informal term for working together, while collaboration implies a formal agreement to achieve a specific goal",
+      "cooperation typically involves a competitive element, while collaboration emphasizes mutual support",
+      "cooperation suggests working closely together, while collaboration implies working independently",
+      "cooperation leans towards working together for personal gains, while collaboration involves working together toward a shared objective"
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
+  },
+  {
+    "question": "According to the audio file, all fishing boats need to be checked in the harbor by the coast guard.",
+    "answer": "3. They make sure the boat gets authorized.",
+    "type": "單選",
+    "options": [
+      "They check whether the boat contains anything illegal.",
+      "They keep track of whoever is on the boat.",
+      "They make sure the boat gets authorized.",
+      "They check the equipment on the boat."
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
+  },
+  {
+    "question": "The old fishermen are visiting Leo’s boat. Which of the following sentences is suitable for this situation?",
+    "answer": "1. The boat is equipped with various devices.",
+    "type": "單選",
+    "options": [
+      "The boat is equipped with various devices.",
+      "The boat does not get authorized to sail.",
+      "The old fishermen are lecturing Leo.",
+      "The old fishermen are indifferent to Leo’s boat."
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
+  },
+  {
+    "question": "What are the colors employed for the signals marking the entrance to the harbor?",
+    "answer": "3. green and red",
+    "type": "單選",
+    "options": [
+      "brown and orange",
+      "black and white",
+      "green and red",
+      "blue and yellow"
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
+  },
+  {
+    "question": "After finishing the lecture, Tina and Paul discussed what they just learned. They need to organize the information for their project. However, both of them cannot recall this part. Please help them fill in the blanks.",
+    "answer": "1. A group of passionate art enthusiasts discovered warehouses, transforming the area into the Pier-2 Art Center / it is the result of teamwork and joint efforts for a common goal",
+    "type": "單選",
+    "options": [
+      "A group of passionate art enthusiasts discovered warehouses, transforming the area into the Pier-2 Art Center / it is the result of teamwork and joint efforts for a common goal",
+      "The Pier-2 Art Center was established by the local government without any community involvement / it holds many competitions for artists",
+      "The Pier-2 Art Center primarily hosts theatrical performances and plays / it was also a spontaneous art project by individual artists",
+      "The Pier-2 Art Center aims to promote traditional crafts and practices / it was built as a cultural museum"
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
+  },
+  {
+    "question": "Based on the insights from several elderly fishermen who shared their experiences, what was the original geographical feature of Kaohsiung Harbor?",
+    "answer": "2. lagoon",
+    "type": "單選",
+    "options": [
+      "beach",
+      "lagoon",
+      "wetland",
+      "bay"
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
+  },
+  {
+    "question": "There is an offshore facility shown in the picture below. What type of offshore facility is the oil tanker refueling?",
+    "answer": "1. Offshore refueling station",
+    "type": "單選",
+    "options": [
+      "Offshore refueling station",
+      "Oil rig",
+      "Wind power generator",
+      "Power-generating station"
+    ],
+    "course": "一路南行 前往旗津 - 探尋旗津漁港的過去與現在"
   }
 ]
