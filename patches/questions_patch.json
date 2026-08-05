@@ -16092,5 +16092,67 @@
       "Sumifs"
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "樞紐分析表PivotTable，快速計算和彙總大量數據，但不能用來進行數據排序。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "儲存格內手動換行的快快速鍵是Ctrl+Enter。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "數值格式不能由側邊欄【屬性/數字格式】快速進行設定。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "假設A1儲存格內容70，公式=IF(A1>80,”甲”,IF(A1>60,”乙”,”丙”))，答案為何？",
+    "answer": "乙",
+    "type": "單選",
+    "options": [
+      "甲",
+      "乙",
+      "丙"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "資料記錄不是Calc正確分欄位格式，可以用什麼功能來決解？",
+    "answer": "資料剖析",
+    "type": "單選",
+    "options": [
+      "樞紐分析",
+      "格式設定",
+      "資料剖析"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "在Calc中，排序”中文資料”，是依筆劃Big5碼，對數據進行升序或降序排列。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
