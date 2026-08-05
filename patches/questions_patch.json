@@ -16303,5 +16303,16 @@
       ""
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "希望將數字123.456進行四捨五入到小數點後兩位，哪個指令正確？",
+    "answer": "ROUND(123.456,2)",
+    "type": "單選",
+    "options": [
+      "ROUND(123.456,2)",
+      "ROUNDDOWN(123.456,2)",
+      "ROUNDUP(123.456,2)"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
