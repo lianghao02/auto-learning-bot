@@ -16282,5 +16282,26 @@
       "「檔案」功能表→列印預覽"
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "(以下哪個公式判斷A1儲存格的數值是否大於100並返回“超過”或“未超過”？",
+    "answer": "2. =IF(A1>100, \"超過\", \"未超過\")",
+    "type": "單選",
+    "options": [
+      "=IF(A1<100, \"超過\", \"未超過\")",
+      "=IF(A1>100, \"超過\", \"未超過\")",
+      "=IF(A1=100, \"超過\", \"未超過\")"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "IFERROR函數，主要用於協助錯誤發生時的處理。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
