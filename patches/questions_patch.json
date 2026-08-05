@@ -16356,5 +16356,16 @@
       ""
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "儲存格E3公式是=D3*$A$1，複製到儲存格E4，公式會變成？",
+    "answer": "D4*$A$1",
+    "type": "單選",
+    "options": [
+      "D3*$A$2",
+      "D4*$A$1",
+      "D4*$A$2"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
