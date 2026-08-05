@@ -15979,5 +15979,118 @@
       "點擊功能表中的「插入」，選擇「欄位指令」，然後選擇「民國日期」"
     ],
     "course": "Calc試算表應用"
+  },
+  {
+    "question": "儲存格公式=\"Libre\"&\"Office\"，結果\"LibreOffice\"。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "有部門、婚姻兩個欄位，哪個函數可以計算出業務部已婚的人數？",
+    "answer": "Countifs",
+    "type": "單選",
+    "options": [
+      "Sumif",
+      "Sumifs",
+      "Countif",
+      "Countifs"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "在Calc中設定單元格顯示的日期格式為“西元年-月-日”，應該選擇什麼格式？",
+    "answer": "yyyy-mm-dd",
+    "type": "單選",
+    "options": [
+      "yyyy-mm-dd",
+      "dd-mm-yyyy",
+      "mm/dd/yyyy",
+      "dd/mm/yyyy"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "公式=COUNTIF(B2:B200,”台南”)，會傳回儲存格內容為”台南”的筆數。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "在Calc中，處理小數，只想取至指定小數，其餘無條捨去，可以用哪個函數？",
+    "answer": "Rounddown",
+    "type": "單選",
+    "options": [
+      "Round",
+      "Roundup",
+      "Rounddown"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "如果A1單元格中的內容是“DataAnalysis”，=LEFT(A1,4)的結果是什麼？",
+    "answer": "Data",
+    "type": "單選",
+    "options": [
+      "An",
+      "Analysis",
+      "Data Analysis",
+      "Data"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "以下哪個函數可以計算一列數字中最大的數值？",
+    "answer": "MAX",
+    "type": "單選",
+    "options": [
+      "SUM",
+      "AVERAGE",
+      "MAX",
+      "MIN"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "以下哪個公式會從字串“CalcFunctions”中提取出“Fun”？",
+    "answer": "=MID(\"CalcFunctions\", 6, 3)",
+    "type": "單選",
+    "options": [
+      "=MID(\"Calc Functions\", 6, 3)",
+      "=LEFT(\"Calc Functions\", 8)",
+      "=RIGHT(\"Calc Functions\", 3)"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "在Calc可用哪個功能，可以直接過濾出合符要求的記錄？",
+    "answer": "「資料/自動篩選」",
+    "type": "單選",
+    "options": [
+      "「資料/資料剖析」",
+      "「插入/樞紐分析表」",
+      "「資料/自動篩選」"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "有部門、加班時數兩個欄位，哪個函數能把業務部的加班時數算出來？",
+    "answer": "Sumif",
+    "type": "單選",
+    "options": [
+      "countifs",
+      "sum",
+      "Sumif",
+      "Sumifs"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
