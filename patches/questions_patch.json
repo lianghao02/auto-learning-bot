@@ -16334,5 +16334,17 @@
       ""
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "建立下拉式選單時，應該選擇什麼功能？",
+    "answer": "資料驗證",
+    "type": "單選",
+    "options": [
+      "條件格式",
+      "資料驗證",
+      "圖表工具",
+      "插入函數"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
