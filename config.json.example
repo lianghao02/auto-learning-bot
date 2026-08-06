@@ -1,0 +1,36 @@
+{
+    "accounts": [
+        {
+            "name": "臺北E大範本",
+            "login_type": "taipei_eda",
+            "account": "",
+            "password": ""
+        },
+        {
+            "name": "e等公務員範本",
+            "login_type": "egov",
+            "account": "",
+            "password": ""
+        }
+    ],
+    "settings": {
+        "headless": true,
+        "residence_time": 75,
+        "target_percentage": 1.05,
+        "ai_provider": "Gemini",
+        "ai_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "ai_model": "gemini-2.0-flash-lite",
+        "ai_api_key": "",
+        "ai_keys": {
+            "Gemini": ""
+        }
+    },
+    "blacklist": [
+        "課程環境",
+        "勘誤說明",
+        "前言",
+        "新手導覽",
+        "課程簡介",
+        "環境檢測"
+    ]
+}
