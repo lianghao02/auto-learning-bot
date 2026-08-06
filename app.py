@@ -2117,17 +2117,27 @@ class AdminEfficiencyPilot:
 
     def fetch_course_list(self, year=None):
         year = year or time.strftime("%Y")
-        courses = []
-        for page in range(1, 20):
-            payload = f"year={year}&keyword=&course_type=single&page={page}&orderby=&sort="
-            resp = self.http_session.post(
-                self.api_url, data=payload, verify=False, timeout=10
-            )
-            data = resp.json().get("data", [])
-            courses.extend(data)
-            if len(data) < 50:
-                break
-        return courses
+        courses_map = {}
+        # 💡 同時查詢單門課程(single)與微學習課程(micro)，防止傳空字串造成 API 誤判只回 1 筆
+        for c_type in ["single", "micro"]:
+            for page in range(1, 20):
+                payload = f"year={year}&keyword=&course_type={c_type}&page={page}&orderby=&sort="
+                try:
+                    resp = self.http_session.post(
+                        self.api_url, data=payload, verify=False, timeout=10
+                    )
+                    data = resp.json().get("data", [])
+                    for item in data:
+                        cid = str(item.get("course_id", "") or item.get("id", ""))
+                        key = cid or item.get("caption", "")
+                        if key and key not in courses_map:
+                            courses_map[key] = item
+                    if len(data) < 50:
+                        break
+                except Exception as e:
+                    logger.warning(f"⚠️ 讀取 [{c_type}] 第 {page} 頁課程失敗: {e}")
+                    break
+        return list(courses_map.values())
 
     def fetch_course_list_checked(self, year=None):
         courses = self.fetch_course_list(year)
@@ -2167,10 +2177,10 @@ class AdminEfficiencyPilot:
     def _is_open_course(self, course):
         course_type = str(course.get("course_type", "") or "").strip()
         if course_type:
-            return course_type == "開放式"
+            return course_type in {"開放式", "單門課程", "微學習", "組合課程", "單門"}
         course_type_cd = str(course.get("course_type_cd", "") or "").strip().lower()
         if course_type_cd:
-            return course_type_cd in {"single", "open"}
+            return course_type_cd in {"single", "open", "micro", "package"}
         return True
 
     def recover_login_session(self, reason="session 失效") -> bool:

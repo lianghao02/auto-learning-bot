@@ -679,12 +679,33 @@ def get_scorm_player_url(driver, wait, course_url):
         if current_is_player():
             return True
 
+        # 1. 優先嘗試尋找並提交包含 player.php 的表單
+        try:
+            forms = driver.find_elements(By.CSS_SELECTOR, 'form[action*="mod/scorm/player.php"], form[action*="player.php"]')
+            for form in forms:
+                action = form.get_attribute('action') or ''
+                if 'player.php' in action:
+                    print(f'  ▶️ 正式提交 SCORM 播放器表單: {action[:50]}')
+                    driver.execute_script("arguments[0].submit();", form)
+                    time.sleep(3)
+                    dismiss_alerts(driver)
+                    # 若點擊後開啟新視窗，自動切換至最新視窗
+                    if len(driver.window_handles) > 1:
+                        driver.switch_to.window(driver.window_handles[-1])
+                    if current_is_player():
+                        return True
+        except Exception:
+            pass
+
         selectors = [
             'a[href*="mod/scorm/player.php"]',
             'form[action*="mod/scorm/player.php"] input[type=submit]',
+            'form[action*="mod/scorm/player.php"] button',
             'input[type=submit]',
+            'button[type=submit]',
             'button',
             'a.btn',
+            'a',
         ]
         seen = set()
         for selector in selectors:
@@ -694,18 +715,23 @@ def get_scorm_player_url(driver, wait, course_url):
                 buttons = []
             for btn in buttons:
                 try:
-                    key = btn.id
+                    key = btn.id or (btn.get_attribute('outerHTML')[:50] if hasattr(btn, 'get_attribute') else str(btn))
                     if key in seen:
                         continue
                     seen.add(key)
                     href = btn.get_attribute('href') or ''
                     value = btn.get_attribute('value') or ''
                     text = ((btn.text or '') + ' ' + value + ' ' + href).strip()
+                    is_submit = (btn.get_attribute('type') or '').lower() == 'submit'
+                    
                     if href and 'mod/scorm/player.php' in href:
-                        print(f'  ▶️ 進入 SCORM player: {href}')
+                        print(f'  ▶️ 進入 SCORM player (URL): {href}')
                         driver.get(href)
-                    elif any(k in text for k in ['進入', '開始', '繼續', 'Start', 'Enter', 'Launch']):
+                    elif any(k in text for k in ['進入', '開始', '繼續', 'Start', 'Enter', 'Launch', '閱讀', '上課', '進入教室', '進入課程', '閱讀教材', '確定']):
                         print(f'  ▶️ 點擊 SCORM 進入按鈕: {text[:40]}')
+                        driver.execute_script("arguments[0].click();", btn)
+                    elif is_submit:
+                        print(f'  ▶️ 點擊 SCORM 提交按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
                     else:
                         continue
@@ -714,6 +740,9 @@ def get_scorm_player_url(driver, wait, course_url):
                         if has_multi_window_alert(dismiss_alerts(driver)):
                             print('  ⚠️ 臺北E大已偵測到其他上課視窗，停止本次進入播放器')
                             return False
+                        # 若開啟了新分頁或新視窗，自動切換至最新視窗
+                        if len(driver.window_handles) > 1:
+                            driver.switch_to.window(driver.window_handles[-1])
                         pause_and_mute_media(driver)
                         if current_is_player():
                             return True
