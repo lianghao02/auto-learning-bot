@@ -18939,5 +18939,15 @@
       "健保快易通"
     ],
     "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "Please listen to the audio file and determine whether it is TRUE or FALSE.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "海上看北海岸 - 探秘磺港漁港蹦火仔"
   }
 ]
