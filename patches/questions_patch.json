@@ -19203,5 +19203,125 @@
       "embarrassed"
     ],
     "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "Casey doesn’t really enjoy her job, so she’s planning to _____ and look for a new one.",
+    "answer": "quit",
+    "type": "單選",
+    "options": [
+      "quit",
+      "heal",
+      "chill",
+      "host"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "Evie _____ her boss that she was seeing a doctor on Monday morning and wouldn’t be at work.",
+    "answer": "notified",
+    "type": "單選",
+    "options": [
+      "pursued",
+      "notified",
+      "required",
+      "confused"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "My friends asked me to go to the movies with them, but I _____ because I had other plans.",
+    "answer": "declined",
+    "type": "單選",
+    "options": [
+      "treated",
+      "declined",
+      "existed",
+      "sliced"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "Jason decided to _____ from his job and start a new life as the owner of a café.",
+    "answer": "resign",
+    "type": "單選",
+    "options": [
+      "manage",
+      "raise",
+      "resign",
+      "forgive"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "After high school, Darren went on to _____ his education by studying English at NTNU.",
+    "answer": "further",
+    "type": "單選",
+    "options": [
+      "debate",
+      "suggest",
+      "further",
+      "prefer"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "The large _____ has hundreds of workers in office buildings located all over the country.",
+    "answer": "corporation",
+    "type": "單選",
+    "options": [
+      "personality",
+      "corporation",
+      "cupboard",
+      "furniture"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "The _____ for these projects listened to her team leaders before making a final decision.",
+    "answer": "senior supervisor",
+    "type": "單選",
+    "options": [
+      "junior worker",
+      "upper story",
+      "lighter room",
+      "senior supervisor"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "As a _____, Bethany spends most of her working time writing reports on her computer.",
+    "answer": "clerk",
+    "type": "單選",
+    "options": [
+      "jar",
+      "loss",
+      "nut",
+      "clerk"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "Max is studying business in order to _____ his career and earn more money.",
+    "answer": "advance",
+    "type": "單選",
+    "options": [
+      "advance",
+      "pretend",
+      "starve",
+      "honor"
+    ],
+    "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "Chris asked Michelle on a date, but was sad when she _____ him _____.",
+    "answer": "turned; down",
+    "type": "單選",
+    "options": [
+      "picked; up",
+      "passed; out",
+      "kicked; off",
+      "turned; down"
+    ],
+    "course": "多益專欄(辭職)"
   }
 ]
