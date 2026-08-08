@@ -20363,5 +20363,111 @@
       "依照檢測的內容調整檢測單數量"
     ],
     "course": "認識行動化應用軟體無障礙"
+  },
+  {
+    "question": "Please take a seat用於「請坐」過於命令、不禮?，使用Please sit down較為理想。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "所謂的中式英文就是把中文的想法，直接套到英文的說法上面，這個方式是不正確的。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "We Serve ____ Lunch-break Time .",
+    "answer": "In",
+    "type": "單選",
+    "options": [
+      "At",
+      "Go",
+      "In",
+      "On"
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "”Wash Hands Often”翻譯為「勤洗手」。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "介於Ａ跟Ｂ的中間的介系詞是Between。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「這邊請。」的較佳英文用法？",
+    "answer": "This way, please.",
+    "type": "單選",
+    "options": [
+      "Follow me.",
+      "After you.",
+      "This way, please.",
+      "Come on."
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「請小心天雨路滑」這句正確的用法是：Please Careful the Day Rain Lu-Hua.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「勤洗手」這句正確的用法是：wash hands often.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「中午不打烊」這句正確的用法是：we serve at lunch break time.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "How can I get ____ the third floor?",
+    "answer": "to",
+    "type": "單選",
+    "options": [
+      "out",
+      "to",
+      "on",
+      "in"
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
   }
 ]
