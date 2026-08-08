@@ -20599,5 +20599,83 @@
       ""
     ],
     "course": "身心障礙者權利保障"
+  },
+  {
+    "question": "信件的內文寫法以禮貌的用法為佳，例如：We would like to invite you to speak at our annual developer conference.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "\"Dear all, \"為正式的問候語用法。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "Make sure to be prepared and updated ____ your department's subjects.",
+    "answer": "on",
+    "type": "單選",
+    "options": [
+      "for",
+      "on",
+      "to",
+      "from"
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "We also appreciate your willingness ____ speak with students before and after your talks.",
+    "answer": "to",
+    "type": "單選",
+    "options": [
+      "for",
+      "to",
+      "about",
+      "at"
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "主旨的文字建議有4～6個英文字，以避免被系統歸類成垃圾信件。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "\"get in touch\"的意思為以下何者？",
+    "answer": "保持聯繫",
+    "type": "單選",
+    "options": [
+      "彼此碰面",
+      "接觸彼此",
+      "保持聯繫",
+      "互相交流"
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "It is our pleasure ____ invite you to IFLA World Congress Singapore 2018.",
+    "answer": "to",
+    "type": "單選",
+    "options": [
+      "to",
+      "about",
+      "for",
+      "on"
+    ],
+    "course": "公務書信基礎英語"
   }
 ]
