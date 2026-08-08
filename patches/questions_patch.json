@@ -20677,5 +20677,45 @@
       "on"
     ],
     "course": "公務書信基礎英語"
+  },
+  {
+    "question": "信件的問候語區域就需先介紹寄件者身分。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "Let us know if you need anything else.這句話是正式的結尾段落用法。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "信件的結尾署名前不須加上敬詞。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
+  },
+  {
+    "question": "在展覽邀請的信件中，邀請的日期與時間可加上時區，以利收件者推算時間。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "公務書信基礎英語"
   }
 ]
