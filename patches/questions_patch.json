@@ -18971,5 +18971,121 @@
       "僅等待他人提供方案"
     ],
     "course": "AI 與未來治理：從全球案例到公務行動"
+  },
+  {
+    "question": "I don't want to watch an old movie. I'd like to watch something more ______.",
+    "answer": "recent",
+    "type": "單選",
+    "options": [
+      "recent",
+      "late",
+      "junior",
+      "senior"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "______, people in this religion don't eat meat on Fridays, though these days most are OK with it.",
+    "answer": "Traditionally",
+    "type": "單選",
+    "options": [
+      "Barely",
+      "Daily",
+      "Traditionally",
+      "Especially"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "The teacher called Collin's parents for a meeting to ______ his poor grades.",
+    "answer": "discuss",
+    "type": "單選",
+    "options": [
+      "blend",
+      "praise",
+      "celebrate",
+      "discuss"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "Rebecca ______ Hsinchu as an interesting place with lots of Hakka food and culture.",
+    "answer": "described",
+    "type": "單選",
+    "options": [
+      "described",
+      "exercised",
+      "practiced",
+      "served"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "Fred 的媽媽告訴他沒有鬼這樣的東西，但他依舊認為它們可能存在。可英譯為：Fred's mom told him that there was no such thing as ghosts, but he still thought they might exist.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "看天上那些深灰色的雲，我想就快要下雨了。可英譯為：Because those dark gray clouds in the sky, I think it's likely to rain soon.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "The country held a big ______ to celebrate 100 years of independence.",
+    "answer": "parade",
+    "type": "單選",
+    "options": [
+      "deal",
+      "parade",
+      "beast",
+      "data"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "In his talk on smoking, the doctor mentioned heart disease, cancer, and other ______ problems.",
+    "answer": "related",
+    "type": "單選",
+    "options": [
+      "printed",
+      "armed",
+      "related",
+      "beloved"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "The students waited an hour for the train. ______, they played games on their phones.",
+    "answer": "Meanwhile",
+    "type": "單選",
+    "options": [
+      "However",
+      "Meanwhile",
+      "Although",
+      "If"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "This bag has a nice ______, but it's actually weak and may break easily.",
+    "answer": "appearance",
+    "type": "單選",
+    "options": [
+      "position",
+      "information",
+      "scinece",
+      "appearance"
+    ],
+    "course": "臺灣同志驕傲月　帶你認識「性別認同」"
   }
 ]
