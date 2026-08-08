@@ -19323,5 +19323,125 @@
       "turned; down"
     ],
     "course": "多益專欄(辭職)"
+  },
+  {
+    "question": "The artist spent the whole week in his _____ working on a new painting.",
+    "answer": "studio",
+    "type": "單選",
+    "options": [
+      "studio",
+      "stadium",
+      "statue",
+      "scarf"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "The computer _____ the test score data and printed out all the students’ grades.",
+    "answer": "processed",
+    "type": "單選",
+    "options": [
+      "buried",
+      "prevented",
+      "processed",
+      "honored"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "Joanne went to a travel _____ to have someone there plan her vacation and suggest the best hotels.",
+    "answer": "agency",
+    "type": "單選",
+    "options": [
+      "librarian",
+      "author",
+      "policy",
+      "agency"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "Mary thinks her cat is sick because he sleeps a lot, but actually, it’s _____ for cats to sleep all day.",
+    "answer": "normal",
+    "type": "單選",
+    "options": [
+      "careless",
+      "delicious",
+      "local",
+      "normal"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "The mother read the _____ on the box of cereal to find out how much sugar it contained.",
+    "answer": "label",
+    "type": "單選",
+    "options": [
+      "client",
+      "label",
+      "rent",
+      "flavor"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "Carol hopes that her favorite band, Mayday, keeps playing music for a long time and never _____!",
+    "answer": "breaks up",
+    "type": "單選",
+    "options": [
+      "shoots up",
+      "backs up",
+      "shows up",
+      "breaks up"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "When Jerry _____ how much he weighed, he was shocked to see that he was now 75 kilograms.",
+    "answer": "found out",
+    "type": "單選",
+    "options": [
+      "found out",
+      "broke out",
+      "headed out",
+      "came out"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "Many people believe the general’s greatest _____ was saving the small town from a large enemy force.",
+    "answer": "accomplishment",
+    "type": "單選",
+    "options": [
+      "information",
+      "accomplishment",
+      "imagination",
+      "announcement"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "When the police went into the thief’s house, they found a large _____ of purses that he had stolen.",
+    "answer": "collection",
+    "type": "單選",
+    "options": [
+      "relation",
+      "direction",
+      "solution",
+      "collection"
+    ],
+    "course": "多益專欄(業配開箱影片)"
+  },
+  {
+    "question": "Eddie bought Jolin Tsai’s new album, and he played the _____ in his CD player.",
+    "answer": "disc",
+    "type": "單選",
+    "options": [
+      "disc",
+      "wound",
+      "form",
+      "prize"
+    ],
+    "course": "多益專欄(業配開箱影片)"
   }
 ]
