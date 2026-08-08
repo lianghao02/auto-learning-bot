@@ -19087,5 +19087,121 @@
       "appearance"
     ],
     "course": "臺灣同志驕傲月　帶你認識「性別認同」"
+  },
+  {
+    "question": "Can you put ______ chocolate pieces on my ice cream? Those are my favorite.",
+    "answer": "extra",
+    "type": "單選",
+    "options": [
+      "extra",
+      "extreme",
+      "lively",
+      "lousy"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "It gets so cold here in winter that the pond in the park ______.",
+    "answer": "freezes",
+    "type": "單選",
+    "options": [
+      "fulfills",
+      "frightens",
+      "freezes",
+      "flashes"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "Ella is having a(n) _____ week. She has lots of work to do and is feeling sick.",
+    "answer": "tough",
+    "type": "單選",
+    "options": [
+      "intimate",
+      "tough",
+      "flexible",
+      "cozy"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "Some ______ came over for Christmas dinner, including friends and family.",
+    "answer": "visitors",
+    "type": "單選",
+    "options": [
+      "insects",
+      "vases",
+      "inventors",
+      "visitors"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "我們這次旅行在一早就出發，並在日落前抵達城市。可英譯為：We set in on our trip in the morning and reached the city before the sun went down.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "On our trip to the mountains, we stayed in a small ______ with wooden furniture.",
+    "answer": "cabin",
+    "type": "單選",
+    "options": [
+      "cabinet",
+      "cabin",
+      "captain",
+      "cab"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "Betty 外出前先戴上了太陽眼鏡，這樣陽光就不會傷害到她的眼睛。可英譯為：Betty put her sunglasses on before she went outside so the light wouldn't hurt her eyes.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "The lake's water is so ______ that I can almost see my face in it!",
+    "answer": "smooth",
+    "type": "單選",
+    "options": [
+      "smooth",
+      "dense",
+      "reliable",
+      "profound"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "After climbing for three hours, we reached the ______ and looked down at the land  below.",
+    "answer": "peak",
+    "type": "單選",
+    "options": [
+      "pork",
+      "peak",
+      "peace",
+      "pearl"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
+  },
+  {
+    "question": "My first trip to Disneyland was a ______ time. I want to go again someday!",
+    "answer": "magical",
+    "type": "單選",
+    "options": [
+      "local",
+      "tiresome",
+      "magical",
+      "embarrassed"
+    ],
+    "course": "嘉明湖：登山客們的夢幻景點"
   }
 ]
