@@ -20781,5 +20781,15 @@
       ""
     ],
     "course": "使用APP安全(112)"
+  },
+  {
+    "question": "在Google Play Store或Apple App Store上架的App都經過嚴格的審核機制，所以只要從這些管道下載的App都是安全無虞的",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "使用APP安全(112)"
   }
 ]
