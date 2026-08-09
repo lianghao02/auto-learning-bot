@@ -21139,5 +21139,97 @@
       ""
     ],
     "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "After watching the video, Mike and Allen are discussing what they just watched. However, they cannot recall this part. Please help them fill in the blank.&nbsp;",
+    "answer": "overpopulation / deforestation",
+    "type": "單選",
+    "options": [
+      "overpopulation / deforestation",
+      "heavy rainfall / extreme weathers",
+      "occassional earthquake / severe flood",
+      "slight rainfall / stable wearthers"
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "Ocean acidification is the ongoing decrease in the pH value of the Earth's ocean, caused by its overwhelming uptake of the atmosphere's carbon dioxide produced by human activities. Increasing ocean acidification is not conducive to the growth of marine species and could have a severe impact on the marine ecosystem and human society. For example, ocean acidification could shrink the surface areas of coral reefs and even decimate them completely.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "What is the best description that suits the following picture?",
+    "answer": "This device is a smart aquaculture application system that monitors water quality and helps fish farmers make changes to the fish pond with their phones.",
+    "type": "單選",
+    "options": [
+      "This device is a smart aquaculture application system that monitors water quality and helps fish farmers make changes to the fish pond with their phones.",
+      "This device integrates different module technologies, and it can customize functions for fish farmers.",
+      "This device uses a special angled blade to deliver the functions of traditional water wheels with a small motor, and it can drastically reduce electricity costs.",
+      "This device uses pressurized motors to compress oxygen that is injected into the fish pond into nanoparticles and increase the water's oxygen level."
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "The Aquadlink system not only consistently collects data for its clients but also sends the data to a device called the Smart Circuit Box which can be controlled remotely.",
+    "answer": "operated",
+    "type": "單選",
+    "options": [
+      "operated",
+      "compressed",
+      "persued",
+      "confessed"
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "For most fish farmers, maintaining stable water quality is one of the obstacles that they will encounter. It is not only vital but also challenging. In the past, monitoring water quality is mostly tested manually, which is labor intensive and cannot be collected 24/7. That is why Mr. Huang considers Aquadlink a lifesaver.",
+    "answer": "Aquadlink helps Mr. Huang monitor water quality automatically.",
+    "type": "單選",
+    "options": [
+      "Aquadlink can save Mr. Huang's life.",
+      "Aquadlink will help Mr. Huang remain his life.",
+      "Aquadlink helps Mr. Huang monitor water quality automatically.",
+      "Aquadlink can prevent people from drowning."
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "&nbsp;According to the audio file about cold-water fish, why does the narrator say, “Aquaculture has emerged as an alternative.”?",
+    "answer": "The wild population of cold-water fish has decreased sharply.",
+    "type": "單選",
+    "options": [
+      "The quality of wild cold-water fish has not been as good as usual.",
+      "The wild cold-water fish has vanished at all.",
+      "The size of wild cold-water fish has been smaller and smaller.",
+      "The wild population of cold-water fish has decreased sharply."
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "According to the video, there is a specialized cooling system that can adjust water temperatures to the fish farmer's ideal temperature. What is the main purpose of this new technology?",
+    "answer": "Help Taiwan achieve cold water fish farming and reduce food miles",
+    "type": "單選",
+    "options": [
+      "Help fish farmers make huge sums of money and enhance their living environment",
+      "Help Taiwan achieve cold water fish farming and reduce food miles",
+      "Help Taiwanese access better cold water fishes and save money",
+      "Help fish farmers controll marketing ratio and expand their international market"
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "There is no need to give the ocean necessary time to recover because overexploitation and destruction from human activities have led to climate change and heavily impacted various industries, especially fisheries. Thus, there is no way to cope with this problem and make up the destruction.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
   }
 ]
