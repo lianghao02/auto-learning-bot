@@ -597,17 +597,32 @@ def get_course_modules(driver, course_href):
 
     return result
 
-# ── SCORM 播放 ────────────────────────────────────────
+def clear_session_and_relogin(driver, wait, config=None):
+    try:
+        cfg = config or {}
+        username = cfg.get('account') or cfg.get('username') or ''
+        password = cfg.get('password') or ''
+        if username and password:
+            print('  🔄 偵測到「禁止多重視窗」鎖定，正在自動清理 Session Cookie 並重新登入以釋放鎖定...')
+            driver.delete_all_cookies()
+            time.sleep(1)
+            if do_login(driver, wait, username=username, password=password):
+                print('  ✅ 已成功重新登入並重置 SCORM Session')
+                return True
+    except Exception as e:
+        print(f'  ⚠️ 自動重新登入失敗: {e}')
+    return False
 
-def get_scorm_player_url(driver, wait, course_url):
+def get_scorm_player_url(driver, wait, course_url, config=None):
     driver.get(course_url)
     time.sleep(3)
-    # 初始進入課程頁，若出現多重視窗 Alert，先 dismiss 後繼續（有時只是警告）
     msgs = dismiss_alerts(driver)
     if has_multi_window_alert(msgs):
-        print('  ⚠️ 臺北E大發出多重視窗警告，嘗試繼續...')
-        time.sleep(1)
-        dismiss_alerts(driver)  # 可能還有第二波
+        print('  ⚠️ 臺北E大發出多重視窗警告，嘗試重新登入重置 Session...')
+        clear_session_and_relogin(driver, wait, config)
+        driver.get(course_url)
+        time.sleep(2)
+        dismiss_alerts(driver)
 
     def current_is_player():
         url = driver.current_url or ''
@@ -924,7 +939,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None):
     else:
         print('目標: 無認證時數要求，僅檢查章節狀態')
 
-    scorm_view_url = get_scorm_player_url(driver, wait, href)
+    scorm_view_url = get_scorm_player_url(driver, wait, href, config=config)
     if not scorm_view_url:
         print('  找不到 SCORM 連結，跳過')
         return False
