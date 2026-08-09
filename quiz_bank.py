@@ -6,6 +6,7 @@
 """
 
 import re, json, time, requests, difflib, threading
+from utils.security import validate_ai_base_url
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -181,7 +182,14 @@ def ai_guess_answer(q_text, options, config):
         print('  [AI] 無 API key，跳過')
         return None
 
-    base_url = config.get('ai_base_url', 'https://api.openai.com/v1').rstrip('/')
+    try:
+        base_url = validate_ai_base_url(
+            provider,
+            config.get('ai_base_url', 'https://api.openai.com/v1'),
+        )
+    except ValueError as exc:
+        print(f'  [AI] API 網址遭安全規則拒絕：{exc}')
+        return None
     model    = config.get('ai_model', 'gpt-4o-mini')
 
     # 建立選項文字清單（去掉編號前綴如 "1. "）
@@ -207,7 +215,7 @@ def ai_guess_answer(q_text, options, config):
                          'Content-Type': 'application/json'},
                 json={'model': model, 'max_tokens': 150,
                       'messages': [{'role': 'user', 'content': prompt}]},
-                timeout=20, verify=False)
+                timeout=20)
             resp.raise_for_status()
             ai_answer = resp.json()['content'][0]['text'].strip()
         else:
@@ -217,7 +225,7 @@ def ai_guess_answer(q_text, options, config):
                          'Content-Type': 'application/json'},
                 json={'model': model, 'temperature': 0, 'max_tokens': 150,
                       'messages': [{'role': 'user', 'content': prompt}]},
-                timeout=20, verify=False)
+                timeout=20)
             resp.raise_for_status()
             ai_answer = resp.json()['choices'][0]['message']['content'].strip()
 

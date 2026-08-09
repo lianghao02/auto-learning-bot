@@ -59,6 +59,7 @@ from PySide6.QtGui import (
     QPixmap,
 )
 from utils.helpers import get_logger
+from utils.security import validate_ai_base_url
 from usage_tracker import UsageHeartbeat
 
 
@@ -84,6 +85,16 @@ def version_tuple(version):
 
 def is_newer_version(latest, current):
     return version_tuple(latest) > version_tuple(current)
+
+
+def looks_like_legacy_taipei_account(account):
+    """辨識舊設定中被誤標為 egov 的臺北E大帳號，僅供 UI 遷移使用。"""
+    if not isinstance(account, dict):
+        return False
+    if account.get("login_type") == "taipei_eda":
+        return True
+    name = re.sub(r"[\s_-]+", "", str(account.get("name", ""))).lower()
+    return name == "e大" or "taipei" in name or "臺北" in name or "台北" in name
 
 
 # =========================
@@ -833,10 +844,20 @@ class EntryPage(QWidget):
 
     def save_settings(self):
         settings_data = self.panel.get_data()
+        ai_key = settings_data.get("ai_api_key", "").strip()
+        if ai_key:
+            try:
+                settings_data["ai_base_url"] = validate_ai_base_url(
+                    settings_data.get("ai_provider", "OpenAI"),
+                    settings_data.get("ai_base_url", ""),
+                )
+            except ValueError as exc:
+                self.panel.show_ai_result(False, f"❌ {exc}")
+                return
+
         self.config["settings"] = settings_data
         self._save_config()
 
-        ai_key = settings_data.get("ai_api_key", "").strip()
         if ai_key:
             self.panel.show_ai_verifying()
             import threading, requests as _req
@@ -860,7 +881,7 @@ class EntryPage(QWidget):
                     if provider == "自訂":
                         # 第一段：試打 /models
                         try:
-                            r = _req.get(f"{base_url}/models", headers=headers, timeout=8, verify=False)
+                            r = _req.get(f"{base_url}/models", headers=headers, timeout=8)
                             if r.status_code == 200:
                                 ok, msg = True, "✅ API Key 驗證成功"
                             elif r.status_code == 401:
@@ -871,7 +892,7 @@ class EntryPage(QWidget):
                                     f"{base_url}/chat/completions",
                                     headers={**headers, "Content-Type": "application/json"},
                                     json={"model": model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                                    timeout=10, verify=False,
+                                    timeout=10,
                                 )
                                 if r2.status_code == 200:
                                     ok, msg = True, "✅ 連線成功（已儲存）"
@@ -887,7 +908,7 @@ class EntryPage(QWidget):
                             f"{base_url}/messages",
                             headers=headers,
                             json={"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]},
-                            timeout=10, verify=False,
+                            timeout=10,
                         )
                         if r.status_code == 200:
                             ok, msg = True, "✅ API Key 驗證成功"
@@ -896,7 +917,7 @@ class EntryPage(QWidget):
                         else:
                             ok, msg = False, f"❌ 驗證失敗（HTTP {r.status_code}）"
                     else:
-                        r = _req.get(f"{base_url}/models", headers=headers, timeout=8, verify=False)
+                        r = _req.get(f"{base_url}/models", headers=headers, timeout=8)
                         if r.status_code == 200:
                             ok, msg = True, "✅ API Key 驗證成功"
                         elif r.status_code == 401:
@@ -2597,23 +2618,35 @@ class AccountSettingsTabPanel(QWidget):
         """
 
         self.name_input = QLineEdit()
-        self.name_input.setPlaceholderText("請輸入顯示名稱 (例如：E大或E等)")
+        self.name_input.setPlaceholderText("例如：臺北E大帳號")
         self.name_input.setStyleSheet(input_style)
 
-        self.type_combo = QComboBox()
-        self.type_combo.addItem("臺北E大 (taipei_eda)", "taipei_eda")
-        self.type_combo.addItem("e等公務員 / eCPA (ecpa)", "ecpa")
-        self.type_combo.addItem("我的E政府 (egov)", "egov")
-        self.type_combo.setStyleSheet(input_style)
-
         self.acc_input = QLineEdit()
-        self.acc_input.setPlaceholderText("請輸入登入帳號 (身分證字號或帳號)")
+        self.acc_input.setPlaceholderText("臺北E大登入帳號")
         self.acc_input.setStyleSheet(input_style)
 
         self.pwd_input = QLineEdit()
         self.pwd_input.setEchoMode(QLineEdit.Password)
-        self.pwd_input.setPlaceholderText("請輸入登入密碼")
+        self.pwd_input.setPlaceholderText("臺北E大登入密碼")
         self.pwd_input.setStyleSheet(input_style)
+
+        self.egov_name_input = QLineEdit()
+        self.egov_name_input.setPlaceholderText("例如：e等公務員帳號")
+        self.egov_name_input.setStyleSheet(input_style)
+
+        self.egov_type_combo = QComboBox()
+        self.egov_type_combo.addItem("e等公務員 eCPA", "ecpa")
+        self.egov_type_combo.addItem("我的 E 政府", "egov")
+        self.egov_type_combo.setStyleSheet(input_style)
+
+        self.egov_acc_input = QLineEdit()
+        self.egov_acc_input.setPlaceholderText("eCPA 或我的 E 政府帳號")
+        self.egov_acc_input.setStyleSheet(input_style)
+
+        self.egov_pwd_input = QLineEdit()
+        self.egov_pwd_input.setEchoMode(QLineEdit.Password)
+        self.egov_pwd_input.setPlaceholderText("eCPA 或我的 E 政府密碼")
+        self.egov_pwd_input.setStyleSheet(input_style)
 
         self.headless_cb = QCheckBox("背景執行 (Headless 隱藏瀏覽器視窗)")
         self.headless_cb.setStyleSheet("""
@@ -2641,13 +2674,17 @@ class AccountSettingsTabPanel(QWidget):
         """)
 
         self.ai_key_input = QLineEdit()
+        self.ai_key_input.setEchoMode(QLineEdit.Password)
         self.ai_key_input.setPlaceholderText("可選：填入 Gemini API Key 以開啟 AI 自動考試作答功能")
         self.ai_key_input.setStyleSheet(input_style)
 
-        form_layout.addRow(QLabel("顯示名稱:"), self.name_input)
-        form_layout.addRow(QLabel("預設登入平台:"), self.type_combo)
-        form_layout.addRow(QLabel("登入帳號:"), self.acc_input)
-        form_layout.addRow(QLabel("登入密碼:"), self.pwd_input)
+        form_layout.addRow(QLabel("臺北E大名稱:"), self.name_input)
+        form_layout.addRow(QLabel("臺北E大帳號:"), self.acc_input)
+        form_layout.addRow(QLabel("臺北E大密碼:"), self.pwd_input)
+        form_layout.addRow(QLabel("e等顯示名稱:"), self.egov_name_input)
+        form_layout.addRow(QLabel("e等登入方式:"), self.egov_type_combo)
+        form_layout.addRow(QLabel("e等登入帳號:"), self.egov_acc_input)
+        form_layout.addRow(QLabel("e等登入密碼:"), self.egov_pwd_input)
         form_layout.addRow(QLabel("執行模式:"), self.headless_cb)
         form_layout.addRow(QLabel("Gemini API Key:"), self.ai_key_input)
 
@@ -2675,15 +2712,30 @@ class AccountSettingsTabPanel(QWidget):
                 with open("config.json", "r", encoding="utf-8") as f:
                     data = json.load(f)
                 accounts = data.get("accounts", [])
-                if accounts:
-                    acc = accounts[0]
-                    self.name_input.setText(acc.get("name", ""))
-                    self.acc_input.setText(acc.get("account", ""))
-                    self.pwd_input.setText(acc.get("password", ""))
-                    ltype = acc.get("login_type", "taipei_eda")
-                    idx = self.type_combo.findData(ltype)
+                taipei_acc = next(
+                    (acc for acc in accounts if acc.get("login_type") == "taipei_eda"),
+                    None,
+                ) or next((acc for acc in accounts if looks_like_legacy_taipei_account(acc)), None)
+                if taipei_acc:
+                    self.name_input.setText(taipei_acc.get("name", ""))
+                    self.acc_input.setText(taipei_acc.get("account", ""))
+                    self.pwd_input.setText(taipei_acc.get("password", ""))
+
+                egov_acc = next(
+                    (
+                        acc for acc in accounts
+                        if acc is not taipei_acc and acc.get("login_type") in ("ecpa", "egov")
+                    ),
+                    None,
+                )
+                if egov_acc:
+                    self.egov_name_input.setText(egov_acc.get("name", ""))
+                    self.egov_acc_input.setText(egov_acc.get("account", ""))
+                    self.egov_pwd_input.setText(egov_acc.get("password", ""))
+                    ltype = egov_acc.get("login_type", "ecpa")
+                    idx = self.egov_type_combo.findData(ltype)
                     if idx != -1:
-                        self.type_combo.setCurrentIndex(idx)
+                        self.egov_type_combo.setCurrentIndex(idx)
                 settings = data.get("settings", {})
                 self.headless_cb.setChecked(settings.get("headless", False))
                 self.ai_key_input.setText(settings.get("ai_api_key", ""))
@@ -2698,18 +2750,36 @@ class AccountSettingsTabPanel(QWidget):
             else:
                 data = {"accounts": [], "settings": {}}
 
-            acc_data = {
-                "name": self.name_input.text().strip() or "預設帳號",
-                "login_type": self.type_combo.currentData() or "taipei_eda",
-                "account": self.acc_input.text().strip(),
-                "password": self.pwd_input.text().strip()
-            }
-            
-            accounts = data.get("accounts", [])
-            if accounts:
-                accounts[0] = acc_data
-            else:
-                accounts = [acc_data]
+            taipei_account = self.acc_input.text().strip()
+            taipei_password = self.pwd_input.text()
+            egov_account = self.egov_acc_input.text().strip()
+            egov_password = self.egov_pwd_input.text()
+
+            if bool(taipei_account) != bool(taipei_password):
+                QMessageBox.warning(self, "設定未完成", "臺北E大帳號與密碼必須同時填寫。")
+                return
+            if bool(egov_account) != bool(egov_password):
+                QMessageBox.warning(self, "設定未完成", "e等公務員帳號與密碼必須同時填寫。")
+                return
+
+            accounts = []
+            if taipei_account:
+                accounts.append({
+                    "name": self.name_input.text().strip() or "臺北E大",
+                    "login_type": "taipei_eda",
+                    "account": taipei_account,
+                    "password": taipei_password,
+                })
+            if egov_account:
+                accounts.append({
+                    "name": self.egov_name_input.text().strip() or "e等公務員",
+                    "login_type": self.egov_type_combo.currentData() or "ecpa",
+                    "account": egov_account,
+                    "password": egov_password,
+                })
+            if not accounts:
+                QMessageBox.warning(self, "設定未完成", "請至少設定一個平台的帳號與密碼。")
+                return
             data["accounts"] = accounts
 
             settings = data.get("settings", {})
@@ -2729,10 +2799,8 @@ class AccountSettingsTabPanel(QWidget):
             if hasattr(self, "on_settings_saved") and callable(self.on_settings_saved):
                 self.on_settings_saved()
 
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(self, "成功", "✅ 帳號與系統設定已成功儲存並套用！")
         except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "錯誤", f"❌ 儲存失敗：{e}")
 
 
@@ -2844,8 +2912,6 @@ class ImmersivePage(QWidget):
                 
                 # 臺北E大帳號
                 taipei_acc = next((a for a in accounts if a.get("login_type") == "taipei_eda"), None)
-                if not taipei_acc and accounts:
-                    taipei_acc = accounts[0]
                 if taipei_acc:
                     self.taipei_panel.update_account_info(taipei_acc.get("name", ""), taipei_acc.get("account", ""))
                 else:
@@ -2853,8 +2919,6 @@ class ImmersivePage(QWidget):
 
                 # e等公務員帳號
                 egov_acc = next((a for a in accounts if a.get("login_type") in ("ecpa", "egov")), None)
-                if not egov_acc and accounts:
-                    egov_acc = accounts[0]
                 if egov_acc:
                     self.egov_panel.update_account_info(egov_acc.get("name", ""), egov_acc.get("account", ""))
                 else:
@@ -2882,8 +2946,7 @@ class ImmersivePage(QWidget):
             self.on_toggle_browser(key, visible)
 
     def start(self, account_name: str):
-        self.taipei_panel.info_lbl.setText(f"臺北E大控制台（帳號：{account_name}）")
-        self.egov_panel.info_lbl.setText(f"e等公務員控制台（帳號：{account_name}）")
+        self.load_accounts_into_tabs()
 
     def _init_position(self):
         pass
@@ -3025,11 +3088,14 @@ class MainWindow(QWidget):
         else:
             acc_data = next((a for a in accounts if a.get("login_type") == key), None)
 
-        if not acc_data and accounts:
-            acc_data = accounts[0]
-
         if not acc_data:
             logger.warning(f"⚠️ 找不到平台 {key} 的對應帳號設定")
+            platform_name = "臺北E大" if key == "taipei_eda" else "e等公務員"
+            QMessageBox.warning(
+                self,
+                "尚未設定帳號",
+                f"找不到{platform_name}的專用帳號。\n請先到『帳號與系統設定』完成設定。",
+            )
             return
 
         full_config = acc_data.copy()
@@ -3066,9 +3132,6 @@ class MainWindow(QWidget):
             if self.egov_thread and self.egov_thread.is_alive():
                 logger.warning("⚠️ e等公務員流程已在運行中")
                 return
-            # 優先保留原帳號的 login_type (例如 egov)，若為 taipei_eda 或未指定，預設給予 egov
-            if full_config.get("login_type") in ("taipei_eda", None, ""):
-                full_config["login_type"] = "egov"
             self.egov_pilot = AdminEfficiencyPilot(
                 config_override=full_config,
                 log_callback=self.immersive.egov_panel.append_text,

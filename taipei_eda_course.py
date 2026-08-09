@@ -127,7 +127,6 @@ def load_config(path=None):
     """
     candidates = [
         path,
-        r'C:\Users\88697\Desktop\程式開發練習\家愷學長寫的上課\autoLearning--\config.json',
         os.path.join(os.path.dirname(__file__), 'config.json'),
         'config.json',
     ]
@@ -200,13 +199,6 @@ def solve_captcha(img_bytes):
 
     return ''
 
-def get_requests_session(driver):
-    s = requests.Session()
-    s.headers['User-Agent'] = 'Mozilla/5.0'
-    for c in driver.get_cookies():
-        s.cookies.set(c['name'], c['value'], domain=c['domain'])
-    return s
-
 def dismiss_alerts(driver):
     messages = []
     for _ in range(5):
@@ -275,7 +267,11 @@ def pause_and_mute_media(driver):
 
 # 登入
 
-def do_login(driver, wait, username='T124478221', password='A870628a'):
+def do_login(driver, wait, username='', password=''):
+    if not username or not password:
+        print('  [登入失敗] 缺少帳號或密碼，請先在程式設定中儲存登入資料')
+        return False
+
     driver.get('https://elearning.taipei/mpage/login')
     wait.until(EC.presence_of_element_located((By.ID, 'pid')))
     time.sleep(0.8)
@@ -288,11 +284,16 @@ def do_login(driver, wait, username='T124478221', password='A870628a'):
         # 最多嘗試 5 次自動刷新圖像，直到精確取得 4 位數驗證碼
         for refresh_retry in range(5):
             try:
-                captcha_src = driver.execute_script("return document.querySelector('.captcha-img').src;")
-                s = get_requests_session(driver)
-                img_bytes = s.get(captcha_src, verify=False, timeout=5).content
+                # 直接擷取 Chrome 已安全載入的驗證碼元素，避免另開 HTTP
+                # 連線時受到網站憑證鏈或工作階段 Cookie 差異影響。
+                captcha_el = wait.until(
+                    EC.visibility_of_element_located((By.CSS_SELECTOR, '.captcha-img'))
+                )
+                img_bytes = captcha_el.screenshot_as_png
                 digits = solve_captcha(img_bytes)
-            except Exception:
+            except Exception as exc:
+                if refresh_retry == 0:
+                    print(f'  [驗證碼] 擷取或辨識失敗：{exc}')
                 digits = ''
             if digits:
                 break

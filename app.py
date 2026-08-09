@@ -2,7 +2,6 @@
 # dependencies = [
 #   "selenium",
 #   "requests",
-#   "urllib3",
 #   "colorama",
 #   "psutil",
 # ]
@@ -22,7 +21,6 @@ import ctypes
 import threading
 from difflib import get_close_matches
 import requests
-import urllib3
 import psutil
 import atexit
 import signal
@@ -44,12 +42,12 @@ from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertP
 from colorama import Fore, Style
 
 from utils.helpers import get_logger, to_sec, sec_to_str, draw_bar, set_driver_window_visibility
+from utils.security import validate_ai_base_url
 from utils.webdriver_mgr import download_best_chromedriver
 
 GLOBAL_DB_LOCK = threading.Lock()
 
-# 禁用冗長日誌與警告
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+# 降低 Selenium 自身的冗長日誌
 logging.getLogger("selenium").setLevel(logging.ERROR)
 logger = get_logger()
 
@@ -599,7 +597,14 @@ class AdminEfficiencyPilot:
         api_key  = ai_keys.get(provider) or self.config.get("ai_api_key", "")
         if not api_key or not option_texts:
             return None
-        base_url = self.config.get("ai_base_url", "https://api.openai.com/v1").rstrip("/")
+        try:
+            base_url = validate_ai_base_url(
+                provider,
+                self.config.get("ai_base_url", "https://api.openai.com/v1"),
+            )
+        except ValueError as exc:
+            self.logger.error(f"❌ AI API 網址遭安全規則拒絕：{exc}")
+            return None
 
         # 使用者設定的模型優先；若不在 fallback 鏈裡則以此為起點
         configured_model = self.config.get("ai_model", "gpt-4o-mini")
@@ -646,7 +651,6 @@ class AdminEfficiencyPilot:
                             "messages": [{"role": "user", "content": prompt}],
                         },
                         timeout=20,
-                        verify=False,
                     )
                 else:
                     resp = requests.post(
@@ -662,7 +666,6 @@ class AdminEfficiencyPilot:
                             "temperature": 0,
                         },
                         timeout=20,
-                        verify=False,
                     )
 
                 # 🛡️ 429 配額耗盡：開啟熔斷機制，當次執行階段不再重試，自動降級為純本地題庫速答
@@ -807,7 +810,6 @@ class AdminEfficiencyPilot:
             resp = requests.get(
                 self._GAS_PATCH_URL,
                 timeout=30,
-                verify=False,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -2124,7 +2126,7 @@ class AdminEfficiencyPilot:
                 payload = f"year={year}&keyword=&course_type={c_type}&page={page}&orderby=&sort="
                 try:
                     resp = self.http_session.post(
-                        self.api_url, data=payload, verify=False, timeout=10
+                        self.api_url, data=payload, timeout=10
                     )
                     data = resp.json().get("data", [])
                     for item in data:
@@ -2236,7 +2238,14 @@ class AdminEfficiencyPilot:
             if not self.running:
                 logger.info("🛑 使用者手動停止（登入中）")
                 return False
-            url = self.driver.current_url
+            try:
+                url = self.driver.current_url
+            except UnexpectedAlertPresentException:
+                alert_text = self._accept_alert_if_present()
+                if alert_text:
+                    logger.info(f"ℹ️ 登入提示：{alert_text}")
+                time.sleep(0.5)
+                continue
             url_ok = "elearn.hrd.gov.tw" in url and (
                 not check_no_login or "login" not in url
             )
@@ -2391,7 +2400,7 @@ class AdminEfficiencyPilot:
             for _page in range(1, 21):
                 payload = f"year={current_year}&keyword=&course_type=single&page={_page}&orderby=&sort="
                 resp = self.http_session.post(
-                    self.api_url, data=payload, verify=False, timeout=10
+                    self.api_url, data=payload, timeout=10
                 )
                 data = resp.json().get("data", [])
                 for c in data:
