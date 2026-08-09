@@ -1112,6 +1112,10 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         opts.add_argument('--no-sandbox')
         opts.add_argument('--disable-dev-shm-usage')
         opts.add_argument('--disable-extensions')
+        # 防禦臺北E大資安升級引發的混合內容(HTTPS/HTTP)或不安全警告阻擋
+        opts.add_argument('--allow-running-insecure-content')
+        opts.add_argument('--ignore-certificate-errors')
+        opts.add_argument('--allow-insecure-localhost')
 
         # ── Chrome Driver 路徑：優先使用 app.py 下載的 chromedriver ─────────
         try:
