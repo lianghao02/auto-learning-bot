@@ -451,6 +451,15 @@ def _clean_status(text):
     return str(text or '').strip()
 
 def is_study_incomplete(course):
+    try:
+        cert_hrs = float(course.get('cert_hrs') or 0)
+    except Exception:
+        cert_hrs = 0
+    if cert_hrs > 0:
+        criteria_sec = int(cert_hrs * 3600 * 0.5)
+        already_sec = parse_study_time(course.get('study', ''))
+        if already_sec >= criteria_sec:
+            return False
     return '未完成' in _clean_status(course.get('done'))
 
 def is_questionnaire_pending(course):
@@ -593,89 +602,63 @@ def get_course_modules(driver, course_href):
 def get_scorm_player_url(driver, wait, course_url):
     driver.get(course_url)
     time.sleep(3)
-    if has_multi_window_alert(dismiss_alerts(driver)):
-        print('  ⚠️ 臺北E大已偵測到其他上課視窗，請關閉舊課程視窗後重試')
-        return None
+    # 初始進入課程頁，若出現多重視窗 Alert，先 dismiss 後繼續（有時只是警告）
+    msgs = dismiss_alerts(driver)
+    if has_multi_window_alert(msgs):
+        print('  ⚠️ 臺北E大發出多重視窗警告，嘗試繼續...')
+        time.sleep(1)
+        dismiss_alerts(driver)  # 可能還有第二波
 
     def current_is_player():
         url = driver.current_url or ''
         return 'mod/scorm/player.php' in url or bool(get_chapters(driver))
 
     def find_scorm_link():
+        def is_valid_scorm_href(h):
+            if not h or 'javascript' in h.lower():
+                return False
+            # 排除指向當前課程主頁本身的連結，防止同頁重複載入
+            clean_h = h.split('#')[0].rstrip('/')
+            clean_curr = (driver.current_url or '').split('#')[0].rstrip('/')
+            clean_course = (course_url or '').split('#')[0].rstrip('/')
+            if clean_h == clean_curr or clean_h == clean_course:
+                return False
+            return True
+
         # 1. 在當前頁面尋找 direct scorm 連結
-        links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
+        scorm_css = 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm/player.php"], a[href*="mod/scorm"], .modtype_scorm a, .activityinstance a'
+        links = driver.find_elements(By.CSS_SELECTOR, scorm_css)
         for link in links:
             href = link.get_attribute('href') or ''
             text = (link.text or link.get_attribute('title') or '').strip()
-            if 'mod/scorm/view.php' in href:
+            if is_valid_scorm_href(href):
                 return href, text or href
-        if links:
-            link = links[0]
-            return link.get_attribute('href') or '', (link.text or '').strip()
 
-        # 2. 若簡介頁無 mod/scorm 連結，以 find_element_resilient 進行語意彈性搜尋
-        #    支援 CSS 優先 + HTML5 語意文字 Fallback，防禦平台改版後按鈕 class 異動
-        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課']
-        # 優先嘗試已知路徑 CSS Selectors
-        for css in ['a[href*="course/view.php"]', 'a[href*="sso"]', 'a[href*="redirect"]', 'a.btn']:
-            el = find_element_resilient(driver, css_selector=css, timeout=1)
-            if el:
-                try:
-                    txt = ((el.text or '') + ' ' + (el.get_attribute('value') or '')).strip()
-                    if any(k in txt for k in ENTER_KEYWORDS):
-                        href = el.get_attribute('href') or ''
-                        if href and 'javascript' not in href.lower():
-                            print(f'  ▶️ 簡介頁自動跳轉至課程教室 (CSS): {href[:50]}')
-                            driver.get(href)
-                        else:
-                            print(f'  ▶️ 點擊簡介頁進教室按鈕 (CSS): {txt[:30]}')
-                            driver.execute_script("arguments[0].click();", el)
-                        time.sleep(3)
-                        dismiss_alerts(driver)
-                        sub_links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
-                        for sl in sub_links:
-                            shref = sl.get_attribute('href') or ''
-                            stext = (sl.text or sl.get_attribute('title') or '').strip()
-                            if 'mod/scorm/view.php' in shref:
-                                return shref, stext or shref
-                        if sub_links:
-                            sl = sub_links[0]
-                            return sl.get_attribute('href') or '', (sl.text or '').strip()
-                except Exception:
-                    pass
-
-        # 最終保底：語意文字 Fallback（即使 CSS class 已改版，憑按鈕文字找到元素）
-        el = find_element_resilient(driver, text_keywords=ENTER_KEYWORDS, timeout=2)
-        if el:
+        # 2. 若簡介頁無 mod/scorm 連結，進行語意彈性搜尋，尋找「進入教室/上課」按鈕
+        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課', '閱讀教材']
+        DANGER_KEYWORDS = ['退選', '取消', '刪除', 'Unenroll', 'Cancel', 'Delete', '登出', 'Logout', '搜尋', 'Search',
+                           '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire']
+        for css in ['a[href*="sso"]', 'a[href*="redirect"]', 'a.btn', 'button', 'a']:
             try:
-                href = el.get_attribute('href') or ''
-                txt = el.text or ''
-                if href and 'javascript' not in href.lower():
-                    print(f'  ▶️ 簡介頁語意 Fallback 跳轉: {href[:50]}')
-                    driver.get(href)
-                else:
-                    print(f'  ▶️ 簡介頁語意 Fallback 點擊: {txt[:30]}')
-                    driver.execute_script("arguments[0].click();", el)
-                time.sleep(3)
-                dismiss_alerts(driver)
-                sub_links = driver.find_elements(By.CSS_SELECTOR, 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm"]')
-                for sl in sub_links:
-                    shref = sl.get_attribute('href') or ''
-                    stext = (sl.text or sl.get_attribute('title') or '').strip()
-                    if 'mod/scorm/view.php' in shref:
-                        return shref, stext or shref
-                if sub_links:
-                    sl = sub_links[0]
-                    return sl.get_attribute('href') or '', (sl.text or '').strip()
+                elements = driver.find_elements(By.CSS_SELECTOR, css)
+                for el in elements:
+                    txt = ((el.text or '') + ' ' + (el.get_attribute('value') or '') + ' ' + (el.get_attribute('title') or '')).strip()
+                    if any(k in txt for k in ENTER_KEYWORDS) and not any(dk in txt for dk in DANGER_KEYWORDS):
+                        href = el.get_attribute('href') or ''
+                        if is_valid_scorm_href(href):
+                            return href, txt[:30]
             except Exception:
                 pass
 
         return '', ''
 
     def enter_from_scorm_view():
-        if has_multi_window_alert(dismiss_alerts(driver)):
-            print('  ⚠️ 臺北E大已偵測到其他上課視窗，停止本次進入播放器')
-            return False
+        msgs = dismiss_alerts(driver)
+        if has_multi_window_alert(msgs):
+            # 先 dismiss 再檢查，有時 player 頁面仍可使用
+            print('  ⚠️ 多重視窗警告 (enter_from_scorm_view)，dismiss 後檢查 player...')
+            time.sleep(1)
+            dismiss_alerts(driver)
         pause_and_mute_media(driver)
         if current_is_player():
             return True
@@ -724,23 +707,36 @@ def get_scorm_player_url(driver, wait, course_url):
                     value = btn.get_attribute('value') or ''
                     text = ((btn.text or '') + ' ' + value + ' ' + href).strip()
                     is_submit = (btn.get_attribute('type') or '').lower() == 'submit'
-                    
+                    # ⚠️ 嚴格過濾危險按鈕（退選、取消、刪除、登出、問卷、滿意度等）
+                    DANGER_KEYWORDS = ['退選', '取消', '刪除', 'Unenroll', 'Cancel', 'Delete', '登出', 'Logout', '搜尋', 'Search',
+                                       '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire']
+                    if any(dk in text for dk in DANGER_KEYWORDS):
+                        continue
+                    # 同時過濾 href 指向 feedback 模組的連結
+                    if href and 'mod/feedback' in href:
+                        continue
+
                     if href and 'mod/scorm/player.php' in href:
                         print(f'  ▶️ 進入 SCORM player (URL): {href}')
                         driver.get(href)
                     elif any(k in text for k in ['進入', '開始', '繼續', 'Start', 'Enter', 'Launch', '閱讀', '上課', '進入教室', '進入課程', '閱讀教材', '確定']):
                         print(f'  ▶️ 點擊 SCORM 進入按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
-                    elif is_submit:
+                    elif is_submit and any(k in text for k in ['scorm', 'player', 'lesson', 'class', '課程', '教材', '單元']):
                         print(f'  ▶️ 點擊 SCORM 提交按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
                     else:
                         continue
 
                     for _ in range(20):
-                        if has_multi_window_alert(dismiss_alerts(driver)):
-                            print('  ⚠️ 臺北E大已偵測到其他上課視窗，停止本次進入播放器')
-                            return False
+                        msgs2 = dismiss_alerts(driver)
+                        if has_multi_window_alert(msgs2):
+                            # 不立刻放棄，先檢查 player 是否仍可用
+                            time.sleep(1)
+                            dismiss_alerts(driver)
+                            if current_is_player():
+                                return True
+                            return False  # 被踢回才放棄
                         # 若開啟了新分頁或新視窗，自動切換至最新視窗
                         if len(driver.window_handles) > 1:
                             driver.switch_to.window(driver.window_handles[-1])
@@ -754,6 +750,14 @@ def get_scorm_player_url(driver, wait, course_url):
         return current_is_player()
 
     for attempt in range(1, 4):
+        if current_is_player():
+            pause_and_mute_media(driver)
+            return driver.current_url
+
+        if enter_from_scorm_view():
+            pause_and_mute_media(driver)
+            return driver.current_url
+
         scorm_url, label = find_scorm_link()
         if not scorm_url:
             print('  找不到 SCORM 連結，跳過')
@@ -768,9 +772,22 @@ def get_scorm_player_url(driver, wait, course_url):
             print(f'  ⚠️ 進入 SCORM 連結失敗: {e}')
             return None
 
-        if has_multi_window_alert(dismiss_alerts(driver)):
-            print('  ⚠️ 臺北E大已偵測到其他上課視窗，請關閉舊課程視窗後重試')
-            return None
+        msgs = dismiss_alerts(driver)
+        if has_multi_window_alert(msgs):
+            # 警告出現但不立刻放棄：dismiss 後檢查是否仍在 player
+            print('  ⚠️ 臺北E大多重視窗警告（可能是舊 session 殘留），dismiss 後繼續檢查...')
+            time.sleep(1.5)
+            dismiss_alerts(driver)
+            if current_is_player():
+                print('  ✅ 雖有多重視窗警告，但 player 頁面仍可使用，繼續上課')
+                pause_and_mute_media(driver)
+                return driver.current_url
+            # 被踢回課程頁，真的有衝突 → 重試
+            print('  ⚠️ 多重視窗警告後被踢回，重試...')
+            driver.get(course_url)
+            time.sleep(2)
+            dismiss_alerts(driver)
+            continue
 
         if enter_from_scorm_view():
             pause_and_mute_media(driver)
@@ -898,6 +915,9 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None):
     print(f'課程: {name[:60]}')
     if target_sec > 0:
         print(f'目標: {target_sec//60} 分鐘 | 已有: {already_sec//60} 分 {already_sec%60} 秒 | 還需: {remain_sec//60} 分 {remain_sec%60} 秒')
+        if remain_sec <= 0:
+            print(f'  ✅ 上課時數已達標 (已有 {already_sec//60} 分鐘 >= 目標 {target_sec//60} 分鐘)，無需進入 SCORM 播放器')
+            return True
     else:
         print('目標: 無認證時數要求，僅檢查章節狀態')
 
