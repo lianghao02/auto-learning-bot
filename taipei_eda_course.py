@@ -617,6 +617,9 @@ def get_scorm_player_url(driver, wait, course_url):
         def is_valid_scorm_href(h):
             if not h or 'javascript' in h.lower():
                 return False
+            # 排除問卷、測驗、討論區、作業等非 SCORM 模組 URL
+            if any(bad in h for bad in ['mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign', 'mod/page', 'mod/resource']):
+                return False
             # 排除指向當前課程主頁本身的連結，防止同頁重複載入
             clean_h = h.split('#')[0].rstrip('/')
             clean_curr = (driver.current_url or '').split('#')[0].rstrip('/')
