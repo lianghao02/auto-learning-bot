@@ -21231,5 +21231,93 @@
       ""
     ],
     "course": "科技養魚，鮮貨零距離【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "According to the audio file, what does the narrator mean when he says, “There's just one catch.”",
+    "answer": "1. There is just one problem.",
+    "type": "單選",
+    "options": [
+      "There is just one problem.",
+      "This is a one-time thing.",
+      "There is no replica.",
+      "There is just a ball to catch."
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "According to the video, the narrator says, “Dr. Yang focused on plentiful, recyclable aluminum, a metal with only one tiny drawback: no one had ever successfully used it to make a battery before.”",
+    "answer": "2. disadvantage",
+    "type": "單選",
+    "options": [
+      "kickback",
+      "disadvantage",
+      "drawer",
+      "characteristic"
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "A battery is made of four key components: an anode, electrolyte, separator, and a cathode. The anode and cathode exchange ions via liquid electrolyte, generating electricity.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "According to the audio file, what does the narrator mean when he says, “But can rethinking battery materials address a serious safety concern?”",
+    "answer": "2. Can changing battery materials solve the serious safety problem?",
+    "type": "單選",
+    "options": [
+      "Can altering the factory address lower the security barrier?",
+      "Can changing battery materials solve the serious safety problem?",
+      "Can applying reused materials arouse people’s safety awareness?",
+      "Can reorganizing the application materials help pass the safety review?"
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "The production cost of aluminum batteries was very high in the early stage of their development, so mass production was impossible. However, after Dr. Yang’s team started to produce some of the electrolytes themselves, they markedly reduced the production cost. As a result, aluminum batteries have become fairly price-competitive compared to lithium batteries.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "Which sentence best describes the picture?",
+    "answer": "2. Although the aluminum battery is cut open, it can even keep running without safety concerns.",
+    "type": "單選",
+    "options": [
+      "Before people use the aluminum battery, it needs to be cut open first.",
+      "Although the aluminum battery is cut open, it can even keep running without safety concerns.",
+      "When using the aluminum battery, we need to wear rubber gloves due to its toxicity.",
+      "Before getting rid of the aluminum battery, we need to cut it open and pour out the contents."
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "Aluminum batteries are not recyclable and toxic. This is because they are made of aluminum. There is scarce aluminum on earth, and it cannot be recycled and reused. Moreover, aluminum is a toxic material. Therefore, using aluminum batteries is not a good way.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
+  },
+  {
+    "question": "Aluminum batteries can recharge rapidly. Because they are produced by pairing up a graphitic-foam cathode with an aluminum anode, they can be charged in 60 seconds. This discovery opens up a world of possibilities for batteries.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "創新電池儲存科技，再生能源新突破【看紀錄片學英語 Game Show 夯科技】"
   }
 ]
