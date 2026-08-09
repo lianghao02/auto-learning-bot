@@ -2,14 +2,12 @@
 import sys
 import requests, zipfile, io, os, platform, shutil
 from pathlib import Path
-import urllib3
 import logging
 
 if sys.platform == "win32":
     import winreg
 
 logger = logging.getLogger("LearningPilot")
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 def get_local_chrome_version():
@@ -74,7 +72,7 @@ def download_best_chromedriver(folder_name="drivers"):
     logger.info(f"偵測到本機 Chrome 版本: {local_version}")
 
     def extract_driver(zip_url):
-        r = requests.get(zip_url, verify=False, timeout=30)
+        r = requests.get(zip_url, timeout=30)
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
             z.extractall(target_folder)
         driver = next(Path(target_folder).rglob("chromedriver.exe"), None)
@@ -99,7 +97,7 @@ def download_best_chromedriver(folder_name="drivers"):
     try:
         known_url = "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
         logger.info(f"正在尋找與 {local_version} 完全匹配的驅動...")
-        resp = requests.get(known_url, verify=False, timeout=15)
+        resp = requests.get(known_url, timeout=15)
         versions = resp.json().get("versions", [])
 
         exact = next((v for v in versions if v["version"] == local_version), None)
@@ -132,7 +130,7 @@ def download_best_chromedriver(folder_name="drivers"):
     try:
         json_url = "https://raw.githubusercontent.com/GoogleChromeLabs/chrome-for-testing/refs/heads/gh-pages/latest-patch-versions-per-build-with-downloads.json"
         logger.info(f"正在從 GitHub 獲取匹配 {prefix3} 的驅動資訊...")
-        resp = requests.get(json_url, verify=False, timeout=10)
+        resp = requests.get(json_url, timeout=10)
         data = resp.json()
         entry = data["builds"][prefix3]
         url = next(
@@ -211,7 +209,7 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
     logger.info(f"偵測到本機 Chrome 版本: {local_version}")
 
     def extract_driver(zip_url):
-        r = requests.get(zip_url, verify=False, timeout=30)
+        r = requests.get(zip_url, timeout=30)
         with zipfile.ZipFile(io.BytesIO(r.content)) as z:
             z.extractall(target_folder)
         driver = next(Path(target_folder).rglob("chromedriver.exe"), None)
@@ -233,7 +231,7 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
     try:
         known_url = "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
         logger.info(f"[milestone版] 策略一：尋找與 {local_version} 完全匹配的驅動...")
-        resp = requests.get(known_url, verify=False, timeout=15)
+        resp = requests.get(known_url, timeout=15)
         versions = resp.json().get("versions", [])
         exact = next((v for v in versions if v["version"] == local_version), None)
         if exact:
@@ -248,7 +246,7 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
     try:
         patch_url = "https://raw.githubusercontent.com/GoogleChromeLabs/chrome-for-testing/refs/heads/gh-pages/latest-patch-versions-per-build-with-downloads.json"
         logger.info(f"[milestone版] 策略二：查詢 {prefix3} patch 版本...")
-        resp = requests.get(patch_url, verify=False, timeout=10)
+        resp = requests.get(patch_url, timeout=10)
         entry = resp.json()["builds"][prefix3]
         url = next(d["url"] for d in entry["downloads"]["chromedriver"] if d["platform"] == "win64")
         logger.info(f"策略二成功，下載: {url}")
@@ -260,7 +258,7 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
     try:
         milestone_url = "https://googlechromelabs.github.io/chrome-for-testing/latest-versions-per-milestone-with-downloads.json"
         logger.info(f"[milestone版] 策略三：查詢 milestone {major} 的 driver...")
-        resp = requests.get(milestone_url, verify=False, timeout=15)
+        resp = requests.get(milestone_url, timeout=15)
         data = resp.json()
         entry = data["milestones"][major]
         url = next((d["url"] for d in entry["downloads"].get("chromedriver", []) if d["platform"] == "win64"), None)
