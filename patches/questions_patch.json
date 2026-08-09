@@ -21077,5 +21077,67 @@
       ""
     ],
     "course": "公務書信基礎英語"
+  },
+  {
+    "question": "「我們需要量測您的額溫。」的英文可以說：We need to check your forehead temperature.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "Check-____ Counter. 請為以上句子選出英式的用法。",
+    "answer": "out",
+    "type": "單選",
+    "options": [
+      "in",
+      "out",
+      "on",
+      "to"
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「請自便」這句正確的用法是：Please make yourself at home.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "宣導「勿將衛生紙以外的東西沖進馬桶。」的英文標示為：Please do not flush anything except toilet paper.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "很多人會利用google翻譯來做翻譯的輔助，google不見得每一個翻譯出來的英文句子都是正確的。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "\"at the corner\" 翻譯為轉角的意思。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
   }
 ]
