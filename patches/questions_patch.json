@@ -21649,5 +21649,27 @@
       "Add some fat and then set the pudding as it cools."
     ],
     "course": "簡單的味道，不簡單的學問【看紀錄片學英語  Game Show 夯科技】"
+  },
+  {
+    "question": "Please read the conversation below and choose the correct option to fill in the blanks.",
+    "answer": "2",
+    "type": "單選",
+    "options": [
+      "cargo ship; yacht; submarine",
+      "submarine; cargo ship; yacht",
+      "yacht; submarine; cargo ship",
+      "cargo ship; submarine; yacht"
+    ],
+    "course": "跨越淡水河的奇蹟：淡江大橋的建設之路"
+  },
+  {
+    "question": "Please read the following paragraph and determine whether it is TRUE or FALSE.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "跨越淡水河的奇蹟：淡江大橋的建設之路"
   }
 ]
