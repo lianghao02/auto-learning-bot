@@ -451,16 +451,26 @@ def _clean_status(text):
     return str(text or '').strip()
 
 def is_study_incomplete(course):
+    done_str = _clean_status(course.get('done'))
+    # 💡 若網頁顯示「已完成」，代表該課程已正式結案
+    if '已完成' in done_str or done_str == '完成':
+        return False
+    # 💡 若網頁顯示「未完成」，則代表尚需閱讀時數或未完工，一律歸類為待處理課程
+    if '未完成' in done_str:
+        return True
+
+    # 備用時數比對：若當前時數小於認證時數（例如 3 小時），亦屬於未完成
     try:
         cert_hrs = float(course.get('cert_hrs') or 0)
     except Exception:
         cert_hrs = 0
     if cert_hrs > 0:
-        criteria_sec = int(cert_hrs * 3600 * 0.5)
+        target_sec = int(cert_hrs * 3600)
         already_sec = parse_study_time(course.get('study', ''))
-        if already_sec >= criteria_sec:
-            return False
-    return '未完成' in _clean_status(course.get('done'))
+        if target_sec > 0 and already_sec < target_sec:
+            return True
+            
+    return False
 
 def is_questionnaire_pending(course):
     quest = _clean_status(course.get('quest'))
@@ -923,10 +933,14 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None):
         cert_hrs = 0
 
     target_percentage = float(config.get('target_percentage', 1.0) or 1.0)
-    # Taipei E-da completion time is half of the certified hours.
-    # Example: 1 certified hour requires 30 minutes; target_percentage adds buffer.
-    criteria_sec = int(cert_hrs * 3600 * 0.5)
-    target_sec = int(criteria_sec * target_percentage)
+    # 💡 判斷是否為套裝課程/組合課程（如認證時數 3 小時），此類課程需補滿完整認證時數
+    is_package = '套裝' in name or '組合' in name or cert_hrs >= 2.0
+    if is_package:
+        target_sec = int(cert_hrs * 3600 * target_percentage)
+    else:
+        criteria_sec = int(cert_hrs * 3600 * 0.5)
+        target_sec = int(criteria_sec * target_percentage)
+
     already_sec = parse_study_time(course.get('study', ''))
     remain_sec = max(target_sec - already_sec, 0)
 
