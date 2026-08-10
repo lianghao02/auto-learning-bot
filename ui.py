@@ -2413,20 +2413,30 @@ class PlatformTabPanel(QWidget):
         self.log_view.document().setMaximumBlockCount(300)
         self.log_view.setStyleSheet("""
             QTextEdit {
-                background: rgba(36, 41, 51, 0.7);
-                border: 1px solid rgba(216, 222, 233, 0.15);
-                border-radius: 10px;
-                color: #ECEFF4;
+                background-color: #111827;
+                border: 1px solid #1F2937;
+                border-radius: 12px;
+                color: #F9FAFB;
+                font-family: 'Consolas', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Segoe UI', monospace;
                 font-size: 13px;
-                padding: 8px;
+                padding: 12px;
+                line-height: 1.5;
             }
             QScrollBar:vertical {
-                background: transparent;
-                width: 6px;
+                background: #111827;
+                width: 8px;
+                border-radius: 4px;
             }
             QScrollBar::handle:vertical {
-                background: rgba(216, 222, 233, 0.3);
-                border-radius: 3px;
+                background: #374151;
+                border-radius: 4px;
+                min-height: 24px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #4B5563;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
             }
         """)
         layout.addWidget(self.log_view)
@@ -2549,19 +2559,28 @@ class PlatformTabPanel(QWidget):
             pass
 
         level_colors = {
-            "INFO": "#0284C7",
-            "WARNING": "#D97706",
-            "WARN": "#D97706",
-            "ERROR": "#DC2626",
-            "CRITICAL": "#EA580C",
-            "DEBUG": "#6B7280",
+            "INFO": "#38BDF8",      # 亮天藍
+            "WARNING": "#FB923C",   # 高亮暖橘
+            "WARN": "#FB923C",
+            "ERROR": "#F87171",     # 鮮紅亮粉
+            "CRITICAL": "#F43F5E",
+            "DEBUG": "#9CA3AF",
         }
-        level_color = level_colors.get(level_part, "#6B7280")
+        level_color = level_colors.get(level_part, "#9CA3AF")
+
+        # 動態判斷訊息內容高亮顏色
+        msg_color = "#F3F4F6"  # 預設亮白銀
+        if any(k in msg_part for k in ["✅", "🏆", "成功", "圓滿達成", "完成"]):
+            msg_color = "#34D399"  # 螢光翠綠
+        elif any(k in msg_part for k in ["⚠️", "警告", "重試", "失敗", "跳過"]):
+            msg_color = "#FCD34D"  # 亮琥珀黃
+        elif "研習進度" in msg_part or "時數" in msg_part:
+            msg_color = "#60A5FA"  # 亮冰藍
 
         html = (
-            f'<span style="color:#6B7280;">{esc(time_part)}</span> '
+            f'<span style="color:#FBBF24; font-weight:600; font-family:\'Consolas\',monospace;">{esc(time_part)}</span> '
             f'<span style="color:{level_color}; font-weight:bold;">[{esc(level_part)}]</span> '
-            f'<span style="color:#111827;">{esc(msg_part)}</span>'
+            f'<span style="color:{msg_color}; font-family:\'Consolas\',monospace;">{esc(msg_part)}</span>'
         )
 
         self.log_view.append(html)

@@ -970,8 +970,12 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None):
         all_done = len(pending) == 0
         time_ok = elapsed_sec >= remain_sec
 
+        if remain_sec > 0 and elapsed_sec >= remain_sec:
+            print(f'  ✅ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，結束課程研習！')
+            break
+
         if all_done and (time_ok or remain_sec == 0):
-            print(f'  ✅ 章節完成且本輪補時達標，已補跑 {elapsed_sec/60:.1f} 分鐘')
+            print(f'  ✅ 所有章節均已完成，已補跑 {elapsed_sec/60:.1f} 分鐘')
             break
 
         to_visit = pending if pending else list(scoid_order)
@@ -982,7 +986,8 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None):
                 return False
 
             elapsed_sec = time.time() - start_time
-            if not pending and remain_sec > 0 and elapsed_sec >= remain_sec:
+            if remain_sec > 0 and elapsed_sec >= remain_sec:
+                print(f'  ✅ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，跳出學習！')
                 break
 
             elapsed_sec = time.time() - start_time
