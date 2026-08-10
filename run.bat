@@ -8,85 +8,46 @@ echo ============================================================
 echo Auto Learning Bot - Initializing System...
 echo ============================================================
 
-:: 1. Check existing .venv
+:: 1. Try system Python first if PySide6 is ready
+python -c "import PySide6" >nul 2>&1
+if not errorlevel 1 goto LAUNCH_SYS
+
+:: 2. Try .venv if PySide6 is ready
 if exist ".venv\Scripts\python.exe" (
-    ".venv\Scripts\python.exe" -c "import PySide6, selenium, requests" >nul 2>&1
-    if not errorlevel 1 (
-        echo [OK] Valid virtual environment detected.
-        goto LAUNCH_VENV
-    )
-    echo [INFO] Existing .venv is incomplete or missing packages. Installing dependencies...
-    goto INSTALL_DEPS
+    ".venv\Scripts\python.exe" -c "import PySide6" >nul 2>&1
+    if not errorlevel 1 goto LAUNCH_VENV
 )
 
-:: 2. Search Python with venv support
-set PYTHON_CMD=python
-
-%PYTHON_CMD% -c "import venv" >nul 2>&1
-if errorlevel 1 (
-    if exist "python\python.exe" (
-        python\python.exe -c "import venv" >nul 2>&1
-        if not errorlevel 1 (
-            set PYTHON_CMD=python\python.exe
-            echo [INFO] Found Python in python folder.
-        )
-    )
+:: 3. Try embedded Python if PySide6 is ready
+if exist "python_embed\python.exe" (
+    "python_embed\python.exe" -c "import PySide6" >nul 2>&1
+    if not errorlevel 1 goto LAUNCH_EMBED
+    echo [INFO] Installing required GUI packages into embedded Python...
+    "python_embed\python.exe" -m pip install -r requirements.txt
+    goto LAUNCH_EMBED
 )
 
-:: Check Python availability & venv capability
-%PYTHON_CMD% -c "import venv" >nul 2>&1
-if errorlevel 1 (
-    echo ============================================================
-    echo [ERROR] Python 3.10+ with 'venv' module not found!
-    echo.
-    echo Solutions:
-    echo   1. Install official Python 3.10+ (check Add Python to PATH)
-    echo ============================================================
-    pause
-    exit /b 1
-)
-
-:: 3. Check config.json
-if not exist "config.json" (
-    if exist "config.json.example" (
-        echo [INFO] Copying default config.json...
-        copy "config.json.example" "config.json" >nul
-    )
-)
-
-:: 4. Create virtual environment using detected Python
-echo [INFO] Creating virtual environment (.venv)...
-%PYTHON_CMD% -m venv .venv
-if not exist ".venv\Scripts\activate.bat" (
-    echo ============================================================
-    echo [ERROR] Failed to create virtual environment (.venv).
-    echo Please make sure system Python includes the venv module.
-    echo ============================================================
-    pause
-    exit /b 1
-)
-
-:INSTALL_DEPS
+:: 4. Fallback: Create .venv
+echo [INFO] Creating new virtual environment (.venv)...
+python -m venv .venv
 call .venv\Scripts\activate.bat
-echo [INFO] Installing required packages...
-python -m pip install --upgrade pip -q
 python -m pip install -r requirements.txt
-echo [OK] Package installation completed!
+goto LAUNCH_VENV
+
+:LAUNCH_SYS
+echo [OK] Launching GUI with system Python...
+echo ============================================================
+start "" pythonw ui.py
+exit /b 0
 
 :LAUNCH_VENV
-echo [OK] Launching GUI...
+echo [OK] Launching GUI with virtual environment...
 echo ============================================================
-
-".venv\Scripts\python.exe" -c "import PySide6, selenium, requests" >"startup_error.log" 2>&1
-if errorlevel 1 (
-    echo [ERROR] Virtual environment is incomplete or failed to launch.
-    echo ------------------------------------------------------------
-    type "startup_error.log"
-    echo ------------------------------------------------------------
-    pause
-    exit /b 1
-)
-if exist "startup_error.log" del /Q "startup_error.log" >nul 2>&1
-
 start "" .venv\Scripts\pythonw.exe ui.py
+exit /b 0
+
+:LAUNCH_EMBED
+echo [OK] Launching GUI with embedded Python...
+echo ============================================================
+start "" python_embed\pythonw.exe ui.py
 exit /b 0
