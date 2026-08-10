@@ -1,6 +1,6 @@
-# 🤖 行政效能領航員 auto-learning-bot (V2.1.9)
+# 行政效能領航員 (auto-learning-bot)
 
-[![Version](https://img.shields.io/badge/version-V2.1.9-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
+[![Version](https://img.shields.io/badge/version-V2.2.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
 [![Python](https://img.shields.io/badge/Python-3.14-green.svg)](https://python.org)
 [![Playwright](https://img.shields.io/badge/Driver-Playwright-purple.svg)](https://playwright.dev)
 
