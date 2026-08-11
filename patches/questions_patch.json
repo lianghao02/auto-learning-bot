@@ -26324,5 +26324,17 @@
       "Qing Dynasty, School of Political Science, 2000"
     ],
     "course": "前進將軍漁港 - 開啟美食饗宴之旅"
+  },
+  {
+    "question": "Select the phrase that best completes the sentence.",
+    "answer": "flying fish roe",
+    "type": "單選",
+    "options": [
+      "flying fish roe",
+      "squid",
+      "whitebait",
+      "cherry shrimp"
+    ],
+    "course": "探索台灣最東邊的漁村：馬崗漁港"
   }
 ]
