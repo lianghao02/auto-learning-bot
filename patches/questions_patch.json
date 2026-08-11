@@ -25749,5 +25749,75 @@
       ""
     ],
     "course": "都會型社區營造案例分享-南機場社區"
+  },
+  {
+    "question": "Viruses with new characteristics generated through serial passaging of a virus are not necessarily all gain-of-function (GOF).",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
+  },
+  {
+    "question": "Performing infection experiments in a BSL-3 laboratory is almost the same as in a BSL-2 laboratory, except for wearing additional personal protective equipment.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
+  },
+  {
+    "question": "Since we don't know the outcome, experiments involving viral modification can be performed first, and a biosafety permit can be applied for after the results show that the modified virus has gained function.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
+  },
+  {
+    "question": "Performing infection experiments inside a biosafety cabinet is primarily to ensure that the cells used in my experiment do not get contaminated.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
+  },
+  {
+    "question": "The experimental methods and workflows I use for Risk Group 2 (RG-2) viruses in a BSL-2 laboratory can be identically applied to Risk Group 3 (RG-3) viruses in a BSL-3 laboratory.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
+  },
+  {
+    "question": "Even though I have experience handling Risk Group 2 (RG-2) viruses, I must still undergo prior assessment, training, and evaluation to obtain operational qualifications if I want to perform experiments with Risk Group 3 (RG-3) viruses, .",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
+  },
+  {
+    "question": "Monitoring viruses emerging in nature does not constitute gain-of-function (GOF) research; however, if a potentially high-risk viral strain is detected, it should be reported to the regulatory authorities as soon as possible.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Biosafety and other considerations for research with viruses"
   }
 ]
