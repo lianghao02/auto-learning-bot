@@ -26300,5 +26300,29 @@
       ""
     ],
     "course": "從聯合國《兒童權利公約》探討兒童及青少年人權"
+  },
+  {
+    "question": "After watching the video, Ivy wants to organize the key points she has learned but has overlooked some parts. Please help her complete them.",
+    "answer": "2",
+    "type": "單選",
+    "options": [
+      "Fort Zeelandia, trading hub, business center",
+      "Chihkan Tower, trading hub, business center",
+      "Fort Zeelandia, industrial headquarters, industrial development center",
+      "Chihkan Tower, industrial headquarters, industrial development center"
+    ],
+    "course": "前進將軍漁港 - 開啟美食饗宴之旅"
+  },
+  {
+    "question": "After finishing the course, Roy and Wayne, who have a keen interest in historical sites, are passionately discussing Tainan's Confucius Temple. However, they have overlooked some aspects, please help them complete the content.",
+    "answer": "3",
+    "type": "單選",
+    "options": [
+      "Ming Dynasty, Premier Academy of Taiwan, 1977",
+      "Ming Dynasty, School of Political Science, 2000",
+      "Qing Dynasty, Premier Academy of Taiwan, 1977",
+      "Qing Dynasty, School of Political Science, 2000"
+    ],
+    "course": "前進將軍漁港 - 開啟美食饗宴之旅"
   }
 ]
