@@ -1704,22 +1704,6 @@ class AdminEfficiencyPilot:
                     logger.info(
                         "   📝 execute_script 返回 None（頁面已跳轉，推測 submit 成功）"
                     )
-                else:
-                    logger.info(
-                        f"   📝 submit診斷: total={result.get('total')}, clicked={result.get('clicked')}, info={result.get('info')}"
-                    )
-                    if result.get("clicked") is None:
-                        # fallback: JS form submit（responseForm）
-                        logger.warning(
-                            "   ⚠️ 所有按鈕都被隱藏，嘗試 JS form.submit()..."
-                        )
-                        self.driver.execute_script(
-                            """
-                            var form = document.querySelector('form[name="responseForm"]');
-                            if (!form) form = document.querySelector('form[action*="save_answer"]');
-                            if (form) { form.submit(); }
-                            """
-                        )
             except Exception as e:
                 logger.warning(f"   ⚠️ 送出按鈕處理失敗: {e}")
                 return False
@@ -2104,7 +2088,7 @@ class AdminEfficiencyPilot:
     @staticmethod
     def _is_logout_text(text) -> bool:
         text = str(text or "")
-        return any(kw in text for kw in ("閒置", "重新登入", "登出", "登入後再學習"))
+        return any(kw in text for kw in ("閒置", "重新登入", "登出", "登入後再學習", "請先登入", "請登入", "登入會員", "mooc/index.php", "login"))
 
     def _accept_alert_if_present(self) -> str:
         try:
