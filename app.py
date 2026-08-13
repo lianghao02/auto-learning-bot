@@ -25,6 +25,7 @@ import psutil
 import atexit
 import signal
 import traceback
+from utils.config_io import get_db_connection
 
 # 強制 stdout/stderr 使用 UTF-8，避免在 cp950 環境下因 emoji 崩潰
 if hasattr(sys.stdout, "buffer"):
@@ -118,9 +119,9 @@ def _is_newer_version(latest, current):
 
 
 class AdminEfficiencyPilot:
-    VERSION = "V2.2.0"
+    VERSION = "V2.2.1"
     CHANGELOG = (
-        "V2.2.0 旗艦里程碑：全系統莫蘭迪/Win11美學、無痕托盤與Auto-Healing終極雙開\n"
+        "V2.2.1：新增本次跳過測驗先做問卷、修正執行鎖與更新檢查來源\n"
         "• 新增全系統 Windows 11 經典 Fluent / 莫蘭迪高質感介面與 QProgressBar 視覺進度條\n"
         "• 新增 Windows 右下角系統列 (System Tray Icon) 常駐、點擊 X 自動無痕隱藏與托盤右鍵選單\n"
         "• 新增 Auto-Healing 瀏覽器連線靜默修復機制（最多 3 次上限，零積累、零崩潰）\n"
@@ -195,8 +196,7 @@ class AdminEfficiencyPilot:
         db_path = os.path.join(base_dir, "questions.db")
         if not loaded and os.path.exists(db_path):
             try:
-                conn = sqlite3.connect(db_path)
-                conn.row_factory = sqlite3.Row
+                conn = get_db_connection(db_path)
                 rows = conn.execute(
                     "SELECT question, option_a, option_b, option_c, option_d, answer FROM questions"
                 ).fetchall()
@@ -714,7 +714,7 @@ class AdminEfficiencyPilot:
         db_path = os.path.join(_base, "questions.db")
         try:
             with GLOBAL_DB_LOCK:
-                conn = sqlite3.connect(db_path, timeout=30.0)
+                conn = get_db_connection(db_path, timeout=30.0)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS questions (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -824,7 +824,7 @@ class AdminEfficiencyPilot:
                 else os.path.dirname(os.path.abspath(__file__))
             )
             db_path = os.path.join(_base, "questions.db")
-            conn = sqlite3.connect(db_path)
+            conn = get_db_connection(db_path)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS questions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2632,9 +2632,13 @@ class AdminEfficiencyPilot:
 
             # 時數達標，嘗試自動作答測驗，通過後填寫問卷
             if self.running:
-                exam_passed = self.auto_exam(course)
-                if self.running and exam_passed:
+                if self.config.get("skip_exam_for_session", False):
+                    logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
                     self.auto_questionnaire(course)
+                else:
+                    exam_passed = self.auto_exam(course)
+                    if self.running and exam_passed:
+                        self.auto_questionnaire(course)
 
             logger.info("   🔄 返回學習概況清單...")
             self.driver.get(self.stat_url)
@@ -2694,7 +2698,7 @@ class AdminEfficiencyPilot:
 
     def check_update(self):
         """啟動時檢查 GitHub 是否有新版本，有則透過 UI 發送通知訊號"""
-        VERSION_URL = "https://raw.githubusercontent.com/waynelord0628-beep/auto-learning-bot/main/version.txt"
+        VERSION_URL = "https://raw.githubusercontent.com/lianghao02/auto-learning-bot/main/version.txt"
         DOWNLOAD_URL = "https://drive.google.com/drive/u/0/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g"
         try:
             resp = requests.get(VERSION_URL, timeout=5)
@@ -2973,6 +2977,12 @@ class AdminEfficiencyPilot:
                             except Exception as e:
                                 logger.debug(f"導航課程失敗: {e}")
 
+                            if self.config.get("skip_exam_for_session", False):
+                                logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
+                                if self.running:
+                                    self.auto_questionnaire(c)
+                                self._completed_in_session.add(c_id)
+                                continue
                             passed = self.auto_exam(c)
                             if passed and self.running:
                                 self.auto_questionnaire(c)

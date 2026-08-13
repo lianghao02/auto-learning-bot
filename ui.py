@@ -12,6 +12,11 @@ if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     if sys._MEIPASS not in sys.path:
         sys.path.insert(0, sys._MEIPASS)
 
+# 確保腳本所在目錄納入 sys.path（防範 embedded Python 環境下找不到同目錄模組）
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
 from app import AdminEfficiencyPilot
 from PySide6.QtWidgets import (
     QApplication,
@@ -2370,6 +2375,14 @@ class PlatformTabPanel(QWidget):
         self.info_lbl = QLabel(f"{platform_title}控制台")
         self.info_lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 14px; background: transparent;")
 
+        self.skip_exam_checkbox = QCheckBox("本次跳過測驗，先做問卷")
+        self.skip_exam_checkbox.setToolTip(
+            "只套用於本次按下開始執行的流程，不會儲存到帳號或系統設定。"
+        )
+        self.skip_exam_checkbox.setStyleSheet(
+            "QCheckBox { color: #92400E; font-weight: bold; font-size: 13px; background: transparent; }"
+        )
+
         self.start_btn = QPushButton("▶️ 開始執行")
         self.start_btn.setStyleSheet("""
             QPushButton {
@@ -2401,6 +2414,7 @@ class PlatformTabPanel(QWidget):
         self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
         btn_bar.addWidget(self.info_lbl)
+        btn_bar.addWidget(self.skip_exam_checkbox)
         btn_bar.addStretch()
         btn_bar.addWidget(self.start_btn)
         btn_bar.addWidget(self.stop_btn)
@@ -3121,6 +3135,10 @@ class MainWindow(QWidget):
         full_config.update(config_from_entry.get("settings", {}))
         # 🔒 實時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
         full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
+        panel = self.immersive.taipei_panel if key == "taipei_eda" else self.immersive.egov_panel
+        full_config["skip_exam_for_session"] = panel.skip_exam_checkbox.isChecked()
+        if full_config["skip_exam_for_session"]:
+            logger.info("本次執行已啟用「跳過測驗，先做問卷」模式。")
 
         if key == "taipei_eda":
             # 檢查並自動清理已死掉的舊 Thread
@@ -3225,8 +3243,8 @@ class MainWindow(QWidget):
         from app import AdminEfficiencyPilot
         import threading, requests as _req
 
-        VERSION_URL = "https://raw.githubusercontent.com/waynelord0628-beep/auto-learning-bot/main/version.txt"
-        RELEASE_API = "https://api.github.com/repos/waynelord0628-beep/auto-learning-bot/releases/latest"
+        VERSION_URL = "https://raw.githubusercontent.com/lianghao02/auto-learning-bot/main/version.txt"
+        RELEASE_API = "https://api.github.com/repos/lianghao02/auto-learning-bot/releases/latest"
         FALLBACK_URL = "https://drive.google.com/drive/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g?usp=sharing"
         current_version = AdminEfficiencyPilot.VERSION
 
