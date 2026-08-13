@@ -4468,5 +4468,35 @@
       ""
     ],
     "course": "產業AI化與資安韌性"
+  },
+  {
+    "question": "如果用戶在與ChatGPT的對話中分享敏感個資，可能侵害隱私。雖ChatGPT的設計會尊重用戶隱私，但仍需謹慎與其互動",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "生成式AI之智慧治理與風險管控-以歐盟人工智慧法案（EU Artificial Intelligence Act）為中心"
+  },
+  {
+    "question": "依據行政院及所屬機關（構）使用生成式AI參考指引，製作機密文書得由業務承辦人使用生成式AI撰寫，但須註明並經資安單位審閱",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "生成式AI之智慧治理與風險管控-以歐盟人工智慧法案（EU Artificial Intelligence Act）為中心"
+  },
+  {
+    "question": "若個資並非直接經由當事人蒐集，即有資訊揭露及告知義務，故生成式AI利用網路爬蟲及進行訓練資料之處理，並非當事人，必須資訊揭露",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "生成式AI之智慧治理與風險管控-以歐盟人工智慧法案（EU Artificial Intelligence Act）為中心"
   }
 ]
