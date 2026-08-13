@@ -866,5 +866,39 @@
       "以上皆是"
     ],
     "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "If I 「」time, I would go to Japan. 「」應用下列何者？",
+    "answer": "had",
+    "type": "單選",
+    "options": [
+      "have",
+      "has",
+      "had",
+      "having"
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "My father spends a lot of money 「」magazines. 「」應使用下列何者介系詞？",
+    "answer": "on",
+    "type": "單選",
+    "options": [
+      "in",
+      "on",
+      "by",
+      "at"
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "\"Men take up about 1/3 of the students.\" 此句的意思是指男生負責照顧1/3的學生。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
   }
 ]
