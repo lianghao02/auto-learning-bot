@@ -2700,5 +2700,53 @@
       "即使是軟體供應商，已經通過ISMS與ISO27001，仍然可能在供應商被入侵後，導致下游客戶端全部被駭客入侵。UNC2452事件（SolarWinds事件），就是其中案例之一"
     ],
     "course": "日常網路使用者應注意的資訊安全(113)"
+  },
+  {
+    "question": "由該國家立法規定，其國家範圍的軟體與服務，需要將蒐集到的公民資料，繳交予該國政府控制管理。是下列哪個國家？",
+    "answer": "中國",
+    "type": "單選",
+    "options": [
+      "台灣",
+      "日本",
+      "德國",
+      "中國"
+    ],
+    "course": "日常網路使用者應注意的資訊安全(113)"
+  },
+  {
+    "question": "下列何者「不是」常見網路社交工程（Social Engineering）的攻擊手法？",
+    "answer": "海龜式攻擊(Sea ?Turtle Attack)",
+    "type": "單選",
+    "options": [
+      "垃圾式攻擊（Baiting Spam Mail Attack）",
+      "魚叉式攻擊（Spear Phishing Attack）",
+      "水坑式攻擊（Watering Hole Attack）",
+      "海龜式攻擊(Sea ?Turtle Attack)"
+    ],
+    "course": "日常網路使用者應注意的資訊安全(113)"
+  },
+  {
+    "question": "在遇到加密勒索攻擊的時候，可以參考其中的過往解密工具程式，是下列哪個網站？",
+    "answer": "https://www.nomoreransom.org/",
+    "type": "單選",
+    "options": [
+      "https://www.nomoreransom.org/",
+      "https://haveibeenpwned.com/",
+      "https://www.virustotal.com/",
+      "https://www.google.com"
+    ],
+    "course": "日常網路使用者應注意的資訊安全(113)"
+  },
+  {
+    "question": "請問資訊安全的基本觀念\"CIA\"當中，I這個項目，代表下列哪個項目？",
+    "answer": "完整性（或稱 一致性）",
+    "type": "單選",
+    "options": [
+      "保密性（或稱機密性）",
+      "完整性（或稱 一致性）",
+      "可用性（或稱可用率）",
+      "安全性（或稱資安性）"
+    ],
+    "course": "日常網路使用者應注意的資訊安全(113)"
   }
 ]
