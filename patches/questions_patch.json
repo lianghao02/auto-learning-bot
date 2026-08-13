@@ -668,5 +668,27 @@
       ""
     ],
     "course": "輕鬆搞定英語公務書信(上)"
+  },
+  {
+    "question": "下列何者為從屬連接詞？",
+    "answer": "because",
+    "type": "單選",
+    "options": [
+      "because",
+      "nor",
+      "for",
+      "以上皆是"
+    ],
+    "course": "輕鬆搞定英語公務書信(上)"
+  },
+  {
+    "question": "Sweden為瑞典人的英文名稱？",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "輕鬆搞定英語公務書信(上)"
   }
 ]
