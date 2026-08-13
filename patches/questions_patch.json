@@ -800,5 +800,71 @@
       "以上皆是"
     ],
     "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "下列何者用法錯誤？",
+    "answer": "I am pleasured to meet you.",
+    "type": "單選",
+    "options": [
+      "I am delighted to meet you.",
+      "I am glad to meet you.",
+      "I am pleasured to meet you.",
+      "以上用法皆正確"
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "Cost 當動詞時，通常以“物品”為主詞，來說明該物品的價值？",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "當表示歡迎時可用「extend my deepest condolences to...」",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "「First of all」放於句首，代表「首先」。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "下列何者可用於拒絕或否定？",
+    "answer": "以上皆可",
+    "type": "單選",
+    "options": [
+      "we regret that",
+      "unfortunately",
+      "I am afraid that",
+      "以上皆可"
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
+  },
+  {
+    "question": "下列何者可用做“排名”的動詞?",
+    "answer": "以上皆是",
+    "type": "單選",
+    "options": [
+      "come",
+      "rank",
+      "finish",
+      "以上皆是"
+    ],
+    "course": "輕鬆搞定英語公務書信(下)"
   }
 ]
