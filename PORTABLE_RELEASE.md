@@ -10,9 +10,9 @@ python build_portable_release.py
 
 建置結果位於 `dist/`：
 
-- `行政效能領航員_V2.2.0_Portable/`：解壓後的完整離線版本。
-- `行政效能領航員_V2.2.0_Portable.zip`：交付第三人的壓縮檔。
-- `行政效能領航員_V2.2.0_Portable.zip.sha256`：ZIP 完整性雜湊。
+- `行政效能領航員_V2.2.1_Portable/`：解壓後的完整離線版本。
+- `行政效能領航員_V2.2.1_Portable.zip`：交付第三人的壓縮檔。
+- `行政效能領航員_V2.2.1_Portable.zip.sha256`：ZIP 完整性雜湊。
 
 建置過程需要網路下載 Windows Python 3.11 x64 套件；使用者端不需要網路安裝依賴。
 

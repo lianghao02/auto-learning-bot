@@ -1,23 +1,33 @@
-# 行政效能領航員 (auto-learning-bot)
+# 行政效能領航員（auto-learning-bot）
 
-[![Version](https://img.shields.io/badge/version-V2.2.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
-[![Python](https://img.shields.io/badge/Python-3.14-green.svg)](https://python.org)
-[![Playwright](https://img.shields.io/badge/Driver-Playwright-purple.svg)](https://playwright.dev)
+[![Version](https://img.shields.io/badge/version-V2.2.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/)
+[![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 
-## 🏆 V2.1.9 里程碑：智慧題庫自動配對與快取引擎
+行政效能領航員提供臺北 E 大與 e 等公務園的課程學習輔助流程，包含時數累積、測驗與問卷處理，以及本機題庫比對。
 
-## 📖 重大更新摘要 (Summary)
+## V2.2.1 重點
 
-本版本宣告行政效能領航員邁入全新世代，全面導入 Playwright 無頭瀏覽器驅動與 SQLite3 本機題庫快取引擎。
+- 新增「本次跳過測驗，先做問卷」選項；此選項不會寫入帳號或系統設定。
+- 僅在課程時數已達標時，才會略過測驗並嘗試填寫問卷；時數不足的課程不會進測驗或問卷，並會跳至下一門。
+- 臺北 E 大執行鎖改以執行中的 PID 判斷，不會因流程超過六小時而誤判失效。
+- 更新檢查改為目前專案的 GitHub `origin`：`lianghao02/auto-learning-bot`。
 
-傳統行政人員在進行長時數研習與在職訓練時，經常面臨網頁倒數計時鎖定、測驗題目重覆率高但搜尋耗時，甚至因網路斷線導致數小時研習時數付之東流的慘痛困境。本版本透過獨家 DOM 事件攔截器與智慧文字相似度演算法，可在 **3 秒內** 自動辨識題目關鍵字並比對最佳解答，達成零人工介入的流暢自動化驗證。
+## 執行方式
 
-## ✨ 重點更新特色
+1. 複製 `config.json.example` 為 `config.json`，依帳號設定內容。
+2. 以 Windows 執行 `run.bat`，或使用已安裝依賴的 Python 執行 `ui.py`。
+3. 在平台頁籤按「開始執行」。如本次只要優先處理已達時數的問卷，可勾選「本次跳過測驗，先做問卷」。
 
-- 🧠 **SQLite3 本機題庫智慧快取 (自動模糊比對演算法)**：
-  - 實作 `.taipei_eda_course.lock` 狀態保護鎖與模糊搜尋 (Fuzzy Search) 比對機制。
-  - 將過往手動查閱題庫的 10 分鐘耗時大幅縮短至 **0.5 秒**，準確率達 99.8%。
+## 注意事項
 
-- 🛡️ **防中斷心跳包機制 (DOM Event Bypass)**：
-  - 針對防作弊倒數計時器實作注入式心跳包 (Heartbeat Hook)，自動模擬滾動事件與視窗焦點 (Focus Event)。
-  - 完全杜絕因頁面休眠造成的時數採計中斷問題，確保 100% 穩定研習完畢。
+- 平台可能限制測驗未通過時不可填問卷；程式會記錄結果後繼續下一門，不會假定問卷一定可填。
+- 請勿在同一臺電腦同時啟動兩個臺北 E 大流程。
+- `config.json` 可能包含帳密或 API 金鑰，請勿提交至版本庫。
+
+## 開發驗證
+
+```powershell
+python -m unittest discover -s tests -v
+python -m py_compile app.py ui.py taipei_eda_course.py
+```

@@ -33,7 +33,7 @@ _logfile = open("taipei_eda_course.log", "a", encoding="utf-8")
 # ⚠️ 保留原始 sys.stdout，讓 run_taipei_eda 的 _UILog 作為唯一 UI 路由
 # 不在模組載入時替換 sys.stdout，避免 _Tee 疊套造成訊息重複
 
-import requests, time, urllib3, cv2, numpy as np, ddddocr, json, random, re, os
+import requests, time, urllib3, cv2, numpy as np, ddddocr, json, random, re, os, threading
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -94,12 +94,14 @@ def find_element_resilient(driver, css_selector=None, text_keywords=None, tag_na
                 continue
     return None
 
+_DRIVER_LOCK = threading.Lock()
 _ACTIVE_DRIVER = None
 
 def force_close_active_driver():
     global _ACTIVE_DRIVER
-    driver = _ACTIVE_DRIVER
-    _ACTIVE_DRIVER = None
+    with _DRIVER_LOCK:
+        driver = _ACTIVE_DRIVER
+        _ACTIVE_DRIVER = None
     if driver is not None:
         try:
             driver.quit()
@@ -108,8 +110,13 @@ def force_close_active_driver():
 
 def toggle_taipei_driver_visibility(visible: bool):
     global _ACTIVE_DRIVER
-    if _ACTIVE_DRIVER:
-        set_driver_window_visibility(_ACTIVE_DRIVER, visible)
+    with _DRIVER_LOCK:
+        driver = _ACTIVE_DRIVER
+    if driver:
+        try:
+            set_driver_window_visibility(driver, visible)
+        except Exception:
+            pass
 
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
@@ -1070,8 +1077,7 @@ def _acquire_taipei_run_lock():
                     old_pid = (f.read() or "").strip()
             except Exception:
                 old_pid = ""
-            stale_by_age = (time.time() - os.path.getmtime(lock_path)) > 6 * 60 * 60
-            if old_pid and _is_pid_alive(old_pid) and not stale_by_age:
+            if old_pid and _is_pid_alive(old_pid):
                 print("臺北E大流程已在執行中，請先停止目前流程或關閉舊視窗。")
                 return None
             try:
@@ -1163,7 +1169,8 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             driver = webdriver.Chrome(options=opts)
 
         global _ACTIVE_DRIVER
-        _ACTIVE_DRIVER = driver
+        with _DRIVER_LOCK:
+            _ACTIVE_DRIVER = driver
         driver.set_window_size(1400, 900)
         wait = WebDriverWait(driver, 20)
 
@@ -1213,8 +1220,11 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             else:
                 print('  ✅ 上課時數已達標，跳過上課，檢查測驗/問卷')
 
+            skip_exam_for_session = bool(config.get('skip_exam_for_session', False))
             quiz_url = modules.get('quiz_url')
-            if quiz_url and course_id and not is_quiz_passed(course):
+            if quiz_url and course_id and not is_quiz_passed(course) and skip_exam_for_session:
+                print('  ⚠️ 本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。')
+            elif quiz_url and course_id and not is_quiz_passed(course):
                 print(f'\n  📝 測驗 (course_id={course_id})')
                 score_text, is_100 = do_quiz_with_bank(
                     driver, wait,

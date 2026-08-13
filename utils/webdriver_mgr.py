@@ -60,9 +60,25 @@ def download_best_chromedriver(folder_name="drivers"):
                 return driver_file
             else:
                 logger.info(f"Chrome 版本已更新（{cached_major} → {chrome_major}），重新下載 driver...")
-                os.remove(driver_file)
+                try:
+                    os.remove(driver_file)
+                except PermissionError:
+                    try:
+                        import psutil
+                        import time
+                        for proc in psutil.process_iter(["name"]):
+                            if proc.info["name"] and "chromedriver" in proc.info["name"].lower():
+                                proc.kill()
+                        time.sleep(0.5)
+                        if os.path.exists(driver_file):
+                            os.remove(driver_file)
+                    except Exception as _pe:
+                        logger.warning(f"無法刪除鎖定的 driver 檔案: {_pe}")
                 if os.path.exists(version_file):
-                    os.remove(version_file)
+                    try:
+                        os.remove(version_file)
+                    except Exception:
+                        pass
 
         os.makedirs(target_folder, exist_ok=True)
     except Exception as e:

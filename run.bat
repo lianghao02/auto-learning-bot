@@ -3,6 +3,7 @@ chcp 65001 > nul
 title Auto Learning Bot Launcher
 
 cd /d "%~dp0"
+set "PYTHONPATH=%~dp0;%PYTHONPATH%"
 
 echo ============================================================
 echo Auto Learning Bot - Initializing System...

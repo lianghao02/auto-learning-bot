@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 
@@ -39,3 +41,16 @@ def validate_ai_base_url(provider: str, base_url: str) -> str:
 
     netloc = hostname if not parsed.port else f"{hostname}:{parsed.port}"
     return urlunsplit(("https", netloc, parsed.path.rstrip("/"), "", ""))
+
+
+def verify_file_sha256(path: str | Path, expected_digest: str) -> bool:
+    """以 SHA-256 驗證已下載檔案，僅接受完整的 64 碼雜湊。"""
+    expected = str(expected_digest or "").lower().removeprefix("sha256:").strip()
+    if len(expected) != 64 or any(char not in "0123456789abcdef" for char in expected):
+        return False
+
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest() == expected
