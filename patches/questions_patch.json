@@ -8802,5 +8802,15 @@
       "要求 AI 隨機列點，完全不需要邏輯"
     ],
     "course": "AI輔助簡報與資訊圖卡設計：Gemini×NotebookLM應用實作"
+  },
+  {
+    "question": "",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "人權與國際公約"
   }
 ]
