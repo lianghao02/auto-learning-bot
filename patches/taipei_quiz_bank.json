@@ -5289,5 +5289,16 @@
     "opt2": "",
     "opt3": "",
     "updated_at": "2026-08-15T05:52:49.125Z"
+  },
+  {
+    "course_id": "3793",
+    "q_key": "請問下面何者為企業架構製品(EAArtifacts)？",
+    "q_text": "請問下面何者為企業架構製品(EA Artifacts)？",
+    "val": "4",
+    "opt0": "1. 靜態結構製品(Artifacts of Static Structure Views)",
+    "opt1": "2. 動態行為製品(Artifacts of Dynamic Behavior Views)",
+    "opt2": "3. 其他觀點製品(Artifacts of Other Views)",
+    "opt3": "4. 以上皆是",
+    "updated_at": "2026-08-15T12:07:37.302Z"
   }
 ]
