@@ -5300,5 +5300,82 @@
     "opt2": "3. 其他觀點製品(Artifacts of Other Views)",
     "opt3": "4. 以上皆是",
     "updated_at": "2026-08-15T12:07:37.302Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "在TaipeiGEAFMiniSet的RACI,Task\\\\",
+    "q_text": "在Taipei GEAF Mini Set的RACI, Task\\\\Service, Task\\\\Data三類矩陣表中，哪一軸的實體(Entity)是三個矩陣表都有的？",
+    "val": "0",
+    "opt0": "1. Task",
+    "opt1": "2. Actor",
+    "opt2": "3. Service",
+    "opt3": "4. Data",
+    "updated_at": "2026-08-15T12:07:46.356Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "請問政府數位服務(GDS)的UI/UX設計意謂著什麼？",
+    "q_text": "請問政府數位服務(GDS)的UI/UX設計意謂著什麼？",
+    "val": "0",
+    "opt0": "1. 網站設計(Web Design)",
+    "opt1": "2. 企業流程工程(Business Process Engineering, BPE)",
+    "opt2": "3. 企業流程再工程(Business Process Reengineering, BPR)",
+    "opt3": "4. 企業流程改進(Business Process Improvement, BPI)",
+    "updated_at": "2026-08-15T12:07:46.358Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "請問目前用TaipeiGEAFMiniSet盤點欲開發的資訊",
+    "q_text": "請問目前用Taipei GEAF Mini Set盤點欲開發的資訊系統，哪一個架構不被盤點？",
+    "val": "0",
+    "opt0": "1. 動機架構(Motivation Architecture)",
+    "opt1": "2. 業務架構(Business Architecture)",
+    "opt2": "3. 資訊系統架構(Information Architecture)",
+    "opt3": "4. 技術架構(Technology Architecture)",
+    "updated_at": "2026-08-15T12:07:46.359Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "架構中心方法(Architecture-centricMet",
+    "q_text": "架構中心方法(Architecture-centric Method)之九宮格是以哪一個視圖為核心？",
+    "val": "0",
+    "opt0": "1. ArchiMate 核心框架圖(ACFD)",
+    "opt1": "2. 使用案例圖(UCD)",
+    "opt2": "3. BPMN圖(BPMND)",
+    "opt3": "4. 以上皆是",
+    "updated_at": "2026-08-15T12:07:46.359Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "若以分層繪製法繪製BPMN圖時，請問與UCD對齊的綜觀圖是哪",
+    "q_text": "若以分層繪製法繪製BPMN圖時，請問與UCD對齊的綜觀圖是哪一個層級的圖？",
+    "val": "0",
+    "opt0": "1. BPMN：Level 0",
+    "opt1": "2. BPMN：Level 1",
+    "opt2": "3. BPMN：Level 2",
+    "opt3": "4. BPMN：Level n",
+    "updated_at": "2026-08-15T12:07:46.359Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "請問電子認證系統(SSO)是屬於ACD視圖的哪一層構件？",
+    "q_text": "請問電子認證系統(SSO)是屬於ACD視圖的哪一層構件？",
+    "val": "0",
+    "opt0": "1. 人機互動(Man-machine Interactions)層構件",
+    "opt1": "2. 應用流程執行(Application Process Executions)層構件",
+    "opt2": "3. 穏定的實體(Stable Entities)層構件",
+    "opt3": "4. 以上皆是",
+    "updated_at": "2026-08-15T12:07:46.359Z"
+  },
+  {
+    "course_id": 3793,
+    "q_key": "請問下面何者可以完全表達企業架構本體論(EAOntology",
+    "q_text": "請問下面何者可以完全表達企業架構本體論(EA Ontology)的概念體系？",
+    "val": "0",
+    "opt0": "1. 語意網路(Semantic Network)",
+    "opt1": "2. 網際網路(Internet)",
+    "opt2": "3. 企業內部網路(Intranet)",
+    "opt3": "4. 以上皆是",
+    "updated_at": "2026-08-15T12:07:46.359Z"
   }
 ]
