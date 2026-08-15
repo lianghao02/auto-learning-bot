@@ -5299,7 +5299,7 @@
     "opt1": "2. 動態行為製品(Artifacts of Dynamic Behavior Views)",
     "opt2": "3. 其他觀點製品(Artifacts of Other Views)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.082Z"
   },
   {
     "course_id": 3793,
@@ -5310,7 +5310,7 @@
     "opt1": "2. Actor",
     "opt2": "3. Service",
     "opt3": "4. Data",
-    "updated_at": "2026-08-15T12:08:09.387Z"
+    "updated_at": "2026-08-15T12:08:32.080Z"
   },
   {
     "course_id": 3793,
@@ -5321,7 +5321,7 @@
     "opt1": "2. 企業流程工程(Business Process Engineering, BPE)",
     "opt2": "3. 企業流程再工程(Business Process Reengineering, BPR)",
     "opt3": "4. 企業流程改進(Business Process Improvement, BPI)",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.082Z"
   },
   {
     "course_id": 3793,
@@ -5332,7 +5332,7 @@
     "opt1": "2. 業務架構(Business Architecture)",
     "opt2": "3. 資訊系統架構(Information Architecture)",
     "opt3": "4. 技術架構(Technology Architecture)",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.082Z"
   },
   {
     "course_id": 3793,
@@ -5343,7 +5343,7 @@
     "opt1": "2. 使用案例圖(UCD)",
     "opt2": "3. BPMN圖(BPMND)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.082Z"
   },
   {
     "course_id": 3793,
@@ -5354,7 +5354,7 @@
     "opt1": "2. BPMN：Level 1",
     "opt2": "3. BPMN：Level 2",
     "opt3": "4. BPMN：Level n",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.082Z"
   },
   {
     "course_id": 3793,
@@ -5365,7 +5365,7 @@
     "opt1": "2. 應用流程執行(Application Process Executions)層構件",
     "opt2": "3. 穏定的實體(Stable Entities)層構件",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.082Z"
   },
   {
     "course_id": 3793,
@@ -5376,6 +5376,6 @@
     "opt1": "2. 網際網路(Internet)",
     "opt2": "3. 企業內部網路(Intranet)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-15T12:08:09.388Z"
+    "updated_at": "2026-08-15T12:08:32.083Z"
   }
 ]
