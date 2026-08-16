@@ -42,7 +42,14 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import UnexpectedAlertPresentException, NoAlertPresentException
 from colorama import Fore, Style
 
-from utils.helpers import get_logger, to_sec, sec_to_str, draw_bar, set_driver_window_visibility
+from utils.helpers import (
+    get_logger,
+    to_sec,
+    sec_to_str,
+    draw_bar,
+    set_driver_window_visibility,
+    INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
+)
 from utils.security import validate_ai_base_url
 from utils.webdriver_mgr import download_best_chromedriver
 
@@ -119,21 +126,27 @@ def _is_newer_version(latest, current):
 
 
 class AdminEfficiencyPilot:
-    VERSION = "V2.2.1"
+    VERSION = "V2.3.0"
     CHANGELOG = (
-        "V2.2.1：新增本次跳過測驗先做問卷、修正執行鎖與更新檢查來源\n"
-        "• 新增全系統 Windows 11 經典 Fluent / 莫蘭迪高質感介面與 QProgressBar 視覺進度條\n"
-        "• 新增 Windows 右下角系統列 (System Tray Icon) 常駐、點擊 X 自動無痕隱藏與托盤右鍵選單\n"
-        "• 新增 Auto-Healing 瀏覽器連線靜默修復機制（最多 3 次上限，零積累、零崩潰）\n"
-        "• 新增多頁籤 Instance-Scoped 獨立日誌頻道隔離，臺北E大與e等公務員訊息 100% 精確分流\n"
-        "• 新增 Gemini AI 429 配額熔斷保護網 (Quota Circuit Breaker) 與 A+B 作答日誌降噪\n"
-        "• 升級臺北E大驗證碼多重影像辨識策略 (ddddocr 原圖+灰階+銳化) 與登入自動刷新重試\n"
-        "• 升級臺北E大 SCORM 簡介頁自動跳轉與問卷多重按鈕定位、iframe 穿透提交\n"
-        "• 支援動態使用者名稱與登入帳號即時連動同步顯示"
+        "V2.3.0：新增人機協同測驗助理、組裝套裝課程自動報名與即時成績判定\n"
+        "• 新增「人機協同測驗助理」彈窗模式（一鍵複製 AI 提問詞、答案回貼自動勾選、180秒逾時防卡死自動跳過）\n"
+        "• 新增組裝/套裝課程全自動展開子課程清單並完成跨分頁選課報名\n"
+        "• 新增測驗繳交後即時解析分數【得分：XX 分】與及格／不及格狀態通知\n"
+        "• 新增測驗未及格（如 30分、50分）精準重測機制與重複學習防護\n"
+        "• 支援直播與隨選課程容器相容放行與下架彈窗精準偵測\n"
+        "• 自動將人機協同作答題目與選項寫入本機 SQLite 題庫 questions.db 持久化"
     )
 
-    def __init__(self, config_path=None, log_callback=None, config_override=None, progress_callback=None):
+    def __init__(
+        self,
+        config_path=None,
+        log_callback=None,
+        config_override=None,
+        progress_callback=None,
+        quiz_interactive_callback=None,
+    ):
         self.progress_callback = progress_callback
+        self.quiz_interactive_callback = quiz_interactive_callback
         self._auto_healing_count = 0
         self.config = self.load_config(config_path)
 
@@ -306,6 +319,7 @@ class AdminEfficiencyPilot:
             set()
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
         self._expanded_packages = set()  # 已自動展開並報名之組裝/套裝課程 ID
+        self._package_preflight_completed = False  # 本次執行僅做一次組裝課程前置檢查
         self._last_course_count = 0
 
         # 防螢幕關閉
@@ -1065,10 +1079,66 @@ class AdminEfficiencyPilot:
 
         return result
 
+    def _read_exam_result(self, course, _ai_answered=None):
+        """讀取測驗繳交後的成績與通過狀態並記錄日誌。回傳 True=通過, False=未通過"""
+        course_id = str(course.get("course_id", ""))
+        course_name = course.get("caption", course_id)
+        passed = False
+        time.sleep(3)
+        try:
+            body_text = self.driver.execute_script(
+                "return document.body ? document.body.innerText : '';"
+            ) or ""
+            try:
+                iframe_text = self.driver.execute_script(
+                    """
+                    var f = document.querySelector('[name="submitTarget"], #submitTarget, iframe[name="submitTarget"]');
+                    if (f && f.contentDocument) return f.contentDocument.body.innerText;
+                    return '';
+                    """
+                )
+                if iframe_text:
+                    body_text += " " + iframe_text
+            except Exception:
+                pass
+
+            # 擷取分數
+            score_match = re.search(r"(?:成績|得分|分數|總分)[：:\s]*([0-9]+(?:\.[0-9]+)?)", body_text)
+            score_str = f"【得分：{score_match.group(1)} 分】" if score_match else ""
+
+            if "\u4e0d\u53ca\u683c" in body_text or "未通過" in body_text:
+                self._exam_fail_counts[course_id] = self._exam_fail_counts.get(course_id, 0) + 1
+                fail_now = self._exam_fail_counts[course_id]
+                logger.warning(f"   ❌ 測驗結果：不及格 / 未通過 {score_str}（已累計不及格 {fail_now} 次）")
+            elif "\u53ca\u683c" in body_text or "通過" in body_text:
+                logger.info(f"   🎉 測驗結果：及格 / 通過 {score_str}！")
+                passed = True
+                self._exam_fail_counts.pop(course_id, None)
+                if _ai_answered:
+                    self._save_answers_to_db(_ai_answered, source="AI")
+            else:
+                logger.info(f"   📝 測驗已送出 {score_str}（請至學習紀錄查核狀態）")
+                passed = True
+        except Exception as e:
+            logger.debug(f"讀取測驗成績失敗: {e}")
+            passed = True
+
+        return passed
+
     def auto_exam(self, course):
         """時數達標後，自動進入測驗並作答。回傳 True=通過, False=未通過/失敗"""
-        if not self._answer_map and not self.answers:
-            logger.info("   📝 未設定題庫，跳過自動作答")
+        ai_keys = self.config.get("ai_keys", {})
+        ai_keys = ai_keys if isinstance(ai_keys, dict) else {}
+        ai_provider = self.config.get("ai_provider", "OpenAI")
+        ai_enabled = bool(ai_keys.get(ai_provider) or self.config.get("ai_api_key", ""))
+
+        if (
+            not self.config.get("interactive_quiz_for_session")
+            and not self._answer_map
+            and not self.answers
+            and not ai_enabled
+        ):
+            logger.info("   📝 未設定題庫或 AI，且未啟用人機協同模式，跳過自動作答")
             return False
 
         course_id = str(course.get("course_id", ""))
@@ -1084,8 +1154,10 @@ class AdminEfficiencyPilot:
         logger.info("   📝 開始自動作答流程...")
         # 收集本場 AI 補答的題目，考試通過後寫入 db
         _ai_answered = {}
-        # 不及格過至少一次 → 強制 AI 補答（不信任 DB 可能存有錯誤答案）
-        force_ai = fail_count >= 1
+        # 僅在已設定有效 Key 時，重測才以 AI 覆核；否則維持純題庫模式。
+        force_ai = fail_count >= 1 and ai_enabled
+        if not ai_enabled:
+            logger.info("   📚 未設定 API Key，啟用純題庫模式，不呼叫 AI 補答。")
         # 以「目前所在視窗」為課程教室主視窗（不論從哪條路徑進入）
         main_window = self.driver.current_window_handle
 
@@ -1095,6 +1167,29 @@ class AdminEfficiencyPilot:
             self.driver.switch_to.window(main_window)
             self.driver.switch_to.default_content()
 
+            # 💡 若仍在 /info/ 課程介紹頁面，先點擊「上課去」進入教室介面
+            if "/info/" in self.driver.current_url:
+                try:
+                    clicked_in = self.driver.execute_script("""
+                        var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+                        for (var i = 0; i < btns.length; i++) {
+                            var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                            if (['上課去', '進入課程', '開始上課', '前往教室'].some(k => t.indexOf(k) !== -1)) {
+                                btns[i].click();
+                                return t;
+                            }
+                        }
+                        return null;
+                    """)
+                    if clicked_in:
+                        logger.info(f"   📝 已點擊「{clicked_in}」進入教室介面")
+                        time.sleep(4)
+                        if len(self.driver.window_handles) > 1:
+                            main_window = self.driver.window_handles[-1]
+                            self.driver.switch_to.window(main_window)
+                except Exception:
+                    pass
+
             try:
                 self.driver.switch_to.frame("mooc_sysbar")
                 exam_link = self.driver.find_element(
@@ -1103,16 +1198,9 @@ class AdminEfficiencyPilot:
                 self.driver.execute_script("arguments[0].click();", exam_link)
                 logger.info("   📝 已點擊「測驗/考試」")
             except Exception as e:
-                logger.warning(f"   ⚠️ 找不到測驗連結（mooc_sysbar）: {e}")
-                # 💡 雙重保險：檢查是否因為已下架/準備中導致找不到連結
-                try:
-                    self.driver.switch_to.default_content()
-                    page_source = self.driver.page_source
-                    if any(word in page_source for word in ["課程準備中", "已下架", "尚未上架"]):
-                        logger.warning(f"   ⚠️ 偵測到課程「{course.get('caption', '')}」網頁含有『已下架』或『準備中』關鍵字，標記為已下架跳過")
-                        self._completed_in_session.add(course_id)
-                except Exception:
-                    pass
+                logger.warning(f"   ⚠️ 找不到測驗連結（可能為平台已下架或無測驗介面課程）: {e}")
+                logger.info(f"   ⏩ 課程「{course.get('caption', '')}」標記為已下架/無測驗，跳過並繼續下一門課程。")
+                self._completed_in_session.add(course_id)
                 return False
 
             time.sleep(2)
@@ -1253,7 +1341,237 @@ class AdminEfficiencyPilot:
                         f"   [DOM] rows 為空，頁面 table HTML (前2000字): {page_sample}"
                     )
             except Exception as _dom_e:
-                logger.info(f"   [DOM] 診斷失敗: {_dom_e}")
+                logger.info(f"   [DOM] 診斷略過: {_dom_e}")
+
+            # ── 6a. 檢查是否啟用人機協同作答助理（彈窗複製題目／回貼答案） ──
+            if self.config.get("interactive_quiz_for_session") and self.quiz_interactive_callback:
+                questions_data = []
+                for q_idx, row in enumerate(rows):
+                    try:
+                        q_text = (
+                            self.driver.execute_script(
+                                """
+                            var tds = arguments[0].querySelectorAll('td');
+                            var td = null;
+                            for (var j = 0; j < tds.length; j++) {
+                                if (tds[j].querySelector('ol, ul, input')) {
+                                    td = tds[j];
+                                    break;
+                                }
+                            }
+                            if (!td) {
+                                var candidates = arguments[0].querySelectorAll('td[align="left"]');
+                                for (var k = 0; k < candidates.length; k++) {
+                                    if (!candidates[k].hasAttribute('nowrap')) {
+                                        td = candidates[k];
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!td) td = arguments[0].querySelector('td');
+                            if (!td) return '';
+                            var text = '';
+                            for (var i = 0; i < td.childNodes.length; i++) {
+                                var n = td.childNodes[i];
+                                if (n.nodeType === 3) {
+                                    text += n.textContent;
+                                } else if (n.nodeName === 'P' || n.nodeName === 'STRONG' || n.nodeName === 'SPAN') {
+                                    text += n.innerText || n.textContent;
+                                    break;
+                                } else if (n.nodeName === 'OL' || n.nodeName === 'UL') {
+                                    break;
+                                }
+                            }
+                            text = text.trim();
+                            text = text.replace(/^[\\d]+[.\\s]+/, '').trim();
+                            return text;
+                            """,
+                                row,
+                            )
+                            or ""
+                        )
+                        if not q_text:
+                            try:
+                                q_el = row.find_element(By.TAG_NAME, "p")
+                                q_text = q_el.text.strip()
+                            except Exception:
+                                q_text = row.text.strip().split("\n")[0]
+
+                        opt_texts = (
+                            self.driver.execute_script(
+                                """
+                            var tds = arguments[0].querySelectorAll('td');
+                            var td = null;
+                            for (var j = 0; j < tds.length; j++) {
+                                if (tds[j].querySelector('ol, ul, input')) {
+                                    td = tds[j];
+                                    break;
+                                }
+                            }
+                            if (!td) {
+                                var candidates = arguments[0].querySelectorAll('td[align="left"]');
+                                for (var k = 0; k < candidates.length; k++) {
+                                    if (!candidates[k].hasAttribute('nowrap')) {
+                                        td = candidates[k];
+                                        break;
+                                    }
+                                }
+                            }
+                            if (!td) td = arguments[0].querySelector('td');
+                            if (!td) return [];
+                            var items = td.querySelectorAll('ol li, ul li');
+                            var texts = [];
+                            for (var i = 0; i < items.length; i++) {
+                                var li = items[i];
+                                var text = '';
+                                for (var k = 0; k < li.childNodes.length; k++) {
+                                    var cn = li.childNodes[k];
+                                    if (cn.nodeType === 3) {
+                                        text += cn.textContent;
+                                    } else if (cn.nodeName !== 'INPUT' && cn.nodeName !== 'SPAN') {
+                                        text += cn.innerText || cn.textContent || '';
+                                    } else if (cn.nodeName === 'SPAN') {
+                                        for (var m = 0; m < cn.childNodes.length; m++) {
+                                            if (cn.childNodes[m].nodeType === 3) {
+                                                text += cn.childNodes[m].textContent;
+                                            }
+                                        }
+                                    }
+                                }
+                                texts.push(text.trim());
+                            }
+                            return texts;
+                            """,
+                                row,
+                            )
+                            or []
+                        )
+
+                        radios = row.find_elements(By.CSS_SELECTOR, "input[type='radio']")
+                        checkboxes = row.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+                        is_multiple = len(checkboxes) > 0
+                        q_type = "多選" if is_multiple else ("是非" if len(radios) == 2 else "單選")
+
+                        options = []
+                        if opt_texts:
+                            for o_idx, ot in enumerate(opt_texts):
+                                label = chr(65 + o_idx)
+                                options.append({"label": label, "text": ot})
+                        elif len(radios) == 2:
+                            options = [
+                                {"label": "A", "text": "⭕ (是/正確)"},
+                                {"label": "B", "text": "❌ (否/錯誤)"},
+                            ]
+                        else:
+                            count = len(radios) or len(checkboxes)
+                            for o_idx in range(count):
+                                label = chr(65 + o_idx)
+                                options.append({"label": label, "text": f"選項 {label}"})
+
+                        questions_data.append({
+                            "index": q_idx + 1,
+                            "type": q_type,
+                            "q_text": q_text,
+                            "options": options,
+                            "is_multiple": is_multiple,
+                        })
+                    except Exception as e:
+                        logger.debug(f"萃取題目 {q_idx + 1} 失敗: {e}")
+
+                if questions_data:
+                    logger.info(f"   📝 正在啟動「人機協同作答助理」互動視窗（{INTERACTIVE_QUIZ_TIMEOUT_SECONDS} 秒倒數）...")
+                    interactive_ans_map = self.quiz_interactive_callback(
+                        course.get("caption", "公務員測驗"),
+                        questions_data,
+                        timeout_sec=INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
+                    )
+
+                    if isinstance(interactive_ans_map, dict) and interactive_ans_map:
+                        logger.info(
+                            f"   🚀 已收到回貼答案（共 {len(interactive_ans_map)} 題），正在自動勾選網頁選項..."
+                        )
+                        _interactive_saved = {}
+                        for q_idx, row in enumerate(rows):
+                            q_num = q_idx + 1
+                            if q_num not in interactive_ans_map:
+                                continue
+                            selected_labels = interactive_ans_map[q_num]
+
+                            radios = row.find_elements(By.CSS_SELECTOR, "input[type='radio']")
+                            checkboxes = row.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+                            inputs = checkboxes if checkboxes else radios
+
+                            for lbl in selected_labels:
+                                opt_idx = ord(lbl.upper()) - 65
+                                if 0 <= opt_idx < len(inputs):
+                                    try:
+                                        self.driver.execute_script("arguments[0].click();", inputs[opt_idx])
+                                    except Exception as e:
+                                        logger.debug(f"勾選選項 {lbl} 失敗: {e}")
+
+                            # 收集題目與解答存入本機 SQLite 題庫
+                            q_data = next((q for q in questions_data if q["index"] == q_num), None)
+                            if q_data and selected_labels:
+                                ans_str = "、".join(selected_labels)
+                                _interactive_saved[q_data["q_text"]] = ans_str
+
+                        if _interactive_saved:
+                            self._save_answers_to_db(_interactive_saved, source="人機協同")
+
+                        logger.info("   ✅ 選項勾選完成，正在送出考卷...")
+                        time.sleep(1)
+                        try:
+                            self.driver.execute_script(
+                                """
+                                var btns = document.querySelectorAll('input[type="submit"]');
+                                for (var i = 0; i < btns.length; i++) {
+                                    var b = btns[i];
+                                    var formName = b.form ? (b.form.name || b.form.id || '') : '';
+                                    if (formName === 'responseForm') {
+                                        b.click();
+                                        return true;
+                                    }
+                                }
+                                if (btns.length > 0) { btns[0].click(); return true; }
+                                return false;
+                                """
+                            )
+                        except Exception:
+                            pass
+
+                        time.sleep(1)
+                        self._accept_alert()
+                        passed = self._read_exam_result(course)
+                        if not passed:
+                            time.sleep(1)
+                            try:
+                                cur_exam_url = self.driver.current_url
+                                if "view_result" in cur_exam_url:
+                                    self._harvest_correct_answers(cur_exam_url)
+                            except Exception:
+                                pass
+                        try:
+                            self.driver.switch_to.window(main_window)
+                        except Exception:
+                            pass
+                        return passed
+                    elif interactive_ans_map == "STOP_ALL":
+                        logger.info("🛑 使用者於測驗逾時對話框選擇【結束本次執行】。")
+                        self.running = False
+                        try:
+                            self.driver.close()
+                            self.driver.switch_to.window(main_window)
+                        except Exception:
+                            pass
+                        return False
+                    else:
+                        logger.info(f"   ⏩ 使用者選擇跳過課程【{course.get('caption', '')}】之測驗，繼續下一門。")
+                        try:
+                            self.driver.close()
+                            self.driver.switch_to.window(main_window)
+                        except Exception:
+                            pass
+                        return False
 
             for q_idx, row in enumerate(rows):
                 try:
@@ -1380,8 +1698,8 @@ class AdminEfficiencyPilot:
                     except Exception:
                         option_texts = []
 
-                    # 題庫找不到時，或不及格重試強制用 AI 補答
-                    if ans is None or force_ai:
+                    # 僅在已設定 API Key 時，題庫未命中或重測才呼叫 AI。
+                    if ai_enabled and (ans is None or force_ai):
                         radios_count = len(row.find_elements(By.CSS_SELECTOR, "input[type='radio']"))
                         ai_options = option_texts if any(option_texts) else (
                             ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
@@ -1720,54 +2038,7 @@ class AdminEfficiencyPilot:
             time.sleep(3)
 
             # ── 9. 讀取成績，判斷是否通過 ──
-            # form 使用 target="submitTarget"（隱藏 iframe），結果可能在 iframe 裡
-            # 也可能整頁換頁。兩個地方都嘗試讀。
-            passed = False
-            try:
-                # 先讀主頁面
-                body_text = self.driver.execute_script(
-                    "return document.body ? document.body.innerText : '';"
-                )
-                # 再嘗試讀 submitTarget iframe（如果存在）
-                try:
-                    iframe_text = self.driver.execute_script(
-                        """
-                        var f = document.querySelector('[name="submitTarget"], #submitTarget, iframe[name="submitTarget"]');
-                        if (f && f.contentDocument) return f.contentDocument.body.innerText;
-                        return '';
-                        """
-                    )
-                    body_text = body_text + " " + (iframe_text or "")
-                except Exception:
-                    pass
-
-                # 「及格」= \u53ca\u683c, 「不及格」= \u4e0d\u53ca\u683c
-                if "\u4e0d\u53ca\u683c" in body_text:
-                    self._exam_fail_counts[course_id] = (
-                        self._exam_fail_counts.get(course_id, 0) + 1
-                    )
-                    fail_now = self._exam_fail_counts[course_id]
-                    if fail_now >= 3:
-                        logger.warning(
-                            f"   ❌ 測驗不及格，已累計 {fail_now} 次。"
-                            f" 課程「{course.get('caption', course_id)}」將跳過，請使用者自行完成測驗"
-                        )
-                    else:
-                        logger.warning(
-                            f"   ❌ 測驗不及格（第 {fail_now} 次），下次仍會重試"
-                        )
-                elif "\u53ca\u683c" in body_text:
-                    logger.info("   ✅ 測驗通過（及格）！")
-                    passed = True
-                    # 通過後清除不及格計數
-                    self._exam_fail_counts.pop(course_id, None)
-                    # 通過後把 AI 補答的題目寫進 db（AI 答對了才有意義存）
-                    if _ai_answered:
-                        self._save_answers_to_db(_ai_answered, source="AI")
-                else:
-                    logger.info("   📝 無法判斷成績，請自行確認")
-            except Exception:
-                pass
+            passed = self._read_exam_result(course, _ai_answered=_ai_answered)
 
             # ── 10. 不及格時嘗試讀取正確答案 ──
             # 考試 form submit 後，exam_window 已整頁跳轉到 view_result.php。
@@ -2105,22 +2376,22 @@ class AdminEfficiencyPilot:
     def fetch_course_list(self, year=None):
         year = year or time.strftime("%Y")
         courses_map = {}
-        # 💡 同時查詢單門課程(single)、微學習課程(micro)、組裝課程(package)與直播課程(live)，完整收錄所有應修項目
+        # 💡 同時查詢單門課程(single)、微學習課程(micro)、組裝課程(package)與直播課程(live)，完整收錄跨所有分頁(1~30頁)之項目
         for c_type in ["single", "micro", "package", "live"]:
-            for page in range(1, 20):
+            for page in range(1, 30):
                 payload = f"year={year}&keyword=&course_type={c_type}&page={page}&orderby=&sort="
                 try:
                     resp = self.http_session.post(
                         self.api_url, data=payload, timeout=10
                     )
                     data = resp.json().get("data", [])
+                    if not data or len(data) == 0:
+                        break
                     for item in data:
                         cid = str(item.get("course_id", "") or item.get("id", ""))
                         key = cid or item.get("caption", "")
                         if key and key not in courses_map:
                             courses_map[key] = item
-                    if len(data) < 50:
-                        break
                 except Exception as e:
                     logger.warning(f"⚠️ 讀取 [{c_type}] 第 {page} 頁課程失敗: {e}")
                     break
@@ -2183,98 +2454,350 @@ class AdminEfficiencyPilot:
             return False
         return True
 
+    def _is_exam_passed(self, c):
+        """檢查該課程之測驗是否已達到及格標準。"""
+        if str(c.get("exam_exists", "0")) != "1":
+            return True
+        try:
+            pass_score = float(c.get("criteria_exam_score") or 60)
+        except Exception:
+            pass_score = 60.0
+
+        score_val = c.get("exam_score")
+        if score_val is not None and str(score_val).strip() not in ("", "--", "None", "null"):
+            try:
+                return float(score_val) >= pass_score
+            except Exception:
+                pass
+        pass_status = str(c.get("pass_status", "") or c.get("status", "")).lower()
+        if pass_status in ["1", "pass", "passed", "已通過", "及格"]:
+            return True
+        return False
+
     def auto_enroll_package_subcourses(self, courses) -> bool:
-        """偵測組裝/套裝課程，自動進入介紹頁點擊「上課去」並確保所有子課程皆完成選課報名。"""
+        """偵測組裝/套裝課程，自動切換「課程資訊」頁籤萃取所有子課程連結，逐一進入點擊報名與選課。100%已完成者自動略過。"""
         if not self.driver or not self.running:
             return False
+        if getattr(self, "_package_preflight_completed", False):
+            return False
 
-        packages = [
-            c for c in courses
+        packages_dict = {}
+        dashboard_completed_ids = set()
+
+        # 優先從「我的課程儀表板 -> 組裝課程 (tab=4)」遍歷所有分頁掃描進行中之組裝課程
+        try:
+            self.driver.get("https://elearn.hrd.gov.tw/mooc/user/learn_dashboard.php?tab=4")
+            self.safe_sleep(3)
+            for dash_page in range(1, 31):
+                if not self.running:
+                    break
+                logger.info(f"   🔎 組裝課程儀表板掃描：第 {dash_page} 頁")
+                pkg_cards = self.driver.execute_script("""
+                    var cards = document.querySelectorAll('.course-item, .card, .thumbnail, div[class*="item"], .col-md-4, .col-sm-6, .panel, div[class*="panel"]');
+                    var results = [];
+                    for (var i = 0; i < cards.length; i++) {
+                        var txt = cards[i].innerText || cards[i].textContent || '';
+                        var html = cards[i].innerHTML || '';
+                        var controls = cards[i].querySelectorAll('[onclick*="goCourse"], [onclick*="gotoCourse"], [onclick*="unEnroll"]');
+                        var m = null;
+                        for (var c = 0; c < controls.length; c++) {
+                            m = (controls[c].getAttribute('onclick') || '').match(/(?:goCourse|gotoCourse|unEnroll)\\s*\\(\\s*['"]?(\\d{6,10})/);
+                            if (m && m[1]) break;
+                        }
+                        // 卡片已展開子課程表格時，不可再以內層 /info/ 連結推測母課程 ID。
+                        if (!m && !cards[i].querySelector('table, tbody, tr')) {
+                            m = html.match(/(?:info\\/|course_id=|\\/course\\/)['"]?(\\d{6,10})/);
+                        }
+                        var titleEl = cards[i].querySelector('h3, h4, .title, .caption, strong, .panel-title');
+                        var title = titleEl ? (titleEl.innerText || titleEl.textContent || '').trim() : '';
+                        if (!title) {
+                            var lines = txt.split('\\n').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 2 && s.indexOf('組裝') === -1; });
+                            title = lines[0] || '組裝課程';
+                        }
+
+                        // 平台的完成率可能顯示在文字、aria-valuenow 或 style 寬度。
+                        var progress = cards[i].querySelector('.progress-bar, [role="progressbar"], [class*="progress"]');
+                        var progressValue = progress ? (progress.getAttribute('aria-valuenow') || progress.getAttribute('data-progress') || '') : '';
+                        var progressStyle = progress ? (progress.getAttribute('style') || '') : '';
+                        var is100 = /(^|\\s)100\\s*%/.test(txt) || Number(progressValue) >= 100 || /width\\s*:\\s*100\\s*%/i.test(progressStyle);
+
+                        if (m && m[1]) {
+                            results.push({id: m[1], title: title, is100: is100});
+                        }
+                    }
+
+                    // 課程卡片的 onclick 可能由平台改為連結；直接掃描課程連結補漏。
+                    var linkIds = {};
+                    for (var r = 0; r < results.length; r++) linkIds[results[r].id] = true;
+                    var packageLinks = document.querySelectorAll('a[href*="/info/"], a[href*="course_id="], [onclick*="goCourse"], [onclick*="gotoCourse"], [onclick*="unEnroll"]');
+                    for (var j = 0; j < packageLinks.length; j++) {
+                        var link = packageLinks[j];
+                        // 展開表格中的連結均為子課程，不可當作母套裝。
+                        if (link.closest('table, tbody, tr')) continue;
+                        var source = (link.href || '') + ' ' + (link.getAttribute('onclick') || '');
+                        var matched = source.match(/(?:goCourse|gotoCourse|unEnroll)\\s*\\(\\s*['"]?(\\d{6,10})/) ||
+                                      source.match(/(?:info\\/|course_id=|\\/course\\/)[ '"]?(\\d{6,10})/);
+                        if (!matched || !matched[1] || linkIds[matched[1]]) continue;
+                        linkIds[matched[1]] = true;
+                        var container = link.closest('.course-item, .course-card, .card, .thumbnail, .panel, div[class*="course"], div[class*="Course"], div[class*="item"]') || link.parentElement;
+                        var containerText = container ? (container.innerText || container.textContent || '') : '';
+                        var titleEl2 = container && container.querySelector('h1, h2, h3, h4, h5, .course-title, .title, .caption, strong, .panel-title');
+                        var linkTitle = titleEl2 ? (titleEl2.innerText || titleEl2.textContent || '').trim() : ((link.innerText || link.textContent || '').trim() || '組裝課程');
+                        var linkProgress = container && container.querySelector('.progress-bar, [role="progressbar"], [class*="progress"]');
+                        var linkProgressValue = linkProgress ? (linkProgress.getAttribute('aria-valuenow') || linkProgress.getAttribute('data-progress') || '') : '';
+                        var linkProgressStyle = linkProgress ? (linkProgress.getAttribute('style') || '') : '';
+                        var linkIs100 = /(^|\\s)100\\s*%/.test(containerText) || Number(linkProgressValue) >= 100 || /width\\s*:\\s*100\\s*%/i.test(linkProgressStyle);
+                        results.push({id: matched[1], title: linkTitle, is100: linkIs100});
+                    }
+                    return results;
+                """)
+                if pkg_cards:
+                    for pc in pkg_cards:
+                        pid = str(pc.get("id", ""))
+                        if not pid:
+                            continue
+                        if pc.get("is100"):
+                            dashboard_completed_ids.add(pid)
+                            logger.info(f"   ⏩ 組裝課程【{pc.get('title')}】進度已達 100%（全數修畢），直接略過。")
+                        elif pid not in self._expanded_packages:
+                            packages_dict[pid] = pc.get("title") or pid
+
+                has_next = self.driver.execute_script("""
+                    var nextBtns = document.querySelectorAll(
+                        '.pagination a, .pagination button, .pagination input, .pagination span, .page-link, a.next, li.next a, [aria-label="Next"], [aria-label="下一頁"], [rel="next"], [class*="next"], [class*="Next"]'
+                    );
+                    for (var i = 0; i < nextBtns.length; i++) {
+                        var btn = nextBtns[i];
+                        var t = (btn.innerText || btn.value || btn.textContent || '').trim();
+                        var label = (btn.getAttribute('aria-label') || btn.getAttribute('title') || '').trim();
+                        var className = String(btn.className || '') + ' ' + String(btn.parentElement ? btn.parentElement.className : '');
+                        var hasRightIcon = !!btn.querySelector('.fa-angle-right, .fa-chevron-right, .glyphicon-chevron-right, .icon-right, .fa-step-forward, .fa-forward');
+                        var disabled = btn.classList.contains('disabled') ||
+                                       (btn.parentElement && btn.parentElement.classList.contains('disabled')) || btn.disabled ||
+                                       btn.getAttribute('aria-disabled') === 'true';
+                        if (!disabled && (
+                            t === '>' || t === '>|' || t === '›' || t === '»' || t.indexOf('下一頁') !== -1 || t.indexOf('Next') !== -1 ||
+                            label.indexOf('下一頁') !== -1 || label.indexOf('Next') !== -1 ||
+                            /(^|\\s)(next|pagination-next)(\\s|$)/i.test(className) ||
+                            hasRightIcon || t === String(arguments[0] + 1)
+                        )) {
+                            btn.click();
+                            return {clicked: true, text: t || label || '圖示下一頁'};
+                        }
+                    }
+                    return {clicked: false, text: ''};
+                """, dash_page)
+                if not has_next or not has_next.get("clicked"):
+                    break
+                logger.info(f"   ➡️ 已切換組裝課程儀表板下一頁：{has_next.get('text')}")
+                self.safe_sleep(2)
+        except Exception as e:
+            logger.debug(f"組裝課程儀表板 (tab=4) 掃描略過: {e}")
+
+        # 無論儀表板掃到幾筆，一律與 API 回傳的組裝課程聯集去重，避免漏課。
+        for c in courses:
+            c_id = str(c.get("course_id", "") or c.get("id", ""))
+            c_caption = str(c.get("caption", ""))
+            c_type = str(c.get("course_type", ""))
+            c_type_cd = str(c.get("course_type_cd", "")).lower()
+
             if (
-                str(c.get("course_type_cd", "")).lower() == "package"
-                or "組裝" in str(c.get("course_type", ""))
-                or "套裝" in str(c.get("caption", ""))
-            )
-            and str(c.get("course_id", "")) not in self._expanded_packages
-        ]
+                c_type_cd == "package"
+                or any(k in c_type for k in ["組裝", "套裝", "組合"])
+                or any(k in c_caption for k in ["組裝", "套裝", "組合"])
+            ) and c_id and c_id not in dashboard_completed_ids and c_id not in self._expanded_packages:
+                packages_dict.setdefault(c_id, c_caption or c_id)
 
-        if not packages:
+        if not packages_dict:
+            self._package_preflight_completed = True
             return False
 
         expanded_any = False
-        for pkg in packages:
+        for pkg_id, pkg_name in list(packages_dict.items()):
             if not self.running:
                 break
-            pkg_id = str(pkg.get("course_id", "") or pkg.get("id", ""))
-            pkg_name = pkg.get("caption", pkg_id)
-            if not pkg_id:
+            if pkg_id in self._expanded_packages:
                 continue
 
-            logger.info(f"📦 偵測到組裝課程：{pkg_name} (ID: {pkg_id})，正在自動展開並報名內部子課程...")
-            self._expanded_packages.add(pkg_id)
-            expanded_any = True
-
             try:
-                # 1. 進入套裝課程頁面
+                # ── 步驟 A：進入母套裝頁面 ──
                 pkg_url = f"https://elearn.hrd.gov.tw/info/{pkg_id}"
                 self.driver.get(pkg_url)
                 self.safe_sleep(3)
 
-                # 2. 自動點擊「上課去」或「進入課程」按鈕以激活整套課程
-                try:
-                    btns = self.driver.find_elements(
-                        By.XPATH,
-                        "//button[contains(text(), '上課去')] | //a[contains(text(), '上課去')] | //button[contains(text(), '進入課程')] | //a[contains(text(), '進入課程')] | //button[contains(text(), '報名')] | //a[contains(text(), '報名')]"
-                    )
-                    for btn in btns:
-                        if btn.is_displayed():
-                            btn.click()
-                            self.safe_sleep(2)
-                            self._accept_alert_if_present()
-                            logger.info(f"   ✅ 已點擊「上課去」激活套裝：{pkg_name}")
-                            break
-                except Exception as e:
-                    logger.debug(f"點擊套裝上課去按鈕略過: {e}")
+                logger.info(f"📦 【母課程】ID={pkg_id}｜{pkg_name}，正在展開內部子課程...")
 
-                # 3. 嘗試切換至「課程資訊」頁籤，探索並補選所有子課程
-                try:
-                    info_tabs = self.driver.find_elements(
-                        By.XPATH,
-                        "//*[contains(text(), '課程資訊')]"
-                    )
-                    for tab in info_tabs:
-                        if tab.is_displayed():
-                            tab.click()
-                            self.safe_sleep(2)
-                            break
+                # ── 步驟 B：切換至「課程資訊」頁籤 ──
+                switched_tab = self.driver.execute_script("""
+                    var tabs = document.querySelectorAll('a, li, button, span, .nav-tabs li');
+                    for (var i = 0; i < tabs.length; i++) {
+                        var t = (tabs[i].innerText || tabs[i].textContent || '').trim();
+                        if (t.indexOf('課程資訊') !== -1) {
+                            tabs[i].click();
+                            return true;
+                        }
+                    }
+                    return false;
+                """)
+                if switched_tab:
+                    logger.info("   📑 已切換至「課程資訊」頁籤")
+                self.safe_sleep(2)
 
-                    sub_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, '/info/')]")
-                    sub_urls = list({
-                        link.get_attribute("href") for link in sub_links
-                        if link.get_attribute("href") and str(pkg_id) not in link.get_attribute("href")
-                    })
+                # ── 步驟 C：萃取「課程清單」中所有子課程連結（排除右側推薦） ──
+                sub_courses = self.driver.execute_script("""
+                    var pkgId = arguments[0];
+                    var results = [];
+                    var seen = {};
 
-                    for sub_url in sub_urls:
+                    var mainArea = document.querySelector('.course-list, .tab-content, #tab2, #collapseList, .content-container, .main-content') || document.body;
+                    var links = mainArea.querySelectorAll('a');
+
+                    for (var i = 0; i < links.length; i++) {
+                        var a = links[i];
+                        var href = a.href || '';
+                        var text = (a.innerText || a.textContent || '').trim();
+
+                        var inSidebar = a.closest('.sidebar, .recommend, .col-md-4, .col-lg-3, .col-sm-4, #recommend, .side-bar');
+                        if (inSidebar) continue;
+
+                        if (href && (href.indexOf('/info/') !== -1 || href.indexOf('course_id=') !== -1)) {
+                            if (pkgId && href.indexOf('/info/' + pkgId) !== -1) continue;
+                            if (!seen[href]) {
+                                seen[href] = true;
+                                results.push({href: href, text: text});
+                            }
+                        }
+                    }
+                    return results;
+                """, pkg_id)
+
+                if sub_courses:
+                    logger.info(f"   📋 【子課程清單】母課程 ID={pkg_id}，共 {len(sub_courses)} 門。")
+                    processed_subcourses = 0
+                    for s_idx, sub in enumerate(sub_courses):
                         if not self.running:
                             break
+                        sub_url = sub.get("href", "")
+                        sub_text = sub.get("text", f"子課程 {s_idx + 1}")
+                        logger.info(f"   👉 【子課程 {s_idx + 1}/{len(sub_courses)}】{sub_text[:35]}")
+
                         try:
                             self.driver.get(sub_url)
                             self.safe_sleep(2)
-                            enroll_btns = self.driver.find_elements(
-                                By.XPATH,
-                                "//button[contains(text(), '報名')] | //a[contains(text(), '報名')] | //button[contains(text(), '選課')] | //a[contains(text(), '選課')] | //button[contains(text(), '上課去')] | //a[contains(text(), '上課去')]"
-                            )
-                            for e_btn in enroll_btns:
-                                if e_btn.is_displayed():
-                                    e_btn.click()
-                                    self.safe_sleep(2)
-                                    self._accept_alert_if_present()
-                                    logger.info(f"   ✅ 已確認子課程報名: {sub_url}")
-                                    break
+                            result = self.driver.execute_script("""
+                                var statusBox = document.querySelector('.course-status, [class*="status"], .sidebar, .col-md-4, .col-lg-3, div[class*="sidebar"]') || document.body;
+                                var statusText = statusBox.innerText || '';
+
+                                // 1. 檢查右側狀態欄是否顯示「通過狀態：已通過」
+                                if (
+                                    statusText.indexOf('通過狀態：已通過') !== -1 ||
+                                    statusText.indexOf('通過狀態: 已通過') !== -1 ||
+                                    (statusText.indexOf('已通過') !== -1 && statusText.indexOf('閱讀時數') !== -1)
+                                ) {
+                                    return {action: 'already_passed', text: '已通過'};
+                                }
+
+                                // 2. 優先尋找「報名課程」按鈕
+                                var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+                                for (var i = 0; i < btns.length; i++) {
+                                    var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                                    if (
+                                        t === '報名課程' ||
+                                        t === '我要報名' ||
+                                        t === '確認報名' ||
+                                        t === '選課' ||
+                                        t === '加入課程' ||
+                                        (t.indexOf('報名') !== -1 && t.indexOf('名額') === -1)
+                                    ) {
+                                        btns[i].click();
+                                        return {action: 'enrolled', text: t};
+                                    }
+                                }
+
+                                // 3. 檢查是否已在學習中（顯示「上課去」）
+                                for (var i = 0; i < btns.length; i++) {
+                                    var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                                    if (['上課去', '進入課程', '開始上課'].indexOf(t) !== -1) {
+                                        return {action: 'in_progress', text: t};
+                                    }
+                                }
+
+                                return {action: 'none', text: ''};
+                            """)
+                            self.safe_sleep(1.5)
+                            self._accept_alert_if_present()
+
+                            if not result:
+                                logger.info("      ℹ️ 子課程已在研習清單中或已自動選入")
+                            elif result.get("action") == "already_passed":
+                                processed_subcourses += 1
+                                logger.info(f"      ✅ 子課程【{sub_text[:30]}】已取得認證（通過狀態：已通過），跳過。")
+                            elif result.get("action") == "enrolled":
+                                logger.info(f"      📝 報名前狀態：{result.get('text')}；正在回讀平台狀態確認。")
+                                self.driver.get(sub_url)
+                                self.safe_sleep(2)
+                                post_result = self.driver.execute_script("""
+                                    var bodyText = document.body ? document.body.innerText : '';
+                                    var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+                                    var labels = [];
+                                    for (var i = 0; i < btns.length; i++) {
+                                        var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                                        if (t) labels.push(t);
+                                    }
+                                    var inProgress = labels.some(function(t) {
+                                        return ['上課去', '進入課程', '開始上課'].indexOf(t) !== -1;
+                                    });
+                                    var stillEnroll = labels.some(function(t) {
+                                        return t === '報名課程' || t === '我要報名' || t === '確認報名' || t === '選課' || t === '加入課程';
+                                    });
+                                    var passed = bodyText.indexOf('通過狀態：已通過') !== -1 ||
+                                                 bodyText.indexOf('通過狀態: 已通過') !== -1;
+                                    return {in_progress: inProgress, still_enrollable: stillEnroll, passed: passed, buttons: labels.slice(0, 12)};
+                                """)
+                                if post_result.get("in_progress") or post_result.get("passed"):
+                                    processed_subcourses += 1
+                                    logger.info("      ✅ 報名後驗證成功：已轉為可上課／已通過狀態。")
+                                else:
+                                    logger.warning(
+                                        f"      ⚠️ 報名後未確認成功（仍可報名={post_result.get('still_enrollable')}，按鈕={post_result.get('buttons')}），保留供下一輪重試。"
+                                    )
+                            elif result.get("action") == "in_progress":
+                                processed_subcourses += 1
+                                logger.info(f"      ℹ️ 子課程已在研習清單中（{result.get('text')}），進行中。")
+                            else:
+                                logger.warning("      ⚠️ 無法判斷子課程目前狀態，保留供下一輪重試。")
+
                         except Exception as sub_e:
-                            logger.debug(f"子課程報名略過: {sub_e}")
-                except Exception as e:
-                    logger.debug(f"套裝子課程展開略過: {e}")
+                            logger.warning(f"      ⚠️ 子課程登記異常: {sub_e}")
+
+                    if processed_subcourses == len(sub_courses):
+                        self._expanded_packages.add(pkg_id)
+                        expanded_any = True
+                        logger.info(f"   ✅ 母課程 ID={pkg_id} 已處理 {processed_subcourses}/{len(sub_courses)} 門子課程，本次不再重複展開。")
+                    else:
+                        logger.warning(f"   ⚠️ 母課程 ID={pkg_id} 僅處理 {processed_subcourses}/{len(sub_courses)} 門子課程，保留供下一輪重試。")
+
+                else:
+                    logger.warning(f"   ⚠️ 未能從套裝 {pkg_name} 課程資訊中解析出子課程連結，保留供下一輪重試。")
+
+                # ── 步驟 D：返回母套裝頁面點擊「上課去」確保整體啟動 ──
+                try:
+                    self.driver.get(pkg_url)
+                    self.safe_sleep(2)
+                    self.driver.execute_script("""
+                        var btns = document.querySelectorAll('button, a.btn, a');
+                        for (var i = 0; i < btns.length; i++) {
+                            var t = (btns[i].innerText || btns[i].textContent || '').trim();
+                            if (['上課去', '進入課程', '報名'].some(k => t.indexOf(k) !== -1)) {
+                                btns[i].click();
+                                break;
+                            }
+                        }
+                    """)
+                    self.safe_sleep(2)
+                    self._accept_alert_if_present()
+                except Exception:
+                    pass
 
             except Exception as e:
                 logger.warning(f"⚠️ 展開組裝課程 {pkg_name} 時發生異常: {e}")
@@ -2288,6 +2811,8 @@ class AdminEfficiencyPilot:
             except Exception:
                 pass
 
+        self._package_preflight_completed = True
+        logger.info("📦 組裝課程前置檢查完成；本次執行不再重複掃描。")
         return expanded_any
 
     def recover_login_session(self, reason="session 失效") -> bool:
@@ -3001,7 +3526,7 @@ class AdminEfficiencyPilot:
                         * self.config.get("target_percentage", 1.0)
                         # 考試已通過且問卷已填 → 視為真正完成，不再上課補時數
                         and not (
-                            c.get("exam_score") is not None and c.get("fill") == "1"
+                            self._is_exam_passed(c) and c.get("fill") == "1"
                         )
                         # 本次 session 已永久跳過（如「非本門課」）的課程
                         and str(c.get("course_id", "")) not in self._completed_in_session
@@ -3026,19 +3551,11 @@ class AdminEfficiencyPilot:
                         ) * self.config.get("target_percentage", 1.0)
                         if not hours_done:
                             return False
-                        # 有考試且未通過（exam_score 為 null/None 且 exam_exists=="1"）
-                        # 或曾不及格但未達上限（exam_score 可能已非 None，仍需重試）
-                        needs_exam = c.get("exam_exists") == "1" and (
-                            c.get("exam_score") is None
-                            or (
-                                self._exam_fail_counts.get(c_id, 0) > 0
-                                and self._exam_fail_counts.get(c_id, 0) < 3
-                            )
-                        )
-                        # 有問卷且未填（fill=="0" 且 write_questionnaire 非空）
-                        needs_questionnaire = c.get("fill") == "0" and bool(
-                            c.get("write_questionnaire", "")
-                        )
+                        # 考試未通過（且未達 3 次不及格上限）
+                        exam_passed = self._is_exam_passed(c)
+                        needs_exam = (str(c.get("exam_exists", "0")) == "1") and (not exam_passed) and (self._exam_fail_counts.get(c_id, 0) < 3)
+                        # 問卷未填（fill=="0" 且 write_questionnaire 非空）
+                        needs_questionnaire = (str(c.get("fill", "0")) == "0") and bool(c.get("write_questionnaire", ""))
                         return needs_exam or needs_questionnaire
 
                     completed_hours = [
@@ -3075,35 +3592,34 @@ class AdminEfficiencyPilot:
                                 alert_text = self._accept_alert_if_present()
                                 if alert_text:
                                     logger.warning(f"   ⚠️ 進入教室時偵測到彈窗訊息: {alert_text}")
-                                    if any(word in alert_text for word in ["尚未上架", "無法進入", "已下架", "直播已結束", "未開放", "尚未開始"]):
+                                    if any(word in alert_text for word in ["尚未上架", "無法進入", "已下架", "直播已結束", "未開放"]):
                                         logger.warning(f"   ⚠️ 課程「{c.get('caption', '')}」尚未上架、已下架或直播已結束，將在本工作階段永久跳過")
                                         self._completed_in_session.add(c_id)
                                         continue
-                                
-                                # 💡 檢查頁面內容是否顯示下架
-                                page_source = self.driver.page_source
-                                if any(word in page_source for word in ["課程準備中", "已下架", "直播已結束", "尚未開始"]):
-                                    logger.warning("   ⚠️ 課程教室顯示準備中、已下架或直播已結束，將在本工作階段永久跳過")
-                                    self._completed_in_session.add(c_id)
-                                    continue
 
-                                # 點「開始上課」按鈕（如有）
-                                # 教室在同一視窗載入（不開新視窗），直接繼續
+                                # 點「開始上課」/「進入課程」/「上課去」按鈕（如有）
                                 try:
-                                    btn = self.wait.until(
-                                        EC.element_to_be_clickable(
-                                            (By.CSS_SELECTOR, "button.btn-primary")
-                                        )
-                                    )
-                                    self.driver.execute_script(
-                                        "arguments[0].click();", btn
-                                    )
+                                    clicked_entry = self.driver.execute_script("""
+                                        var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+                                        for (var i = 0; i < btns.length; i++) {
+                                            var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                                            if (['上課去', '進入課程', '開始上課', '前往教室'].some(k => t.indexOf(k) !== -1)) {
+                                                btns[i].click();
+                                                return t;
+                                            }
+                                        }
+                                        return null;
+                                    """)
+                                    if clicked_entry:
+                                        logger.info(f"   📝 已點擊「{clicked_entry}」進入教室")
                                     if not self.safe_sleep(5):
                                         break
+                                    if len(self.driver.window_handles) > 1:
+                                        self.driver.switch_to.window(self.driver.window_handles[-1])
                                 except Exception:
                                     pass
                                 logger.info(
-                                    f"   📝 已進入課程教室，URL: {self.driver.current_url}"
+                                    f"   📝 目前頁面 URL: {self.driver.current_url}"
                                 )
                             except Exception as e:
                                 logger.debug(f"導航課程失敗: {e}")

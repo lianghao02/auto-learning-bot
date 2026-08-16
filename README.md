@@ -1,33 +1,46 @@
 # 行政效能領航員（auto-learning-bot）
 
-[![Version](https://img.shields.io/badge/version-V2.2.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
+[![Version](https://img.shields.io/badge/version-V2.3.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 
-行政效能領航員提供臺北 E 大與 e 等公務園的課程學習輔助流程，包含時數累積、測驗與問卷處理，以及本機題庫比對。
+行政效能領航員提供「臺北 E 大」與「e 等公務園」的公務數位研習輔助流程，支援時數累積、人機協同測驗助理、組裝套裝課程自動展開選課、問卷自動填寫與 SQLite 本機題庫持久化管理。
 
-## V2.2.1 重點
+## 🌟 V2.3.0 重要功能與更新亮點
 
-- 新增「本次跳過測驗，先做問卷」選項；此選項不會寫入帳號或系統設定。
-- 僅在課程時數已達標時，才會略過測驗並嘗試填寫問卷；時數不足的課程不會進測驗或問卷，並會跳至下一門。
-- 臺北 E 大執行鎖改以執行中的 PID 判斷，不會因流程超過六小時而誤判失效。
-- 更新檢查改為目前專案的 GitHub `origin`：`lianghao02/auto-learning-bot`。
+- 🎓 **人機協同測驗助理（免 API Key 模式）**：
+  - 遇到測驗時自動彈出輔助視窗，提供「📋 一鍵複製 AI 提問 Prompt」。
+  - 使用者在 ChatGPT 或 Gemini 網頁版取得答案後，可直接回貼（支援剪貼簿一鍵貼上）。
+  - 智慧解析單選、是非（⭕/❌）與多選題，自動精確點選網頁核取方塊並交卷。
+  - 內建 **180 秒倒數計時（分秒動態顯示 03:00）**、暫停倒數與逾時明確決策提示（重設計時／跳過／結束執行），防範掛網無人操作時卡死。
+  - 作答完畢後自動將題目與解答沉澱至本機 SQLite 題庫 [`questions.db`](file:///D:/Development/GitHub/07_auto-learning-bot/questions.db)。
+- 📦 **組裝／套裝課程自動展開與多頁選課**：
+  - 支援 e 等公務園「組裝課程」與「套裝課程」，自動切換至「課程資訊」頁籤萃取所有子課程清單。
+  - 排除側邊欄推薦干擾，逐一自動進入子課程完成報名與選課。
+  - 支援跨 1~30 頁以及學習儀表板多頁面組裝課程完整掃描。
+- 📊 **測驗即時成績判定與分數通知**：
+  - 測驗交卷後即時解析分數與狀態，於日誌明確顯示 `🎉 測驗結果：及格 / 通過 【得分：XX 分】` 或 `❌ 測驗結果：不及格 / 未通過 【得分：XX 分】`。
+- 🔄 **測驗未及格重考修復與重複學習防護**：
+  - 修正先前已考過但不及格（如 30分、50分）時因分數非空被誤判完成的問題，精確納入待重測隊列。
+  - 移除過度廣泛的全文搜尋比對，避免課程被誤判下架。
 
-## 執行方式
+## 🚀 執行方式
 
 1. 複製 `config.json.example` 為 `config.json`，依帳號設定內容。
 2. 以 Windows 執行 `run.bat`，或使用已安裝依賴的 Python 執行 `ui.py`。
-3. 在平台頁籤按「開始執行」。如本次只要優先處理已達時數的問卷，可勾選「本次跳過測驗，先做問卷」。
+3. 在平台頁籤依需求勾選執行模式後按「▶️ 開始執行」：
+   - `[ ] 本次跳過測驗，先做問卷`：優先處理已達標時數的問卷。
+   - `[ ] 人機協同作答（彈窗回貼）`：遇到測驗時彈窗提供題目複製與答案回貼。
 
-## 注意事項
+## ⚠️ 注意事項
 
 - 平台可能限制測驗未通過時不可填問卷；程式會記錄結果後繼續下一門，不會假定問卷一定可填。
 - 請勿在同一臺電腦同時啟動兩個臺北 E 大流程。
 - `config.json` 可能包含帳密或 API 金鑰，請勿提交至版本庫。
 
-## 開發驗證
+## 🧪 開發驗證
 
 ```powershell
 python -m unittest discover -s tests -v
-python -m py_compile app.py ui.py taipei_eda_course.py
+python -m py_compile app.py ui.py utils/helpers.py
 ```
