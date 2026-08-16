@@ -15552,5 +15552,125 @@
       "openings"
     ],
     "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "My friend and I wanted to keep our conversation secret, so we left to find a place where we could talk with _____.",
+    "answer": "privacy",
+    "type": "單選",
+    "options": [
+      "origin",
+      "privacy",
+      "technology",
+      "glory"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "Bill’s wife got really mad when she found out that he had a(n) _____ with his secretary.",
+    "answer": "affair",
+    "type": "單選",
+    "options": [
+      "affair",
+      "interview",
+      "distance",
+      "education"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "Jack posted his newest pictures on Facebook to clear the _____ that he had been killed in an accident.",
+    "answer": "rumor",
+    "type": "單選",
+    "options": [
+      "victim",
+      "rumor",
+      "damage",
+      "research"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "After Nina split up with her husband, she decided she didn’t want to have a second _____.",
+    "answer": "marriage",
+    "type": "單選",
+    "options": [
+      "mystery",
+      "quarter",
+      "marriage",
+      "manufacturing"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "Diana’s parents got a _____ last year, and now her dad lives in another city with a new wife.",
+    "answer": "divorce",
+    "type": "單選",
+    "options": [
+      "balance",
+      "discount",
+      "divorce",
+      "creation"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "Many people have lost their jobs and the government has tried to _____ this problem by creating more jobs for them.",
+    "answer": "address",
+    "type": "單選",
+    "options": [
+      "reveal",
+      "omit",
+      "address",
+      "deny"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "After traveling around the city all day, Annie walked into the park to _____ a place to sit and rest for a while.",
+    "answer": "seek",
+    "type": "單選",
+    "options": [
+      "celebrate",
+      "damage",
+      "track",
+      "seek"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "The TV show _____ the secrets of magicians and how they do some of their magic tricks.",
+    "answer": "reveals",
+    "type": "單選",
+    "options": [
+      "determines",
+      "manages",
+      "affords",
+      "reveals"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "Tom and Mary’s _____ has been going well for the past five years, and now they’re considering getting married.",
+    "answer": "relationship",
+    "type": "單選",
+    "options": [
+      "discovery",
+      "concern",
+      "relationship",
+      "possibility"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "I asked Thomas what he got me for my birthday, and he _____ that it was my favorite brand of shirt.",
+    "answer": "hinted",
+    "type": "單選",
+    "options": [
+      "hinted",
+      "realized",
+      "warned",
+      "expected"
+    ],
+    "course": "新多益專欄(好萊塢明星離婚謠言)"
   }
 ]
