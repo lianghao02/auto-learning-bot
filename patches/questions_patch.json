@@ -14229,5 +14229,36 @@
       "dd/mm/yyyy"
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "IFERROR函數，主要用於協助錯誤發生時的處理。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "Calc列印，若需手動分頁，請執行？",
+    "answer": "2. 「工作表」功能表→插入分頁符",
+    "type": "單選",
+    "options": [
+      "「檔案」功能表→列印",
+      "「工作表」功能表→插入分頁符",
+      "「檔案」功能表→列印預覽"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "如果VLOOKUP函數的查尋值，找不到，則函數會傳回返回錯誤。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
