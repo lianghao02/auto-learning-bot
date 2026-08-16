@@ -15818,5 +15818,121 @@
       ""
     ],
     "course": "桃園市政府地政局115年度「資通安全通識教育訓練課程」"
+  },
+  {
+    "question": "Dennis ______ to listen to the teacher's directions, so he didn't know what to do.",
+    "answer": "failed",
+    "type": "單選",
+    "options": [
+      "fail",
+      "failed",
+      "fails",
+      "failing"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "Theo looked out the train window, admiring the _____ of the countryside.",
+    "answer": "scenery",
+    "type": "單選",
+    "options": [
+      "discovery",
+      "glory",
+      "mystery",
+      "scenery"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "Millions of ______ flock to Tokyo each year to see the Japanese city's sights.",
+    "answer": "tourists",
+    "type": "單選",
+    "options": [
+      "cars",
+      "migratory birds",
+      "tourists",
+      "wild gooses"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "很多人不會唸Anirban Ghosh的名字，因此他被稱作A.G.。可英譯為：Many people have trouble pronounce Anirban Ghosh's name, so he just goes by A.G.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "這間餐廳會客滿是預料之中的，它是城裡最受歡迎的店。可英譯為：It should come as no surprise this restaurant is full; it's the most popular one in town.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "The ocean's ______ is very strong right now, so it's too dangerous to swim there.",
+    "answer": "tide",
+    "type": "單選",
+    "options": [
+      "tribe",
+      "tie",
+      "tide",
+      "tile"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "Helen's house is near the ______, so she can see the small beach from her window.",
+    "answer": "bay",
+    "type": "單選",
+    "options": [
+      "mountain",
+      "highway",
+      "forest",
+      "bay"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "The white sand seemed to ______ for hundreds of kilometers along the coast.",
+    "answer": "stretch",
+    "type": "單選",
+    "options": [
+      "stretch",
+      "grow",
+      "draw",
+      "access"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "This ______ is about a selfish prince who is turned into a frog.",
+    "answer": "fairy tale",
+    "type": "單選",
+    "options": [
+      "fairy tale",
+      "fair deal",
+      "magician",
+      "celebration"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
+  },
+  {
+    "question": "Stay on this ______ so that you don't get lost in the woods.",
+    "answer": "path",
+    "type": "單選",
+    "options": [
+      "floor",
+      "path",
+      "hole",
+      "place"
+    ],
+    "course": "法國濱海秘境─聖米歇爾山"
   }
 ]
