@@ -305,6 +305,7 @@ class AdminEfficiencyPilot:
         self._completed_in_session = (
             set()
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
+        self._expanded_packages = set()  # 已自動展開並報名之組裝/套裝課程 ID
         self._last_course_count = 0
 
         # 防螢幕關閉
@@ -2104,8 +2105,8 @@ class AdminEfficiencyPilot:
     def fetch_course_list(self, year=None):
         year = year or time.strftime("%Y")
         courses_map = {}
-        # 💡 同時查詢單門課程(single)與微學習課程(micro)，防止傳空字串造成 API 誤判只回 1 筆
-        for c_type in ["single", "micro"]:
+        # 💡 同時查詢單門課程(single)、微學習課程(micro)、組裝課程(package)與直播課程(live)，完整收錄所有應修項目
+        for c_type in ["single", "micro", "package", "live"]:
             for page in range(1, 20):
                 payload = f"year={year}&keyword=&course_type={c_type}&page={page}&orderby=&sort="
                 try:
@@ -2163,11 +2164,131 @@ class AdminEfficiencyPilot:
     def _is_open_course(self, course):
         course_type = str(course.get("course_type", "") or "").strip()
         if course_type:
-            return course_type in {"開放式", "單門課程", "微學習", "組合課程", "單門"}
+            return course_type in {
+                "開放式", "單門課程", "微學習", "組合課程", "單門",
+                "組裝課程", "套裝課程", "直播課程", "直播", "隨選視訊"
+            }
         course_type_cd = str(course.get("course_type_cd", "") or "").strip().lower()
         if course_type_cd:
-            return course_type_cd in {"single", "open", "micro", "package"}
+            return course_type_cd in {
+                "single", "open", "micro", "package", "live", "broadcast"
+            }
         return True
+
+    def _is_playable_course(self, course):
+        """檢查是否為具有實體播放時數之單門/微學習/直播課程（排除純組裝套裝容器本身）。"""
+        course_type = str(course.get("course_type", "") or "").strip()
+        course_type_cd = str(course.get("course_type_cd", "") or "").strip().lower()
+        if course_type in {"組裝課程", "套裝課程"} or course_type_cd == "package":
+            return False
+        return True
+
+    def auto_enroll_package_subcourses(self, courses) -> bool:
+        """偵測組裝/套裝課程，自動進入介紹頁點擊「上課去」並確保所有子課程皆完成選課報名。"""
+        if not self.driver or not self.running:
+            return False
+
+        packages = [
+            c for c in courses
+            if (
+                str(c.get("course_type_cd", "")).lower() == "package"
+                or "組裝" in str(c.get("course_type", ""))
+                or "套裝" in str(c.get("caption", ""))
+            )
+            and str(c.get("course_id", "")) not in self._expanded_packages
+        ]
+
+        if not packages:
+            return False
+
+        expanded_any = False
+        for pkg in packages:
+            if not self.running:
+                break
+            pkg_id = str(pkg.get("course_id", "") or pkg.get("id", ""))
+            pkg_name = pkg.get("caption", pkg_id)
+            if not pkg_id:
+                continue
+
+            logger.info(f"📦 偵測到組裝課程：{pkg_name} (ID: {pkg_id})，正在自動展開並報名內部子課程...")
+            self._expanded_packages.add(pkg_id)
+            expanded_any = True
+
+            try:
+                # 1. 進入套裝課程頁面
+                pkg_url = f"https://elearn.hrd.gov.tw/info/{pkg_id}"
+                self.driver.get(pkg_url)
+                self.safe_sleep(3)
+
+                # 2. 自動點擊「上課去」或「進入課程」按鈕以激活整套課程
+                try:
+                    btns = self.driver.find_elements(
+                        By.XPATH,
+                        "//button[contains(text(), '上課去')] | //a[contains(text(), '上課去')] | //button[contains(text(), '進入課程')] | //a[contains(text(), '進入課程')] | //button[contains(text(), '報名')] | //a[contains(text(), '報名')]"
+                    )
+                    for btn in btns:
+                        if btn.is_displayed():
+                            btn.click()
+                            self.safe_sleep(2)
+                            self._accept_alert_if_present()
+                            logger.info(f"   ✅ 已點擊「上課去」激活套裝：{pkg_name}")
+                            break
+                except Exception as e:
+                    logger.debug(f"點擊套裝上課去按鈕略過: {e}")
+
+                # 3. 嘗試切換至「課程資訊」頁籤，探索並補選所有子課程
+                try:
+                    info_tabs = self.driver.find_elements(
+                        By.XPATH,
+                        "//*[contains(text(), '課程資訊')]"
+                    )
+                    for tab in info_tabs:
+                        if tab.is_displayed():
+                            tab.click()
+                            self.safe_sleep(2)
+                            break
+
+                    sub_links = self.driver.find_elements(By.XPATH, "//a[contains(@href, '/info/')]")
+                    sub_urls = list({
+                        link.get_attribute("href") for link in sub_links
+                        if link.get_attribute("href") and str(pkg_id) not in link.get_attribute("href")
+                    })
+
+                    for sub_url in sub_urls:
+                        if not self.running:
+                            break
+                        try:
+                            self.driver.get(sub_url)
+                            self.safe_sleep(2)
+                            enroll_btns = self.driver.find_elements(
+                                By.XPATH,
+                                "//button[contains(text(), '報名')] | //a[contains(text(), '報名')] | //button[contains(text(), '選課')] | //a[contains(text(), '選課')] | //button[contains(text(), '上課去')] | //a[contains(text(), '上課去')]"
+                            )
+                            for e_btn in enroll_btns:
+                                if e_btn.is_displayed():
+                                    e_btn.click()
+                                    self.safe_sleep(2)
+                                    self._accept_alert_if_present()
+                                    logger.info(f"   ✅ 已確認子課程報名: {sub_url}")
+                                    break
+                        except Exception as sub_e:
+                            logger.debug(f"子課程報名略過: {sub_e}")
+                except Exception as e:
+                    logger.debug(f"套裝子課程展開略過: {e}")
+
+            except Exception as e:
+                logger.warning(f"⚠️ 展開組裝課程 {pkg_name} 時發生異常: {e}")
+
+        # 展開完畢後返回統計頁並同步 session
+        if expanded_any:
+            try:
+                self.driver.get(self.stat_url)
+                self.safe_sleep(2)
+                self.sync_session()
+            except Exception:
+                pass
+
+        return expanded_any
 
     def recover_login_session(self, reason="session 失效") -> bool:
         logger.warning(f"🔄 {reason}，嘗試重新登入並同步 API session...")
@@ -2410,9 +2531,9 @@ class AdminEfficiencyPilot:
         return None
 
     def study_process(self, course):
-        if not self._is_open_course(course):
+        if not self._is_open_course(course) or not self._is_playable_course(course):
             logger.info(
-                f"⏭️ 略過非開放式課程：{course.get('caption', course.get('course_id', '未知課程'))}"
+                f"⏭️ 略過非播放/組裝容器課程：{course.get('caption', course.get('course_id', '未知課程'))}"
             )
             return "SKIP"
 
@@ -2438,15 +2559,16 @@ class AdminEfficiencyPilot:
             if not self.safe_sleep(5):
                 return "STOP"
 
-            # ⭐ 進入課程後先攔截 alert（如「您非本門課的學生」）
+            # ⭐ 進入課程後先攔截 alert（如「您非本門課的學生」、「直播已結束」等）
             try:
                 WebDriverWait(self.driver, 3).until(EC.alert_is_present())
                 alert = self.driver.switch_to.alert
                 alert_text = alert.text
                 alert.accept()
                 logger.warning(f"⚠️ gotoCourse 後偵測到 Alert：{alert_text}")
-                if any(kw in alert_text for kw in ["非本門課", "無法上課", "無權限", "不開放", "未選課"]):
+                if any(kw in alert_text for kw in ["非本門課", "無法上課", "無權限", "不開放", "未選課", "尚未上架", "已下架", "直播已結束", "尚未開始"]):
                     logger.warning(f"⚠️ 此課程無法進入（{alert_text}），永久跳過。")
+                    self._completed_in_session.add(str(course.get("course_id", "")))
                     return "SKIP"
                 elif any(kw in alert_text for kw in ["閒置", "重新登入", "登出"]):
                     return "RELOGIN"
@@ -2819,6 +2941,14 @@ class AdminEfficiencyPilot:
 
                     logger.info(f"📋 API 回傳課程總數：{len(courses)} 筆")
 
+                    # 💡 自動展開組裝/套裝課程並報名子課程
+                    if self.auto_enroll_package_subcourses(courses):
+                        try:
+                            courses = self.fetch_course_list_checked(cur_y)
+                            logger.info(f"📋 套裝展開後更新課程總數：{len(courses)} 筆")
+                        except Exception:
+                            pass
+
                     # API 回 0 筆通常是被登出或 cookie 失效，不可無限等待。
                     if len(courses) == 0:
                         empty_api_count += 1
@@ -2865,6 +2995,7 @@ class AdminEfficiencyPilot:
                         c
                         for c in courses
                         if self._is_open_course(c)
+                        and self._is_playable_course(c)
                         and to_sec(c.get("rss", "00:00:00"))
                         < to_sec(c.get("criteria_content_hour", "00:00:00"))
                         * self.config.get("target_percentage", 1.0)
@@ -2885,7 +3016,7 @@ class AdminEfficiencyPilot:
                     # 時數已達標 且 考試未通過 或 問卷未填 的課程
                     def _needs_exam_or_questionnaire(c):
                         c_id = str(c.get("course_id", ""))
-                        if not self._is_open_course(c):
+                        if not self._is_open_course(c) or not self._is_playable_course(c):
                             return False
                         # 本次已成功處理過，跳過
                         if c_id in self._completed_in_session:
@@ -2944,15 +3075,15 @@ class AdminEfficiencyPilot:
                                 alert_text = self._accept_alert_if_present()
                                 if alert_text:
                                     logger.warning(f"   ⚠️ 進入教室時偵測到彈窗訊息: {alert_text}")
-                                    if any(word in alert_text for word in ["尚未上架", "無法進入", "已下架"]):
-                                        logger.warning(f"   ⚠️ 課程「{c.get('caption', '')}」尚未上架或已下架，將在本工作階段永久跳過")
+                                    if any(word in alert_text for word in ["尚未上架", "無法進入", "已下架", "直播已結束", "未開放", "尚未開始"]):
+                                        logger.warning(f"   ⚠️ 課程「{c.get('caption', '')}」尚未上架、已下架或直播已結束，將在本工作階段永久跳過")
                                         self._completed_in_session.add(c_id)
                                         continue
                                 
                                 # 💡 檢查頁面內容是否顯示下架
                                 page_source = self.driver.page_source
-                                if any(word in page_source for word in ["課程準備中", "已下架"]):
-                                    logger.warning("   ⚠️ 課程教室顯示準備中或已下架，將在本工作階段永久跳過")
+                                if any(word in page_source for word in ["課程準備中", "已下架", "直播已結束", "尚未開始"]):
+                                    logger.warning("   ⚠️ 課程教室顯示準備中、已下架或直播已結束，將在本工作階段永久跳過")
                                     self._completed_in_session.add(c_id)
                                     continue
 
