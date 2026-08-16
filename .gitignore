@@ -5,8 +5,10 @@ __pycache__/
 *.pyd
 *.pyc
 
-# 設定檔（含敏感資訊）
+# 設定檔與備份（含敏感資訊）
 config.json
+*.bak
+*.json.bak
 dist/config.json
 
 # 資料庫
@@ -45,4 +47,3 @@ Thumbs.db
 python_embed/Lib/
 python_embed/Scripts/
 *.lock
-
