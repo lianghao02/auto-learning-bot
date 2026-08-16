@@ -15082,5 +15082,125 @@
       ""
     ],
     "course": "獼猴三不與獼猴科普教育"
+  },
+  {
+    "question": "In the US, Independence Day is a _____ day when everyone celebrates their country’s freedom.",
+    "answer": "significant",
+    "type": "單選",
+    "options": [
+      "commercial",
+      "natural",
+      "significant",
+      "violent"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "As part of a training exercise, the boss asked her employees to write down their best personal _____.",
+    "answer": "characteristics",
+    "type": "單選",
+    "options": [
+      "generations",
+      "characteristics",
+      "announcements",
+      "conversations"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "I was so tired last weekend! The busy week that I had really _____ all the energy _____ me.",
+    "answer": "drained; from",
+    "type": "單選",
+    "options": [
+      "referred; to",
+      "drained; from",
+      "paid; off",
+      "engaged; with"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "Jack’s father died of cancer, and he ended up with the same _____: he died of cancer, too.",
+    "answer": "fate",
+    "type": "單選",
+    "options": [
+      "fate",
+      "pardon",
+      "identity",
+      "colony"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "When you ride your bike, it’s important to wear a helmet _____ to protect your head.",
+    "answer": "at all times",
+    "type": "單選",
+    "options": [
+      "at all times",
+      "at no time",
+      "at some time",
+      "at one time"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "After going through the evidence, the police officer came to the _____ that the thief was probably a young man.",
+    "answer": "conclusion",
+    "type": "單選",
+    "options": [
+      "conclusion",
+      "exhibition",
+      "addition",
+      "intention"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "The man was caught trying to _____ a store and was sent to prison for his crime.",
+    "answer": "rob",
+    "type": "單選",
+    "options": [
+      "risk",
+      "dash",
+      "rob",
+      "drai"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "There is a(n) _____ at the museum this weekend about the art of Vincent van Gogh.",
+    "answer": "exhibition",
+    "type": "單選",
+    "options": [
+      "exhibition",
+      "education",
+      "examination",
+      "emotion"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "The salesman was nice, but I knew his only _____ was to sell me his products.",
+    "answer": "intention",
+    "type": "單選",
+    "options": [
+      "emotion",
+      "relation",
+      "education",
+      "intention"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
+  },
+  {
+    "question": "The ship Mary Celeste was found floating in the sea with no one on it in 1872. This _____ event has never been explained.",
+    "answer": "mysterious",
+    "type": "單選",
+    "options": [
+      "appealing",
+      "smooth",
+      "charming",
+      "mysterious"
+    ],
+    "course": "新多益專欄(聽美術館導覽員導覽)"
   }
 ]
