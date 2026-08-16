@@ -15672,5 +15672,121 @@
       "expected"
     ],
     "course": "新多益專欄(好萊塢明星離婚謠言)"
+  },
+  {
+    "question": "I'm just a ______ to this area, so I'm not very familiar with it.",
+    "answer": "visitor",
+    "type": "單選",
+    "options": [
+      "resident",
+      "visitor",
+      "guide",
+      "guardian"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "Taroko Gorge National Park ______ millions of tourists each year.",
+    "answer": "attracts",
+    "type": "單選",
+    "options": [
+      "attracts",
+      "hires",
+      "catches",
+      "produces"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "This traditional festival was started to ______ the harvest season.",
+    "answer": "celebrate",
+    "type": "單選",
+    "options": [
+      "celebrates",
+      "celebrate",
+      "celebrated",
+      "celebrating"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "除了昨天之外，海倫娜這週天天都有運動。可英譯為：Apart from yesterday, Helena has exercised every day this week.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "Let's buy two pork ______ at this small stall for a snack.",
+    "answer": "sausages",
+    "type": "單選",
+    "options": [
+      "sauces",
+      "toys",
+      "pots",
+      "sausages"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "The ______ near the coast have been affected by rising sea levels.",
+    "answer": "regions",
+    "type": "單選",
+    "options": [
+      "regimes",
+      "registers",
+      "regions",
+      "regenerations"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "These wooden ______ are full of locally made wine.",
+    "answer": "barrels",
+    "type": "單選",
+    "options": [
+      "barrels",
+      "bullets",
+      "boxes",
+      "houses"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "Only legal ______ are allowed to vote for the country's president.",
+    "answer": "citizens",
+    "type": "單選",
+    "options": [
+      "editors",
+      "governors",
+      "labors",
+      "citizens"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "我們今天可以去踏青或到公園坐坐。可英譯為：We can neither spend the day hiking or relaxing at the park.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
+  },
+  {
+    "question": "There are large Thanksgiving ______ in the US every year.",
+    "answer": "parades",
+    "type": "單選",
+    "options": [
+      "palaces",
+      "ladybugs",
+      "parades",
+      "members"
+    ],
+    "course": "十月到慕尼黑啤酒節來一杯吧！"
   }
 ]
