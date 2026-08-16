@@ -14217,5 +14217,17 @@
       ""
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "在Calc中設定單元格顯示的日期格式為“西元年-月-日”，應該選擇什麼格式？",
+    "answer": "1. yyyy-mm-dd",
+    "type": "單選",
+    "options": [
+      "yyyy-mm-dd",
+      "dd-mm-yyyy",
+      "mm/dd/yyyy",
+      "dd/mm/yyyy"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
