@@ -5,6 +5,9 @@ from colorama import Fore, Style, init
 
 init(autoreset=True)
 
+# 人機協同測驗倒數逾時預設秒數（統一採 180 秒 / 03:00）
+INTERACTIVE_QUIZ_TIMEOUT_SECONDS = 180
+
 
 class CustomFormatter(logging.Formatter):
     """自定義日誌輸出格式，增加 UX 視覺辨識度"""
@@ -127,4 +130,91 @@ def set_driver_window_visibility(driver, visible: bool):
                 user32.SetForegroundWindow(hwnd)
     except Exception:
         pass
+
+
+def format_quiz_prompt(course_name: str, questions_data: list) -> str:
+    """將題目與選項轉換為提供給 ChatGPT / Gemini 的格式化提示詞。"""
+    lines = [
+        f"請針對以下《{course_name}》測驗題目進行回答。",
+        "請直接以標準題號與選項代號回覆（例如 1. B 或 1: B，若是多選題例如 4. A, B, C），不需贅述冗長解析：\n"
+    ]
+    for q in questions_data:
+        idx = q.get("index", 1)
+        q_type = q.get("type", "單選")
+        q_text = q.get("q_text", "")
+        lines.append(f"{idx}. [{q_type}] {q_text}")
+        for opt in q.get("options", []):
+            label = opt.get("label", "")
+            opt_text = opt.get("text", "")
+            lines.append(f"   {label}. {opt_text}")
+        lines.append("")
+    return "\n".join(lines).strip()
+
+
+def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
+    """智慧解析使用者貼回的 AI 解答字串，轉換為 {題號: [選中標籤清單]} 結構。"""
+    if not raw_text or not raw_text.strip():
+        return {}
+
+    parsed = {}
+    lines = raw_text.strip().split("\n")
+
+    # 建立題號與問題資訊的索引
+    q_map = {q.get("index", idx + 1): q for idx, q in enumerate(questions_data)}
+
+    for line in lines:
+        line_clean = line.strip()
+        if not line_clean:
+            continue
+
+        # 匹配常見題號開頭：如 1. B, 1: B, 第1題: B, 1. (B), (1) B, 1: [B], 1. A, B, C 等
+        match = re.match(
+            r"^(?:第\s*)?(\d+)\s*(?:題|\.|\:|\)|\、|\-|\s)\s*(?:\[|\()?(.+?)(?:\]|\))?$",
+            line_clean,
+        )
+        if match:
+            try:
+                q_idx = int(match.group(1))
+                ans_body = match.group(2).strip()
+            except ValueError:
+                continue
+
+            if q_idx not in q_map:
+                continue
+
+            q_info = q_map[q_idx]
+            options = q_info.get("options", [])
+            selected_labels = []
+
+            # 1. 搜尋 A-D / 1-4 英數選項代號
+            letters = re.findall(r"\b([A-Da-d])\b", ans_body)
+            if not letters:
+                letters = [ch.upper() for ch in ans_body if ch.upper() in ["A", "B", "C", "D"]]
+
+            if letters:
+                selected_labels.extend([l.upper() for l in letters])
+
+            # 2. 是非題特殊對應（⭕/O/是/對 -> 第一個選項，❌/X/否/錯 -> 第二個選項）
+            if not selected_labels and q_info.get("type") == "是非":
+                if any(sym in ans_body for sym in ["⭕", "O", "o", "是", "對", "正確"]):
+                    if options:
+                        selected_labels.append(options[0].get("label", "A").upper())
+                elif any(sym in ans_body for sym in ["❌", "X", "x", "否", "錯", "不正確"]):
+                    if len(options) > 1:
+                        selected_labels.append(options[1].get("label", "B").upper())
+
+            # 3. 模糊文字比對：若回貼的是選項文字（如「機器學習」），比對匹配的選項
+            if not selected_labels:
+                for opt in options:
+                    opt_t = opt.get("text", "").strip()
+                    if opt_t and (opt_t in ans_body or ans_body in opt_t):
+                        selected_labels.append(opt.get("label", "").upper())
+
+            if selected_labels:
+                # 若為單選題，只保留第一個選項
+                if not q_info.get("is_multiple", False):
+                    selected_labels = [selected_labels[0]]
+                parsed[q_idx] = list(dict.fromkeys(selected_labels))  # 去重保持順序
+
+    return parsed
 

@@ -63,7 +63,12 @@ from PySide6.QtGui import (
     QPalette,
     QPixmap,
 )
-from utils.helpers import get_logger
+from utils.helpers import (
+    get_logger,
+    format_quiz_prompt,
+    parse_ai_quiz_answers,
+    INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
+)
 from utils.security import validate_ai_base_url
 from usage_tracker import UsageHeartbeat
 
@@ -2307,12 +2312,244 @@ Log "ps1 done"
 
 
 # =========================
+# 人機協同測驗助理彈窗
+# =========================
+class InteractiveQuizDialog(QDialog):
+    """遇到測驗時彈出的人機協同作答助理（支援一鍵複製 Prompt、答案貼上解析與逾時自動跳過）"""
+
+    def __init__(self, course_name: str, questions_data: list, timeout_sec: int = 180, parent=None):
+        super().__init__(parent)
+        self.course_name = course_name
+        self.questions_data = questions_data
+        self.timeout_sec = timeout_sec
+        self.remaining_sec = timeout_sec
+        self.is_paused = False
+        self.parsed_result = None
+
+        self.setWindowTitle(f"📝 測驗作答助理 - {course_name}")
+        self.resize(880, 620)
+        self.setModal(True)
+
+        self.prompt_text = format_quiz_prompt(course_name, questions_data)
+        self._init_ui()
+
+        # 啟動倒數計時器
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.start(1000)
+
+    def _init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        # 頂部狀態列（課程名稱與倒數計時）
+        top_bar = QHBoxLayout()
+        title_lbl = QLabel(f"<b>課程：</b>{self.course_name}", self)
+        title_lbl.setStyleSheet("font-size: 15px; color: #1E293B; font-weight: bold;")
+        top_bar.addWidget(title_lbl)
+
+        top_bar.addStretch()
+
+        m, s = divmod(self.remaining_sec, 60)
+        self.timer_lbl = QLabel(f"⏱️ 剩餘作答時間: {m:02d}:{s:02d}（上限 180 秒／03:00）", self)
+        self.timer_lbl.setStyleSheet("font-size: 14px; color: #DC2626; font-weight: bold;")
+        top_bar.addWidget(self.timer_lbl)
+        layout.addLayout(top_bar)
+
+        # 中間左右分割：左側 AI Prompt / 右側答案回貼
+        split_layout = QHBoxLayout()
+        split_layout.setSpacing(16)
+
+        # ── 左側：AI Prompt 預覽 ──
+        left_box = QVBoxLayout()
+        left_title = QLabel("🤖 1. AI 提問詞（已為您自動彙整題目）", self)
+        left_title.setStyleSheet("font-size: 13px; font-weight: bold; color: #334155;")
+        left_box.addWidget(left_title)
+
+        self.prompt_preview = QTextEdit(self)
+        self.prompt_preview.setPlainText(self.prompt_text)
+        self.prompt_preview.setReadOnly(True)
+        self.prompt_preview.setStyleSheet("""
+            QTextEdit {
+                background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 8px;
+                font-family: 'Cascadia Mono', 'Consolas', 'Microsoft JhengHei', monospace;
+                font-size: 12px; color: #334155; padding: 10px;
+            }
+        """)
+        left_box.addWidget(self.prompt_preview)
+
+        self.copy_btn = QPushButton("📋 一鍵複製 AI 提問 Prompt", self)
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background: #2563EB; color: #FFFFFF; font-weight: bold; font-size: 13px;
+                padding: 10px 16px; border-radius: 8px; border: none;
+            }
+            QPushButton:hover { background: #1D4ED8; }
+            QPushButton:pressed { background: #1E40AF; }
+        """)
+        self.copy_btn.clicked.connect(self._copy_prompt)
+
+        # 右側欄位
+        right_box = QFrame()
+        right_box.setStyleSheet("background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 10px;")
+        right_layout = QVBoxLayout(right_box)
+        right_lbl = QLabel("📥 答案回貼區（貼上 ChatGPT / Gemini 回覆的內容）")
+        right_lbl.setStyleSheet("font-weight: bold; color: #374151; font-size: 13px;")
+
+        self.answer_input = QTextEdit()
+        self.answer_input.setPlaceholderText("請在此貼上 AI 回覆的內容...\n例如：\n1. B\n2. ⭕\n3. 以上皆是\n4. A, B, C")
+        self.answer_input.setStyleSheet("""
+            QTextEdit {
+                background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 6px;
+                font-family: 'Consolas', 'Microsoft JhengHei', monospace; font-size: 13px;
+                color: #111827; padding: 8px;
+            }
+        """)
+
+        self.paste_btn = QPushButton("📋 從剪貼簿直接貼上")
+        self.paste_btn.setStyleSheet("""
+            QPushButton {
+                background: #8B5CF6; color: #FFFFFF; font-weight: bold; font-size: 13px;
+                padding: 10px; border-radius: 6px; border: none;
+            }
+            QPushButton:hover { background: #7C3AED; }
+        """)
+        self.paste_btn.clicked.connect(self._paste_from_clipboard)
+
+        right_layout.addWidget(right_lbl)
+        right_layout.addWidget(self.answer_input)
+        right_layout.addWidget(self.paste_btn)
+        cols_layout.addWidget(right_box, 1)
+
+        layout.addLayout(cols_layout)
+
+        # 底部操作列
+        bottom_bar = QHBoxLayout()
+        self.submit_btn = QPushButton("🚀 解析並自動填入考卷")
+        self.submit_btn.setStyleSheet("""
+            QPushButton {
+                background: #10B981; color: #FFFFFF; font-weight: bold; font-size: 14px;
+                padding: 10px 24px; border-radius: 8px; border: none;
+            }
+            QPushButton:hover { background: #059669; }
+            QPushButton:disabled { background: #A7F3D0; color: #065F46; }
+        """)
+        self.submit_btn.clicked.connect(self._submit)
+
+        self.pause_btn = QPushButton("⏸️ 暫停倒數")
+        self.pause_btn.setStyleSheet("""
+            QPushButton {
+                background: #F59E0B; color: #FFFFFF; font-weight: bold; font-size: 13px;
+                padding: 10px 16px; border-radius: 8px; border: none;
+            }
+            QPushButton:hover { background: #D97706; }
+        """)
+        self.pause_btn.clicked.connect(self._toggle_pause)
+
+        self.skip_btn = QPushButton("⏭️ 立即跳過測驗")
+        self.skip_btn.setStyleSheet("""
+            QPushButton {
+                background: #6B7280; color: #FFFFFF; font-weight: bold; font-size: 13px;
+                padding: 10px 16px; border-radius: 8px; border: none;
+            }
+            QPushButton:hover { background: #4B5563; }
+        """)
+        self.skip_btn.clicked.connect(self._skip)
+
+        bottom_bar.addWidget(self.submit_btn)
+        bottom_bar.addWidget(self.pause_btn)
+        bottom_bar.addStretch()
+        bottom_bar.addWidget(self.skip_btn)
+        layout.addLayout(bottom_bar)
+
+    def _tick(self):
+        if self.is_paused:
+            return
+        self.remaining_sec -= 1
+        if self.remaining_sec > 0:
+            m, s = divmod(self.remaining_sec, 60)
+            self.timer_lbl.setText(f"⏱️ 剩餘作答時間: {m:02d}:{s:02d}（上限 180 秒／03:00）")
+        else:
+            self.timer.stop()
+            self.timer_lbl.setText("⏱️ 已逾時（180 秒已到），等待決策...")
+
+            # 彈出明確決策對話框，取消隱性自動跳過
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("⏱️ 作答逾時提示")
+            msg_box.setText(f"【{self.course_name}】測驗助理已達 180 秒倒數上限。\n\n請選擇後續處理方式：")
+            msg_box.setIcon(QMessageBox.Question)
+
+            retry_btn = msg_box.addButton("🔄 重新計時 180 秒", QMessageBox.ActionRole)
+            skip_btn = msg_box.addButton("⏩ 跳過此測驗並繼續", QMessageBox.ActionRole)
+            stop_btn = msg_box.addButton("🛑 結束本次執行", QMessageBox.DestructiveRole)
+
+            msg_box.exec()
+            clicked = msg_box.clickedButton()
+
+            if clicked == retry_btn:
+                self.remaining_sec = self.timeout_sec
+                self.is_paused = False
+                self.pause_btn.setText("⏸️ 暫停倒數")
+                m, s = divmod(self.remaining_sec, 60)
+                self.timer_lbl.setText(f"⏱️ 剩餘作答時間: {m:02d}:{s:02d}（上限 180 秒／03:00）")
+                self.timer.start(1000)
+            elif clicked == stop_btn:
+                self.parsed_result = "STOP_ALL"
+                self.reject()
+            else:
+                self.parsed_result = None
+                self.reject()
+
+    def _copy_prompt(self):
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.prompt_text)
+        self.copy_btn.setText("✅ 已複製至剪貼簿！")
+        QTimer.singleShot(2000, lambda: self.copy_btn.setText("📋 一鍵複製 AI 提問 Prompt"))
+
+    def _paste_from_clipboard(self):
+        clipboard = QApplication.clipboard()
+        self.answer_input.setPlainText(clipboard.text())
+
+    def _toggle_pause(self):
+        self.is_paused = not self.is_paused
+        m, s = divmod(self.remaining_sec, 60)
+        if self.is_paused:
+            self.pause_btn.setText("▶️ 繼續倒數")
+            self.timer_lbl.setText(f"⏸️ 倒數已暫停（剩餘 {m:02d}:{s:02d}）")
+        else:
+            self.pause_btn.setText("⏸️ 暫停倒數")
+            self.timer_lbl.setText(f"⏱️ 剩餘作答時間: {m:02d}:{s:02d}（上限 180 秒／03:00）")
+
+    def _submit(self):
+        raw = self.answer_input.toPlainText().strip()
+        if not raw:
+            QMessageBox.warning(self, "提示", "請先在右側回貼區貼上 AI 回覆的答案！")
+            return
+        parsed = parse_ai_quiz_answers(raw, self.questions_data)
+        if not parsed:
+            QMessageBox.warning(
+                self, "解析提示", "未能從貼上的內容中辨識出題號與選項代號，請檢查格式是否包含題號（如 1. B, 2. ⭕ 等）！"
+            )
+            return
+        self.parsed_result = parsed
+        self.timer.stop()
+        self.accept()
+
+    def _skip(self):
+        self.parsed_result = None
+        self.timer.stop()
+        self.reject()
+
+
+# =========================
 # 主執行頁面
 # =========================
 from PySide6.QtWidgets import QTabWidget
 
 class PlatformTabPanel(QWidget):
     log_signal = Signal(str)
+    quiz_interactive_signal = Signal(str, list, int, object)
 
     def __init__(self, platform_key, platform_title, on_start, on_stop, on_toggle_browser):
         super().__init__()
@@ -2340,8 +2577,11 @@ class PlatformTabPanel(QWidget):
                 color: #1F2937; font-size: 13px; font-weight: bold; background: transparent;
             }
         """)
-        prog_layout = QHBoxLayout(progress_card)
-        prog_layout.setContentsMargins(8, 4, 8, 4)
+        progress_content = QVBoxLayout(progress_card)
+        progress_content.setContentsMargins(8, 6, 8, 6)
+        progress_content.setSpacing(4)
+        prog_layout = QHBoxLayout()
+        prog_layout.setContentsMargins(0, 0, 0, 0)
 
         self.stats_lbl = QLabel("📊 研習時數與課程進度：準備就緒")
         self.progress_bar = QProgressBar()
@@ -2368,9 +2608,15 @@ class PlatformTabPanel(QWidget):
         prog_layout.addWidget(self.stats_lbl)
         prog_layout.addStretch()
         prog_layout.addWidget(self.progress_bar)
+        self.execution_status_lbl = QLabel("● 待命：尚未開始本次執行")
+        self.execution_status_lbl.setStyleSheet(
+            "color: #64748B; font-size: 12px; font-weight: 600; background: transparent;"
+        )
+        progress_content.addLayout(prog_layout)
+        progress_content.addWidget(self.execution_status_lbl)
         layout.addWidget(progress_card)
 
-        # 操作列
+        # 操作列：主要動作與本次選項分開，避免視窗較窄時過度擁擠。
         btn_bar = QHBoxLayout()
         self.info_lbl = QLabel(f"{platform_title}控制台")
         self.info_lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 14px; background: transparent;")
@@ -2381,6 +2627,14 @@ class PlatformTabPanel(QWidget):
         )
         self.skip_exam_checkbox.setStyleSheet(
             "QCheckBox { color: #92400E; font-weight: bold; font-size: 13px; background: transparent; }"
+        )
+
+        self.interactive_quiz_checkbox = QCheckBox("人機協同作答（彈窗回貼）")
+        self.interactive_quiz_checkbox.setToolTip(
+            "遇到測驗時彈出視窗，自動格式化考卷為 AI Prompt 供您複製到 ChatGPT/Gemini，並支援回貼答案自動勾選。逾時 180 秒未操作將彈出決策確認對話框。"
+        )
+        self.interactive_quiz_checkbox.setStyleSheet(
+            "QCheckBox { color: #1D4ED8; font-weight: bold; font-size: 13px; background: transparent; }"
         )
 
         self.start_btn = QPushButton("▶️ 開始執行")
@@ -2400,8 +2654,10 @@ class PlatformTabPanel(QWidget):
                 padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
             }
             QPushButton:hover { background: #DC2626; }
+            QPushButton:disabled { background: #E5E7EB; color: #9CA3AF; }
         """)
         self.stop_btn.clicked.connect(self._handle_stop)
+        self.stop_btn.setEnabled(False)
 
         self.toggle_browser_btn = QPushButton("👁️ 顯示瀏覽器")
         self.toggle_browser_btn.setStyleSheet("""
@@ -2414,12 +2670,25 @@ class PlatformTabPanel(QWidget):
         self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
         btn_bar.addWidget(self.info_lbl)
-        btn_bar.addWidget(self.skip_exam_checkbox)
         btn_bar.addStretch()
         btn_bar.addWidget(self.start_btn)
         btn_bar.addWidget(self.stop_btn)
         btn_bar.addWidget(self.toggle_browser_btn)
         layout.addLayout(btn_bar)
+
+        option_card = QFrame()
+        option_card.setStyleSheet("""
+            QFrame { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; }
+            QLabel { color: #92400E; font-size: 12px; font-weight: 700; background: transparent; }
+        """)
+        option_layout = QHBoxLayout(option_card)
+        option_layout.setContentsMargins(12, 7, 12, 7)
+        option_layout.setSpacing(18)
+        option_layout.addWidget(QLabel("本次執行選項"))
+        option_layout.addWidget(self.skip_exam_checkbox)
+        option_layout.addWidget(self.interactive_quiz_checkbox)
+        option_layout.addStretch()
+        layout.addWidget(option_card)
 
         # Log 視窗
         self.log_view = QTextEdit()
@@ -2431,10 +2700,9 @@ class PlatformTabPanel(QWidget):
                 border: 1px solid #1F2937;
                 border-radius: 12px;
                 color: #F9FAFB;
-                font-family: 'Consolas', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Segoe UI', monospace;
+                font-family: 'Cascadia Mono', 'Microsoft JhengHei UI', 'Segoe UI', monospace;
                 font-size: 13px;
                 padding: 12px;
-                line-height: 1.5;
             }
             QScrollBar:vertical {
                 background: #111827;
@@ -2456,6 +2724,27 @@ class PlatformTabPanel(QWidget):
         layout.addWidget(self.log_view)
 
         self.log_signal.connect(self._append_text_safe)
+        self.quiz_interactive_signal.connect(self._handle_quiz_interactive_request)
+
+    def _handle_quiz_interactive_request(self, course_name, questions_data, timeout_sec, holder):
+        event, res_holder = holder
+        try:
+            dlg = InteractiveQuizDialog(course_name, questions_data, timeout_sec, parent=self)
+            dlg.exec()
+            res_holder["result"] = dlg.parsed_result
+        except Exception as e:
+            logger.error(f"人機協同彈窗發生異常: {e}")
+            res_holder["result"] = None
+        finally:
+            event.set()
+
+    def prompt_quiz_interactive(self, course_name: str, questions_data: list, timeout_sec: int = INTERACTIVE_QUIZ_TIMEOUT_SECONDS):
+        event = threading.Event()
+        res_holder = {"result": None}
+        self.quiz_interactive_signal.emit(course_name, questions_data, timeout_sec, (event, res_holder))
+        # 等待使用者作答完成或對話框關閉
+        event.wait()
+        return res_holder["result"]
 
     def update_account_info(self, name: str, account: str):
         """動態更新控制台頂部的暱稱與帳號資訊"""
@@ -2473,12 +2762,33 @@ class PlatformTabPanel(QWidget):
             self.stats_lbl.setText(f"📊 研習進度：{current} / {total} 門課程 ({pct}%)")
 
     def _handle_start(self):
+        self.execution_status_lbl.setText("● 正在啟動自動化流程…")
+        self.execution_status_lbl.setStyleSheet(
+            "color: #2563EB; font-size: 12px; font-weight: 700; background: transparent;"
+        )
         if self.on_start:
             self.on_start(self.platform_key)
 
     def _handle_stop(self):
         if self.on_stop:
             self.on_stop(self.platform_key)
+
+    def set_running_state(self, is_running: bool, message: str = None):
+        """同步控制列可用狀態與固定摘要，避免誤按停止或重複啟動。"""
+        self.start_btn.setEnabled(not is_running)
+        self.stop_btn.setEnabled(is_running)
+        self.skip_exam_checkbox.setEnabled(not is_running)
+        self.interactive_quiz_checkbox.setEnabled(not is_running)
+        if is_running:
+            text = message or "● 執行中：請留意下方日誌與進度"
+            color = "#047857"
+        else:
+            text = message or "● 待命：尚未開始本次執行"
+            color = "#64748B"
+        self.execution_status_lbl.setText(text)
+        self.execution_status_lbl.setStyleSheet(
+            f"color: {color}; font-size: 12px; font-weight: 700; background: transparent;"
+        )
 
     def _handle_toggle_browser(self):
         self.browser_visible = not self.browser_visible
@@ -2541,6 +2851,9 @@ class PlatformTabPanel(QWidget):
                 return
             level_part, msg_part = formatted
             time_part = datetime.now().strftime("%H:%M:%S")
+
+        if any(k in msg_part for k in ["所有任務圓滿達成", "所有任務完成", "流程未完整完成"]):
+            self.set_running_state(False, "● 本次流程已結束，可再次開始執行")
 
         # 🧠 Log 智慧進度攔截器 (Auto Progress Interceptor)
         try:
@@ -2611,9 +2924,12 @@ class AccountSettingsTabPanel(QWidget):
 
         lbl = QLabel("⚙️ 帳號管理與系統設定")
         lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 16px; background: transparent;")
+        lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        lbl.setFixedHeight(30)
         layout.addWidget(lbl)
 
         form_card = QFrame()
+        form_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         form_card.setStyleSheet("""
             QFrame {
                 background: #FFFFFF;
@@ -2736,6 +3052,8 @@ class AccountSettingsTabPanel(QWidget):
         btn_bar.addStretch()
         btn_bar.addWidget(self.save_btn)
         layout.addLayout(btn_bar)
+        # 多出的垂直空間放在底部，不把標題與表單推開。
+        layout.addStretch(1)
 
         self.load_settings()
 
@@ -3137,8 +3455,11 @@ class MainWindow(QWidget):
         full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
         panel = self.immersive.taipei_panel if key == "taipei_eda" else self.immersive.egov_panel
         full_config["skip_exam_for_session"] = panel.skip_exam_checkbox.isChecked()
+        full_config["interactive_quiz_for_session"] = panel.interactive_quiz_checkbox.isChecked()
         if full_config["skip_exam_for_session"]:
             logger.info("本次執行已啟用「跳過測驗，先做問卷」模式。")
+        if full_config["interactive_quiz_for_session"]:
+            logger.info("本次執行已啟用「人機協同作答（彈窗回貼）」模式。")
 
         if key == "taipei_eda":
             # 檢查並自動清理已死掉的舊 Thread
@@ -3153,11 +3474,13 @@ class MainWindow(QWidget):
             self.taipei_pilot = AdminEfficiencyPilot(
                 config_override=full_config,
                 log_callback=self.immersive.taipei_panel.append_text,
-                progress_callback=self.immersive.taipei_panel.update_progress
+                progress_callback=self.immersive.taipei_panel.update_progress,
+                quiz_interactive_callback=self.immersive.taipei_panel.prompt_quiz_interactive,
             )
             self.taipei_pilot.running = True
             self.taipei_thread = threading.Thread(target=self.taipei_pilot.run, daemon=True)
             self.taipei_thread.start()
+            panel.set_running_state(True, "● 執行中：正在啟動臺北E大流程")
             logger.info("🚀 臺北E大流程已啟動")
 
         else:  # ecpa / egov
@@ -3172,11 +3495,13 @@ class MainWindow(QWidget):
             self.egov_pilot = AdminEfficiencyPilot(
                 config_override=full_config,
                 log_callback=self.immersive.egov_panel.append_text,
-                progress_callback=self.immersive.egov_panel.update_progress
+                progress_callback=self.immersive.egov_panel.update_progress,
+                quiz_interactive_callback=self.immersive.egov_panel.prompt_quiz_interactive,
             )
             self.egov_pilot.running = True
             self.egov_thread = threading.Thread(target=self.egov_pilot.run, daemon=True)
             self.egov_thread.start()
+            panel.set_running_state(True, "● 執行中：正在啟動 e等公務員流程")
             logger.info(f"🚀 e等公務員流程已啟動 (登入模式: {full_config.get('login_type')})")
 
     def _stop_single_platform(self, key):
@@ -3189,6 +3514,7 @@ class MainWindow(QWidget):
                     pass
             self.taipei_pilot = None
             self.taipei_thread = None
+            self.immersive.taipei_panel.set_running_state(False, "● 已停止臺北E大流程")
             logger.info("🛑 已停止臺北E大流程")
         else:
             if self.egov_pilot:
@@ -3199,6 +3525,7 @@ class MainWindow(QWidget):
                     pass
             self.egov_pilot = None
             self.egov_thread = None
+            self.immersive.egov_panel.set_running_state(False, "● 已停止 e等公務員流程")
             logger.info("🛑 已停止e等公務員流程")
 
     def _toggle_platform_browser(self, key, visible):
