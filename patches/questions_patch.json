@@ -14195,5 +14195,27 @@
       ""
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "有部門、加班時數兩個欄位，哪個函數能把業務部的加班時數算出來？",
+    "answer": "Sumif",
+    "type": "單選",
+    "options": [
+      "countifs",
+      "sum",
+      "Sumif",
+      "Sumifs"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "要呈現各產品銷量佔比，用「圓形圖」會比較適合。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
