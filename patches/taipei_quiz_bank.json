@@ -5299,7 +5299,7 @@
     "opt1": "2. 動態行為製品(Artifacts of Dynamic Behavior Views)",
     "opt2": "3. 其他觀點製品(Artifacts of Other Views)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5310,7 +5310,7 @@
     "opt1": "2. Actor",
     "opt2": "3. Service",
     "opt3": "4. Data",
-    "updated_at": "2026-08-16T09:12:37.696Z"
+    "updated_at": "2026-08-16T09:13:02.182Z"
   },
   {
     "course_id": 3793,
@@ -5321,7 +5321,7 @@
     "opt1": "2. 企業流程工程(Business Process Engineering, BPE)",
     "opt2": "3. 企業流程再工程(Business Process Reengineering, BPR)",
     "opt3": "4. 企業流程改進(Business Process Improvement, BPI)",
-    "updated_at": "2026-08-16T09:12:37.696Z"
+    "updated_at": "2026-08-16T09:13:02.182Z"
   },
   {
     "course_id": 3793,
@@ -5332,7 +5332,7 @@
     "opt1": "2. 業務架構(Business Architecture)",
     "opt2": "3. 資訊系統架構(Information Architecture)",
     "opt3": "4. 技術架構(Technology Architecture)",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5343,7 +5343,7 @@
     "opt1": "2. 使用案例圖(UCD)",
     "opt2": "3. BPMN圖(BPMND)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5354,7 +5354,7 @@
     "opt1": "2. BPMN：Level 1",
     "opt2": "3. BPMN：Level 2",
     "opt3": "4. BPMN：Level n",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5365,7 +5365,7 @@
     "opt1": "2. 應用流程執行(Application Process Executions)層構件",
     "opt2": "3. 穏定的實體(Stable Entities)層構件",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5376,7 +5376,7 @@
     "opt1": "2. 網際網路(Internet)",
     "opt2": "3. 企業內部網路(Intranet)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3180,
@@ -5497,7 +5497,7 @@
     "opt1": "2. 架構框架(Architecture Framework, AF)",
     "opt2": "3. 架構製品(Architecture Artifacts)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": "3793",
@@ -5519,7 +5519,7 @@
     "opt1": "2. 資訊系統架構(Application Architectures)",
     "opt2": "3. 技術架構(Technology Architecture)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5530,7 +5530,7 @@
     "opt1": "2. 開放群組架構規範(TOGAF)",
     "opt2": "3. Zachman架構",
     "opt3": "4. UPDM(Unified Profile for the Department of Defense Architecture Framework (DoDAF) and Ministry of Defence Architecture Framework (MODAF))",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5541,7 +5541,7 @@
     "opt1": "2. 形式化命名(Formal Naming)",
     "opt2": "3. 形式化定義(Formal Definition)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5552,7 +5552,7 @@
     "opt1": "2. 應用系統架構(Application System Architecture)",
     "opt2": "3. 網路技術架構(Network Technology Architecture)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": "3793",
@@ -5574,7 +5574,7 @@
     "opt1": "2. 資訊系統盤點(Information System Inventorying, ISI)",
     "opt2": "3. 資訊科技治理(Information Technology Governance)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.694Z"
+    "updated_at": "2026-08-16T09:13:02.181Z"
   },
   {
     "course_id": "3793",
@@ -5607,7 +5607,7 @@
     "opt1": "2. 共通平台(Common Platforms)",
     "opt2": "3. 獨立筒式系統(Stovepipe Systems)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.182Z"
   },
   {
     "course_id": 3793,
@@ -5618,7 +5618,7 @@
     "opt1": "2. BPMN Level 0",
     "opt2": "3. BPMN Level n",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5629,7 +5629,7 @@
     "opt1": "2. Draw.io便箋模板",
     "opt2": "3. Draw.io安裝檔",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5640,7 +5640,7 @@
     "opt1": "2. 會辦人員",
     "opt2": "3. 審查長",
     "opt3": "4. 終審人",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5651,7 +5651,7 @@
     "opt1": "2. Draw.io原始檔",
     "opt2": "3. Draw.io視圖PDF檔",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.697Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": "3793",
@@ -5673,7 +5673,7 @@
     "opt1": "2. 表單編號",
     "opt2": "3. 電話",
     "opt3": "4. 前一版本表單編號",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5684,7 +5684,7 @@
     "opt1": "2. 6類",
     "opt2": "3. 7類",
     "opt3": "4. 8類",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": 3793,
@@ -5695,7 +5695,7 @@
     "opt1": "2. 軟體應用架構(Software Application Architecture)",
     "opt2": "3. 技術架構(Technology Architecture)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": "3793",
@@ -5728,7 +5728,7 @@
     "opt1": "2. 硬體(Hardware)",
     "opt2": "3. 安全(Security)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": "3793",
@@ -5750,7 +5750,7 @@
     "opt1": "2. opt：option",
     "opt2": "3. loop",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:37.698Z"
+    "updated_at": "2026-08-16T09:13:02.183Z"
   },
   {
     "course_id": "3793",
