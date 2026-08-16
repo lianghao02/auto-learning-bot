@@ -14067,5 +14067,70 @@
       "D4*$A$2"
     ],
     "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "哪一個函數可以用來計算一列數字的平均值？",
+    "answer": "AVERAGE",
+    "type": "單選",
+    "options": [
+      "SUM",
+      "AVERAGE",
+      "MAX",
+      "MIN"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "希望將數字123.456進行四捨五入到小數點後兩位，哪個指令正確？",
+    "answer": "ROUND(123.456,2)",
+    "type": "單選",
+    "options": [
+      "ROUND(123.456,2)",
+      "ROUNDDOWN(123.456,2)",
+      "ROUNDUP(123.456,2)"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "Calc的工作環境設定，可由【工具】功能表→選項，進入設定。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "有部門、婚姻兩個欄位，哪個函數可以計算出業務部已婚的人數？",
+    "answer": "Countifs",
+    "type": "單選",
+    "options": [
+      "Sumif",
+      "Sumifs",
+      "Countif",
+      "Countifs"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "儲存格內手動換行的快快速鍵是Ctrl+Enter。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "樞紐分析表PivotTable，快速計算和彙總大量數據，但不能用來進行數據排序。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
