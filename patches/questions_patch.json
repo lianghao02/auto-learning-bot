@@ -15432,5 +15432,125 @@
       "定義與執行"
     ],
     "course": "蒐集與理解資料"
+  },
+  {
+    "question": "Peter works in the movie _____, so he knows many actors, directors, and film company managers.",
+    "answer": "industry",
+    "type": "單選",
+    "options": [
+      "target",
+      "pleasure",
+      "drugstore",
+      "industry"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "For tourists that are interested in trying street food, Shilin Night Market is the _____ place to visit.",
+    "answer": "ideal",
+    "type": "單選",
+    "options": [
+      "various",
+      "fierce",
+      "rare",
+      "ideal"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "After signing their names on the _____, the two businessmen shook hands and thanked each other.",
+    "answer": "contract",
+    "type": "單選",
+    "options": [
+      "contract",
+      "strategy",
+      "channel",
+      "suspect"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "Our costs have _____; if we don’t raise our prices as well, we’ll start losing money soon.",
+    "answer": "increased",
+    "type": "單選",
+    "options": [
+      "extended",
+      "disappeared",
+      "increased",
+      "stretched"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "The salesman _____ Dan to buy a bigger television by telling him it was the best one in the store.",
+    "answer": "persuaded",
+    "type": "單選",
+    "options": [
+      "promoted",
+      "featured",
+      "persuaded",
+      "affected"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "David had to _____ his gym membership so he could continue going there to exercise.",
+    "answer": "renew",
+    "type": "單選",
+    "options": [
+      "prevent",
+      "attract",
+      "renew",
+      "interrupt"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "I quit university ten years ago, but now I want to go back to school and finish my _____.",
+    "answer": "degree",
+    "type": "單選",
+    "options": [
+      "channel",
+      "degree",
+      "department",
+      "vacation"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "The clerk was friendly at first, but her _____ changed when she knew I didn’t want to buy anything.",
+    "answer": "manner",
+    "type": "單選",
+    "options": [
+      "membership",
+      "technology",
+      "ayment",
+      "manner"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "Henry’s wife had an accident this morning, so he went to the hospital to _____ the emergency.",
+    "answer": "deal with",
+    "type": "單選",
+    "options": [
+      "pass by",
+      "deal with",
+      "result in",
+      "look for"
+    ],
+    "course": "新多益專欄(招募員工)"
+  },
+  {
+    "question": "Larry’s company offers him many _____, including a car that he can use for visiting customers.",
+    "answer": "benefits",
+    "type": "單選",
+    "options": [
+      "benefits",
+      "concerns",
+      "policies",
+      "openings"
+    ],
+    "course": "新多益專欄(招募員工)"
   }
 ]
