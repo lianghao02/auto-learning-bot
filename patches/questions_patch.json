@@ -13892,5 +13892,114 @@
       "chongˇ   voi+   m    deeˋ"
     ],
     "course": "客語能力認證中級暨中高級課程-海陸腔"
+  },
+  {
+    "question": "使用哪個功能，能讓公式更容易瞭解及維護？",
+    "answer": "範圍定義名稱",
+    "type": "單選",
+    "options": [
+      "範圍定義名稱",
+      "設定列印範圍",
+      "更改工作表名稱"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "儲存格公式=\"Libre\"&\"Office\"，結果\"LibreOffice\"。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "以下哪個公式會從字串“CalcFunctions”中提取出“Fun”？",
+    "answer": "=MID(\"Calc Functions\", 6, 3)",
+    "type": "單選",
+    "options": [
+      "=MID(\"Calc Functions\", 6, 3)",
+      "=LEFT(\"Calc Functions\", 8)",
+      "=RIGHT(\"Calc Functions\", 3)"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "(以下哪個公式判斷A1儲存格的數值是否大於100並返回“超過”或“未超過”？",
+    "answer": "=IF(A1>100, \"超過\", \"未超過\")",
+    "type": "單選",
+    "options": [
+      "=IF(A1<100, \"超過\", \"未超過\")",
+      "=IF(A1>100, \"超過\", \"未超過\")",
+      "=IF(A1=100, \"超過\", \"未超過\")"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "工具列不見了，可以到【編輯】功能表→工具列，勾選要顯示的工具列。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "儲存格的值，大於50000要標示為紅色，可用儲存格條件格式設定來達成。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "如果A1單元格中的內容是“DataAnalysis”，=LEFT(A1,4)的結果是什麼？",
+    "answer": "Data",
+    "type": "單選",
+    "options": [
+      "An",
+      "Analysis",
+      "Data Analysis",
+      "Data"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "數值格式不能由側邊欄【屬性/數字格式】快速進行設定。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "建立下拉式選單時，應該選擇什麼功能？",
+    "answer": "資料驗證",
+    "type": "單選",
+    "options": [
+      "條件格式",
+      "資料驗證",
+      "圖表工具",
+      "插入函數"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
+  },
+  {
+    "question": "以下哪個函數可以計算一列數字中最大的數值？",
+    "answer": "MAX",
+    "type": "單選",
+    "options": [
+      "SUM",
+      "AVERAGE",
+      "MAX",
+      "MIN"
+    ],
+    "course": "MODA ODF Application Tools(Calc)試算表班"
   }
 ]
