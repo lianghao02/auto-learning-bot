@@ -5299,7 +5299,7 @@
     "opt1": "2. 動態行為製品(Artifacts of Dynamic Behavior Views)",
     "opt2": "3. 其他觀點製品(Artifacts of Other Views)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:12.561Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
     "course_id": 3793,
@@ -5310,7 +5310,7 @@
     "opt1": "2. Actor",
     "opt2": "3. Service",
     "opt3": "4. Data",
-    "updated_at": "2026-08-16T09:12:12.559Z"
+    "updated_at": "2026-08-16T09:12:37.696Z"
   },
   {
     "course_id": 3793,
@@ -5321,7 +5321,7 @@
     "opt1": "2. 企業流程工程(Business Process Engineering, BPE)",
     "opt2": "3. 企業流程再工程(Business Process Reengineering, BPR)",
     "opt3": "4. 企業流程改進(Business Process Improvement, BPI)",
-    "updated_at": "2026-08-16T09:12:12.560Z"
+    "updated_at": "2026-08-16T09:12:37.696Z"
   },
   {
     "course_id": 3793,
@@ -5332,7 +5332,7 @@
     "opt1": "2. 業務架構(Business Architecture)",
     "opt2": "3. 資訊系統架構(Information Architecture)",
     "opt3": "4. 技術架構(Technology Architecture)",
-    "updated_at": "2026-08-16T09:12:12.560Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
     "course_id": 3793,
@@ -5343,7 +5343,7 @@
     "opt1": "2. 使用案例圖(UCD)",
     "opt2": "3. BPMN圖(BPMND)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:12.561Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": 3793,
@@ -5354,7 +5354,7 @@
     "opt1": "2. BPMN：Level 1",
     "opt2": "3. BPMN：Level 2",
     "opt3": "4. BPMN：Level n",
-    "updated_at": "2026-08-16T09:12:12.561Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": 3793,
@@ -5365,7 +5365,7 @@
     "opt1": "2. 應用流程執行(Application Process Executions)層構件",
     "opt2": "3. 穏定的實體(Stable Entities)層構件",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:12.561Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": 3793,
@@ -5376,7 +5376,7 @@
     "opt1": "2. 網際網路(Internet)",
     "opt2": "3. 企業內部網路(Intranet)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:12.561Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": 3180,
@@ -5489,7 +5489,7 @@
     "updated_at": "2026-08-15T20:29:06.710Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "系統(System)有架構(Architecture)，架構",
     "q_text": "系統(System)有架構(Architecture)，架構可以用何種觀點(Viewpoint)所描述？",
     "val": "3",
@@ -5497,7 +5497,7 @@
     "opt1": "2. 架構框架(Architecture Framework, AF)",
     "opt2": "3. 架構製品(Architecture Artifacts)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.323Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": "3793",
@@ -5511,7 +5511,7 @@
     "updated_at": "2026-08-16T09:12:03.323Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問企業架構開發方法(ADM)循環中，哪個部分是屬於Arch",
     "q_text": "請問企業架構開發方法(ADM)循環中，哪個部分是屬於ArchiMate核心？",
     "val": "3",
@@ -5519,10 +5519,10 @@
     "opt1": "2. 資訊系統架構(Application Architectures)",
     "opt2": "3. 技術架構(Technology Architecture)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.323Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問何者為世上最早提出的架構理論？",
     "q_text": "請問何者為世上最早提出的架構理論？",
     "val": "2",
@@ -5530,29 +5530,29 @@
     "opt1": "2. 開放群組架構規範(TOGAF)",
     "opt2": "3. Zachman架構",
     "opt3": "4. UPDM(Unified Profile for the Department of Defense Architecture Framework (DoDAF) and Ministry of Defence Architecture Framework (MODAF))",
-    "updated_at": "2026-08-16T09:12:03.323Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問本體論工程，實際上就是對特定領域之中某套概念及其相互之間",
     "q_text": "請問本體論工程，實際上就是對特定領域之中某套概念及其相互之間關係，做什麼樣的闡述？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 形式化表達(Formal Representation)",
     "opt1": "2. 形式化命名(Formal Naming)",
     "opt2": "3. 形式化定義(Formal Definition)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.323Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "企業架構框架(EAF)是指建立架構模型範本，以圖形化的方式描",
     "q_text": "企業架構框架(EAF)是指建立架構模型範本，以圖形化的方式描述政府、企業或者任何系統的企業架構(EA)，請問除了動機架構外，還包括了什麼架構？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 業務架構(Business Architecture)",
     "opt1": "2. 應用系統架構(Application System Architecture)",
     "opt2": "3. 網路技術架構(Network Technology Architecture)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": "3793",
@@ -5566,15 +5566,15 @@
     "updated_at": "2026-08-16T09:12:03.324Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "TaipeiGEAF可以用來協助臺北市政府，做哪些事？",
     "q_text": "Taipei GEAF可以用來協助臺北市政府，做哪些事？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 業務流程梳理(Business Process Organizing, BPO)",
     "opt1": "2. 資訊系統盤點(Information System Inventorying, ISI)",
     "opt2": "3. 資訊科技治理(Information Technology Governance)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.694Z"
   },
   {
     "course_id": "3793",
@@ -5599,40 +5599,40 @@
     "updated_at": "2026-08-16T09:12:03.324Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問台北巿政府的資訊系統盤點(ISI)，是以TaipeiGE",
     "q_text": "請問台北巿政府的資訊系統盤點(ISI)，是以Taipei GEAF Mini Set企業架構方法，來盤點什麼系統？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 共同系統(Common Systems)",
     "opt1": "2. 共通平台(Common Platforms)",
     "opt2": "3. 獨立筒式系統(Stovepipe Systems)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問UCD中的使用案例，會與什麼對齊？",
     "q_text": "請問UCD中的使用案例，會與什麼對齊？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 策略目標(Strategic Goal)",
     "opt1": "2. BPMN Level 0",
     "opt2": "3. BPMN Level n",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問在RagicEA案件審查流程中，廠商通常會藉助Taipe",
     "q_text": "請問在Ragic EA案件審查流程中，廠商通常會藉助Taipei GEAF Web，下載什麼輔助繪圖的檔案或工具？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 架構誘導問卷(AEQ)",
     "opt1": "2. Draw.io便箋模板",
     "opt2": "3. Draw.io安裝檔",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "在RagicEA案件審查流程中，最後一關必須是由代表資訊局的",
     "q_text": "在Ragic EA案件審查流程中，最後一關必須是由代表資訊局的審查官員審查，請問他所扮演的角色是什麼？",
     "val": "3",
@@ -5640,18 +5640,18 @@
     "opt1": "2. 會辦人員",
     "opt2": "3. 審查長",
     "opt3": "4. 終審人",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "EA團隊存入MVEA的檔案，可以給資訊局使用者及EA團隊瀏覽",
     "q_text": "EA團隊存入MVEA的檔案，可以給資訊局使用者及EA團隊瀏覽及應用，請問包括哪幾類？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 計畫案文件",
     "opt1": "2. Draw.io原始檔",
     "opt2": "3. Draw.io視圖PDF檔",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.697Z"
   },
   {
     "course_id": "3793",
@@ -5665,7 +5665,7 @@
     "updated_at": "2026-08-16T09:12:03.324Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "在RagicEA案件審查流程中，機關申辦人第一次在Ragic",
     "q_text": "在Ragic EA案件審查流程中，機關申辦人第一次在Ragic EA案件審查系統上傳EA案件時，哪一欄的資料，不用填？",
     "val": "3",
@@ -5673,10 +5673,10 @@
     "opt1": "2. 表單編號",
     "opt2": "3. 電話",
     "opt3": "4. 前一版本表單編號",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "目前的Draw.io便簽模板設計共有93個Icons，請問共",
     "q_text": "目前的Draw.io便簽模板設計共有93個Icons，請問共分成幾類？",
     "val": "2",
@@ -5684,18 +5684,18 @@
     "opt1": "2. 6類",
     "opt2": "3. 7類",
     "opt3": "4. 8類",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "ArchiMate核心框架圖所繪製的架構是以服務為導向(Se",
     "q_text": "ArchiMate核心框架圖所繪製的架構是以服務為導向(Service-Oriented)，請問這些服務座落在哪裡？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. 業務架構(Business Architecture)",
     "opt1": "2. 軟體應用架構(Software Application Architecture)",
     "opt2": "3. 技術架構(Technology Architecture)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": "3793",
@@ -5720,7 +5720,7 @@
     "updated_at": "2026-08-16T09:12:03.324Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "網路計算硬體圖(NetworkComputingHardwa",
     "q_text": "網路計算硬體圖(Network Computing Hardware)強調計算(Computing)與硬體(Hardware)，請問網路安全圖(Network Security Diagrams)強調什麼 ?",
     "val": "3",
@@ -5728,7 +5728,7 @@
     "opt1": "2. 硬體(Hardware)",
     "opt2": "3. 安全(Security)",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": "3793",
@@ -5742,15 +5742,15 @@
     "updated_at": "2026-08-16T09:12:03.324Z"
   },
   {
-    "course_id": "3793",
+    "course_id": 3793,
     "q_key": "請問在繪製循序圖(SequenceDiagrams)時，在便",
     "q_text": "請問在繪製循序圖(Sequence Diagrams)時，在便箋模板(Scratchpad)中的框架(Frame)Icon可以繪製什麼應用流程(Application Processes)？",
-    "val": "4",
+    "val": "3",
     "opt0": "1. alt：alternatives",
     "opt1": "2. opt：option",
     "opt2": "3. loop",
     "opt3": "4. 以上皆是",
-    "updated_at": "2026-08-16T09:12:03.324Z"
+    "updated_at": "2026-08-16T09:12:37.698Z"
   },
   {
     "course_id": "3793",
