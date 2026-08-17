@@ -17346,5 +17346,125 @@
       ""
     ],
     "course": "《兩公約人權故事集Ⅲ》案例分析：回家的路不再漫長"
+  },
+  {
+    "question": "GMI Cloud 的架構中，哪一層提供分散式訓練負載？",
+    "answer": "容器層",
+    "type": "單選",
+    "options": [
+      "儲存層",
+      "網路層",
+      "應用平台層",
+      "容器層"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "根據簡報，AI 微調與推論工作支援哪些主流框架？",
+    "answer": "TensorFlow 與 PyTorch",
+    "type": "單選",
+    "options": [
+      "TensorFlow 與 PyTorch",
+      "Unity 與 Unreal",
+      "MySQL 與 Oracle",
+      "Hadoop 與 Spark"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "GMI Cluster Engine 提供的服務不包括？",
+    "answer": "網頁設計服務",
+    "type": "單選",
+    "options": [
+      "AI/ML 計算",
+      "Slurm 任務管理",
+      "網頁設計服務",
+      "推論即服務"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "GMI Cloud 的 7x24 監控支援代表？",
+    "answer": "全年無休即時技術支援",
+    "type": "單選",
+    "options": [
+      "只有節假日開放",
+      "AI 自動監控 GPU 使用率",
+      "全年無休即時技術支援",
+      "每月一檢修"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "企業導入 AI 時，iKala 建議的第一步是？",
+    "answer": "理解業務本體論",
+    "type": "單選",
+    "options": [
+      "購買更多 GPU",
+      "理解業務本體論",
+      "建立 Telegram 社群",
+      "關閉傳統 ERP"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "GMI 的網路虛擬化架構中，InfiniBand 的作用為何？",
+    "answer": "強化網路效能與隔離",
+    "type": "單選",
+    "options": [
+      "用來備份 GPU",
+      "強化網路效能與隔離",
+      "提供低功耗運算",
+      "限制資料傳輸"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "iKala Nexus 提供哪三大模組？",
+    "answer": "Assistant、Trend、Analyst",
+    "type": "單選",
+    "options": [
+      "Assistant、Trend、Analyst",
+      "CRM、ERP、HRM",
+      "Google、AWS、Azure",
+      "Frontend、Backend、Storage"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "iKala 的 AI Assistant 應用場域不包括？",
+    "answer": "製造部門",
+    "type": "單選",
+    "options": [
+      "人資部門",
+      "業務部門",
+      "製造部門",
+      "客服部門"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "GMI Cloud 的 Cluster Engine 支援哪種部署方式？",
+    "answer": "雲端與地端皆可",
+    "type": "單選",
+    "options": [
+      "僅限 AWS",
+      "只能本地端",
+      "雲端與地端皆可",
+      "僅限容器架構"
+    ],
+    "course": "AI 營運與商務應用"
+  },
+  {
+    "question": "GMI Cloud 叢集測試中不包括哪一項？",
+    "answer": "HTML 驗證",
+    "type": "單選",
+    "options": [
+      "硬體壓力測試",
+      "CUDA 測試",
+      "網路延遲測試",
+      "HTML 驗證"
+    ],
+    "course": "AI 營運與商務應用"
   }
 ]
