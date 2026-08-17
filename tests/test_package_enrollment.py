@@ -1,5 +1,6 @@
-"""組裝課程報名流程的單元測試。"""
+"""組裝課程修復備援與正常流程邊界的單元測試。"""
 
+import inspect
 import unittest
 from pathlib import Path
 
@@ -70,6 +71,18 @@ class PackageEnrollmentTests(unittest.TestCase):
         self.assertFalse(changed)
         self.assertNotIn("api-package", pilot._expanded_packages)
 
+    def test_questionnaire_completed_does_not_override_zero_exam_score(self):
+        pilot = self._make_pilot()
+        self.assertFalse(pilot._is_exam_passed({"status": "1", "exam_score": "0", "fill": "1"}))
+
+    def test_generic_status_is_not_treated_as_exam_passed(self):
+        pilot = self._make_pilot()
+        self.assertFalse(pilot._is_exam_passed({"status": "已通過", "write_exam": "1", "fill": "1"}))
+
+    def test_explicit_exam_pass_status_is_accepted(self):
+        pilot = self._make_pilot()
+        self.assertTrue(pilot._is_exam_passed({"exam_pass_status": "已通過", "fill": "1"}))
+
     def test_dashboard_extractor_excludes_expanded_subcourse_rows(self):
         source = Path("app.py").read_text(encoding="utf-8")
         self.assertIn("link.closest('table, tbody, tr')", source)
@@ -85,6 +98,12 @@ class PackageEnrollmentTests(unittest.TestCase):
         self.assertFalse(pilot.auto_enroll_package_subcourses(courses))
         self.assertEqual(len(pilot.driver.urls), first_url_count)
         self.assertTrue(pilot._package_preflight_completed)
+
+    def test_normal_run_does_not_rescan_or_expand_packages(self):
+        run_source = inspect.getsource(AdminEfficiencyPilot.run)
+
+        self.assertNotIn("auto_enroll_package_subcourses", run_source)
+        self.assertNotIn("套裝展開後更新課程總數", run_source)
 
     def test_ai_lookup_returns_without_key(self):
         pilot = AdminEfficiencyPilot.__new__(AdminEfficiencyPilot)

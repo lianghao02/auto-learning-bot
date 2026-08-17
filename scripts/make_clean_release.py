@@ -1,7 +1,7 @@
 import os
 import shutil
 
-src_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 parent_dir = os.path.dirname(src_dir)
 release_dir = os.path.join(parent_dir, "auto-learning-bot_Release")
 

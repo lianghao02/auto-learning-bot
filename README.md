@@ -1,10 +1,10 @@
 # 行政效能領航員（auto-learning-bot）
 
 [![Version](https://img.shields.io/badge/version-V2.3.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-green.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 
-行政效能領航員提供「臺北 E 大」與「e 等公務園」的公務數位研習輔助流程，支援時數累積、人機協同測驗助理、組裝套裝課程自動展開選課、問卷自動填寫與 SQLite 本機題庫持久化管理。
+行政效能領航員提供「臺北 E 大」與「e 等公務園」的公務數位研習輔助流程，支援時數累積、人機協同測驗助理、平台已加入課程的自動處理、問卷自動填寫與 SQLite 本機題庫持久化管理。
 
 ## 🌟 V2.3.0 重要功能與更新亮點
 
@@ -13,11 +13,11 @@
   - 使用者在 ChatGPT 或 Gemini 網頁版取得答案後，可直接回貼（支援剪貼簿一鍵貼上）。
   - 智慧解析單選、是非（⭕/❌）與多選題，自動精確點選網頁核取方塊並交卷。
   - 內建 **180 秒倒數計時（分秒動態顯示 03:00）**、暫停倒數與逾時明確決策提示（重設計時／跳過／結束執行），防範掛網無人操作時卡死。
-  - 作答完畢後自動將題目與解答沉澱至本機 SQLite 題庫 [`questions.db`](file:///D:/Development/GitHub/07_auto-learning-bot/questions.db)。
-- 📦 **組裝／套裝課程自動展開與多頁選課**：
-  - 支援 e 等公務園「組裝課程」與「套裝課程」，自動切換至「課程資訊」頁籤萃取所有子課程清單。
-  - 排除側邊欄推薦干擾，逐一自動進入子課程完成報名與選課。
-  - 支援跨 1~30 頁以及學習儀表板多頁面組裝課程完整掃描。
+  - 作答完畢後自動將題目與解答沉澱至本機 SQLite 題庫 [`questions.db`](questions.db)。
+- 📦 **組裝／套裝課程處理**：
+  - e 等公務園報名母課程後會由平台自動加入旗下子課程；正常執行直接使用課程 API 清單處理子課程。
+  - 不再於每次啟動時重複掃描母課程、展開子課程或再次報名，減少等待時間與錯誤警告。
+  - 原有子課程掃描邏輯保留為缺漏時的修復備援，不參與一般自動執行流程。
 - 📊 **測驗即時成績判定與分數通知**：
   - 測驗交卷後即時解析分數與狀態，於日誌明確顯示 `🎉 測驗結果：及格 / 通過 【得分：XX 分】` 或 `❌ 測驗結果：不及格 / 未通過 【得分：XX 分】`。
 - 🔄 **測驗未及格重考修復與重複學習防護**：
@@ -39,6 +39,8 @@
 - `config.json` 可能包含帳密或 API 金鑰，請勿提交至版本庫。
 
 ## 🧪 開發驗證
+
+主要開發與測試版本為 Python 3.13。可攜式發行版目前為了既有二進位套件相容性，仍封裝獨立的 Python 3.11 執行環境，兩者用途不同。
 
 ```powershell
 python -m unittest discover -s tests -v
