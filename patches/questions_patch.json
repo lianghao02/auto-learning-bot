@@ -17682,5 +17682,65 @@
       "區塊鏈部署工具"
     ],
     "course": "AI基礎建設與平台選型"
+  },
+  {
+    "question": "在資料查詢效能上，Trino 相較於 MSSQL 的改善幅度為？",
+    "answer": "3. 約 90% 提升以上",
+    "type": "單選",
+    "options": [
+      "大致相同",
+      "效能下降",
+      "約 90% 提升以上",
+      "僅適用於小型資料集"
+    ],
+    "course": "AI基礎建設與平台選型"
+  },
+  {
+    "question": "Red Hat 提出的 MVP 是指？",
+    "answer": "3. 最小可行產品",
+    "type": "單選",
+    "options": [
+      "最大視覺處理量",
+      "模型驗證過程",
+      "最小可行產品",
+      "資料視覺化平台"
+    ],
+    "course": "AI基礎建設與平台選型"
+  },
+  {
+    "question": "MinIO AIStor 特別為哪種硬體設備優化？",
+    "answer": "2. GPU 和 NVMe SSD",
+    "type": "單選",
+    "options": [
+      "磁帶機",
+      "GPU 和 NVMe SSD",
+      "CPU 與 DRAM",
+      "MicroSD 儲存卡"
+    ],
+    "course": "AI基礎建設與平台選型"
+  },
+  {
+    "question": "以下哪一項是 AI 導入風險的具體表現？",
+    "answer": "3. 隱私洩露與模型偏誤",
+    "type": "單選",
+    "options": [
+      "資料整理成本過低",
+      "模型回應太快",
+      "隱私洩露與模型偏誤",
+      "使用者太熟悉系統"
+    ],
+    "course": "AI基礎建設與平台選型"
+  },
+  {
+    "question": "下列哪一項不是 MinIO AIStor 的特點？",
+    "answer": "2. 與 Kubernetes 不相容",
+    "type": "單選",
+    "options": [
+      "快速部署",
+      "與 Kubernetes 不相容",
+      "開箱即用的 AI 整合",
+      "雲原生設計"
+    ],
+    "course": "AI基礎建設與平台選型"
   }
 ]
