@@ -5,7 +5,7 @@
 在專案根目錄執行：
 
 ```powershell
-python build_portable_release.py
+python scripts/build_portable_release.py
 ```
 
 建置結果位於 `dist/`：
@@ -14,7 +14,7 @@ python build_portable_release.py
 - `行政效能領航員_V2.2.1_Portable.zip`：交付第三人的壓縮檔。
 - `行政效能領航員_V2.2.1_Portable.zip.sha256`：ZIP 完整性雜湊。
 
-建置過程需要網路下載 Windows Python 3.11 x64 套件；使用者端不需要網路安裝依賴。
+專案主要開發與測試版本為 Python 3.13；目前可攜式發行流程為了既有二進位套件相容性，會另行下載並封裝 Windows Python 3.11 x64 執行環境。使用者端不需要安裝 Python 或連線下載依賴。
 
 ## 降低防毒誤判
 

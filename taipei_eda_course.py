@@ -341,7 +341,7 @@ def do_login(driver, wait, username='', password=''):
 # 課程清單
 
 def get_course_list(driver, wait):
-    """讀取課程清單，回傳 list of dict。"""
+    """讀取課程清單，回傳課程 list；首頁無法讀取時回傳 ``None``。"""
     driver.get('https://elearning.taipei/mpage/sso_moodle?redirectPage=courserecord')
     time.sleep(3)
     try:
@@ -410,6 +410,11 @@ def get_course_list(driver, wait):
 
         if not parsed_page:
             print(f'  [掃描] 頁面 {page_num} 課程表格未讀到有效文字，row_count={last_row_count}')
+            # 第一頁一筆都讀不到通常代表 Session 已失效或頁面尚未正確載入。
+            # 不可把這種情況當成「沒有待處理課程」，否則會產生錯誤的完成訊息。
+            if page_num == 1:
+                print('  [錯誤] [掃描] 首頁課程清單讀取失敗，停止本次流程以避免誤判為全部完成。')
+                return None
             break
 
         all_courses.extend(parsed_page)
@@ -630,16 +635,32 @@ def clear_session_and_relogin(driver, wait, config=None):
         print(f'  ⚠️ 自動重新登入失敗: {e}')
     return False
 
+
+def recover_from_multi_window_lock(driver, wait, course_url, config=None):
+    """遇到持續性的多重視窗鎖定時，重新登入後回到原課程頁。"""
+    if not clear_session_and_relogin(driver, wait, config):
+        return False
+    try:
+        driver.get(course_url)
+        time.sleep(3)
+        msgs = dismiss_alerts(driver)
+        if has_multi_window_alert(msgs):
+            print('  ⚠️ 重新登入後仍收到多重視窗警告，本課程暫停處理。')
+            return False
+        print('  ✅ 已回到課程頁，將重新嘗試進入課程播放器。')
+        return True
+    except Exception as e:
+        print(f'  ⚠️ 重新登入後無法回到課程頁: {e}')
+        return False
+
 def get_scorm_player_url(driver, wait, course_url, config=None):
     driver.get(course_url)
     time.sleep(3)
     msgs = dismiss_alerts(driver)
     if has_multi_window_alert(msgs):
         print('  ⚠️ 臺北E大發出多重視窗警告，嘗試重新登入重置 Session...')
-        clear_session_and_relogin(driver, wait, config)
-        driver.get(course_url)
-        time.sleep(2)
-        dismiss_alerts(driver)
+        if not recover_from_multi_window_lock(driver, wait, course_url, config):
+            return None
 
     def current_is_player():
         url = driver.current_url or ''
@@ -784,6 +805,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
 
         return current_is_player()
 
+    has_recovered_multi_window_lock = False
     for attempt in range(1, 4):
         if current_is_player():
             pause_and_mute_media(driver)
@@ -817,12 +839,14 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                 print('  ✅ 雖有多重視窗警告，但 player 頁面仍可使用，繼續上課')
                 pause_and_mute_media(driver)
                 return driver.current_url
-            # 被踢回課程頁，真的有衝突 → 重試
-            print('  ⚠️ 多重視窗警告後被踢回，重試...')
-            driver.get(course_url)
-            time.sleep(2)
-            dismiss_alerts(driver)
-            continue
+            # 被踢回課程頁代表伺服器端 SCORM 鎖定尚未釋放；僅重載頁面無效。
+            if not has_recovered_multi_window_lock:
+                has_recovered_multi_window_lock = True
+                print('  🔄 多重視窗警告後被踢回，執行一次 Session 回復後重試...')
+                if recover_from_multi_window_lock(driver, wait, course_url, config):
+                    continue
+            print('  ⚠️ 多重視窗鎖定未能自動解除，暫停本課程並繼續下一門。')
+            return None
 
         if enter_from_scorm_view():
             pause_and_mute_media(driver)
@@ -1185,6 +1209,9 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
         print('\n=== 掃描課程清單 ===')
         courses = get_course_list(driver, wait)
+        if courses is None:
+            print('❌ 無法確認臺北E大課程清單，已停止本次流程；請確認登入狀態後再試。')
+            return False
         incomplete = build_taipei_work_queue(driver, courses)
 
         print(f'  課程總數: {len(courses)} 筆，待處理: {len(incomplete)} 筆')
@@ -1263,6 +1290,9 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
         print('\n=== 最終課程狀態 ===')
         courses_final = get_course_list(driver, wait)
+        if courses_final is None:
+            print('⚠️ 無法重新讀取最終課程清單，不能宣告全部完成。')
+            return False
         final_incomplete = pending_courses_sorted(courses_final)
         print(f'  課程總數: {len(courses_final)} 筆，待處理: {len(final_incomplete)} 筆')
         if final_incomplete:

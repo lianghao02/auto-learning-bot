@@ -318,8 +318,9 @@ class AdminEfficiencyPilot:
         self._completed_in_session = (
             set()
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
-        self._expanded_packages = set()  # 已自動展開並報名之組裝/套裝課程 ID
-        self._package_preflight_completed = False  # 本次執行僅做一次組裝課程前置檢查
+        self._exam_manual_review = {}  # course_id → 無法開啟測驗，待下次重新嘗試或人工確認
+        self._expanded_packages = set()  # 手動修復模式已檢查之組裝/套裝課程 ID
+        self._package_preflight_completed = False  # 組裝課程手動修復檢查狀態
         self._last_course_count = 0
 
         # 防螢幕關閉
@@ -1199,8 +1200,7 @@ class AdminEfficiencyPilot:
                 logger.info("   📝 已點擊「測驗/考試」")
             except Exception as e:
                 logger.warning(f"   ⚠️ 找不到測驗連結（可能為平台已下架或無測驗介面課程）: {e}")
-                logger.info(f"   ⏩ 課程「{course.get('caption', '')}」標記為已下架/無測驗，跳過並繼續下一門課程。")
-                self._completed_in_session.add(course_id)
+                self._mark_exam_manual_review(course, "找不到測驗入口，尚未確認測驗已通過")
                 return False
 
             time.sleep(2)
@@ -1558,6 +1558,16 @@ class AdminEfficiencyPilot:
                     elif interactive_ans_map == "STOP_ALL":
                         logger.info("🛑 使用者於測驗逾時對話框選擇【結束本次執行】。")
                         self.running = False
+                        try:
+                            self.driver.close()
+                            self.driver.switch_to.window(main_window)
+                        except Exception:
+                            pass
+                        return False
+                    elif interactive_ans_map == "DIALOG_ERROR":
+                        self._mark_exam_manual_review(
+                            course, "人機協同測驗視窗無法顯示，尚未執行跳過指令"
+                        )
                         try:
                             self.driver.close()
                             self.driver.switch_to.window(main_window)
@@ -2456,26 +2466,58 @@ class AdminEfficiencyPilot:
 
     def _is_exam_passed(self, c):
         """檢查該課程之測驗是否已達到及格標準。"""
-        if str(c.get("exam_exists", "0")) != "1":
-            return True
+        # ``status`` 是課程/報名狀態，不是測驗結果；不可用它判定測驗已通過。
+        # 否則問卷已填、但測驗仍為 0 分的課程會被錯誤略過。
+        pass_status = str(
+            c.get("exam_pass_status", "") or c.get("pass_status", "")
+        ).strip().lower()
+
+        # 1. 取得及格門檻標準（預設 60 分）
         try:
             pass_score = float(c.get("criteria_exam_score") or 60)
         except Exception:
             pass_score = 60.0
 
+        # 2. 已提供測驗分數時，分數是最明確的判定依據（0 分必定未通過）。
         score_val = c.get("exam_score")
         if score_val is not None and str(score_val).strip() not in ("", "--", "None", "null"):
             try:
                 return float(score_val) >= pass_score
             except Exception:
                 pass
-        pass_status = str(c.get("pass_status", "") or c.get("status", "")).lower()
+
+        # 3. 僅接受明確的「測驗」通過欄位；不使用泛用 status。
         if pass_status in ["1", "pass", "passed", "已通過", "及格"]:
             return True
-        return False
+
+        # 4. 若狀態明確標註未通過/不及格
+        if any(w in pass_status for w in ["未通過", "不及格", "fail", "0"]):
+            return False
+
+        # 5. 若有測驗要求（criteria_exam_score > 0 或 write_exam == 1 或 exam_exists == 1）但尚未有及格成績
+        has_exam_req = (
+            (c.get("criteria_exam_score") and str(c.get("criteria_exam_score")).strip() not in ("", "0", "0.0", "--"))
+            or str(c.get("write_exam", "0")) == "1"
+            or str(c.get("exam_exists", "0")) == "1"
+        )
+        if has_exam_req:
+            return False
+
+        # 無任何測驗要求之課程視為測驗通過
+        return True
+
+    def _mark_exam_manual_review(self, course, reason):
+        """記錄本次無法完成的測驗，避免重複卡住且禁止宣告全部完成。"""
+        course_id = str(course.get("course_id", ""))
+        if course_id:
+            self._exam_manual_review[course_id] = {
+                "caption": course.get("caption", course_id),
+                "reason": reason,
+            }
+        logger.warning(f"   ⚠️ 測驗待處理：{course.get('caption', course_id)}｜{reason}")
 
     def auto_enroll_package_subcourses(self, courses) -> bool:
-        """偵測組裝/套裝課程，自動切換「課程資訊」頁籤萃取所有子課程連結，逐一進入點擊報名與選課。100%已完成者自動略過。"""
+        """組裝課程子課程缺漏時的手動修復備援；正常執行流程不會自動呼叫。"""
         if not self.driver or not self.running:
             return False
         if getattr(self, "_package_preflight_completed", False):
@@ -3466,13 +3508,8 @@ class AdminEfficiencyPilot:
 
                     logger.info(f"📋 API 回傳課程總數：{len(courses)} 筆")
 
-                    # 💡 自動展開組裝/套裝課程並報名子課程
-                    if self.auto_enroll_package_subcourses(courses):
-                        try:
-                            courses = self.fetch_course_list_checked(cur_y)
-                            logger.info(f"📋 套裝展開後更新課程總數：{len(courses)} 筆")
-                        except Exception:
-                            pass
+                    # e等公務園報名組裝課程時會自動加入旗下子課程。
+                    # 正常流程直接使用 API 清單，不再重複掃描母課程或再次報名子課程。
 
                     # API 回 0 筆通常是被登出或 cookie 失效，不可無限等待。
                     if len(courses) == 0:
@@ -3546,6 +3583,9 @@ class AdminEfficiencyPilot:
                         # 本次已成功處理過，跳過
                         if c_id in self._completed_in_session:
                             return False
+                        # 本次曾無法開啟測驗的課程，不重複卡住；最後會明確列為待處理。
+                        if c_id in self._exam_manual_review:
+                            return False
                         hours_done = to_sec(c.get("rss", "00:00:00")) >= to_sec(
                             c.get("criteria_content_hour", "00:00:00")
                         ) * self.config.get("target_percentage", 1.0)
@@ -3553,7 +3593,7 @@ class AdminEfficiencyPilot:
                             return False
                         # 考試未通過（且未達 3 次不及格上限）
                         exam_passed = self._is_exam_passed(c)
-                        needs_exam = (str(c.get("exam_exists", "0")) == "1") and (not exam_passed) and (self._exam_fail_counts.get(c_id, 0) < 3)
+                        needs_exam = (not exam_passed) and (self._exam_fail_counts.get(c_id, 0) < 3)
                         # 問卷未填（fill=="0" 且 write_questionnaire 非空）
                         needs_questionnaire = (str(c.get("fill", "0")) == "0") and bool(c.get("write_questionnaire", ""))
                         return needs_exam or needs_questionnaire
@@ -3709,7 +3749,17 @@ class AdminEfficiencyPilot:
                     else:
                         self.safe_sleep(10)
 
-            logger.info(f"🏆 {Fore.GREEN}所有任務圓滿達成！{Style.RESET_ALL}")
+            if self._exam_manual_review:
+                previews = "、".join(
+                    f"{item['caption'][:18]}（{item['reason']}）"
+                    for item in self._exam_manual_review.values()
+                )
+                logger.warning(
+                    f"⚠️ 本次尚有 {len(self._exam_manual_review)} 門課程測驗待處理：{previews}；"
+                    "不宣告所有任務完成。"
+                )
+            else:
+                logger.info(f"🏆 {Fore.GREEN}所有任務圓滿達成！{Style.RESET_ALL}")
             if sys.stdin:
                 input(f"\n{Fore.GREEN}✓ 程式執行完畢，按 Enter 關閉。{Style.RESET_ALL}")
 

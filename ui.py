@@ -2389,6 +2389,8 @@ class InteractiveQuizDialog(QDialog):
             QPushButton:pressed { background: #1E40AF; }
         """)
         self.copy_btn.clicked.connect(self._copy_prompt)
+        left_box.addWidget(self.copy_btn)
+        split_layout.addLayout(left_box, 1)
 
         # 右側欄位
         right_box = QFrame()
@@ -2420,9 +2422,9 @@ class InteractiveQuizDialog(QDialog):
         right_layout.addWidget(right_lbl)
         right_layout.addWidget(self.answer_input)
         right_layout.addWidget(self.paste_btn)
-        cols_layout.addWidget(right_box, 1)
+        split_layout.addWidget(right_box, 1)
 
-        layout.addLayout(cols_layout)
+        layout.addLayout(split_layout)
 
         # 底部操作列
         bottom_bar = QHBoxLayout()
@@ -2564,17 +2566,19 @@ class PlatformTabPanel(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(10)
 
-        # Windows 11 經典進度與統計卡片
+        # 莫蘭迪灰階進度與統計卡片
         progress_card = QFrame()
+        progress_card.setObjectName("progressCard")
         progress_card.setStyleSheet("""
-            QFrame {
-                background: #F9FAFB;
-                border: 1px solid #E5E7EB;
-                border-radius: 8px;
+            QFrame#progressCard {
+                background: #FAF9F6;
+                border: 1px solid #D6D3CC;
+                border-radius: 10px;
                 padding: 6px 12px;
             }
-            QLabel {
-                color: #1F2937; font-size: 13px; font-weight: bold; background: transparent;
+            QFrame#progressCard QLabel {
+                color: #2F3B43; font-size: 13px; font-weight: bold; background: transparent;
+                border: none;
             }
         """)
         progress_content = QVBoxLayout(progress_card)
@@ -2591,16 +2595,16 @@ class PlatformTabPanel(QWidget):
         self.progress_bar.setFixedHeight(16)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
-                background-color: #E5E7EB;
-                border: 1px solid #D1D5DB;
+                background-color: #E4E0DA;
+                border: 1px solid #C9C5BE;
                 border-radius: 8px;
                 text-align: center;
-                color: #1F2937;
+                color: #26343C;
                 font-weight: bold;
                 font-size: 11px;
             }
             QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0067C0, stop:1 #10B981);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #70889B, stop:1 #7F9A88);
                 border-radius: 7px;
             }
         """)
@@ -2610,7 +2614,7 @@ class PlatformTabPanel(QWidget):
         prog_layout.addWidget(self.progress_bar)
         self.execution_status_lbl = QLabel("● 待命：尚未開始本次執行")
         self.execution_status_lbl.setStyleSheet(
-            "color: #64748B; font-size: 12px; font-weight: 600; background: transparent;"
+            "color: #66737D; font-size: 12px; font-weight: 600; background: transparent; border: none;"
         )
         progress_content.addLayout(prog_layout)
         progress_content.addWidget(self.execution_status_lbl)
@@ -2619,42 +2623,49 @@ class PlatformTabPanel(QWidget):
         # 操作列：主要動作與本次選項分開，避免視窗較窄時過度擁擠。
         btn_bar = QHBoxLayout()
         self.info_lbl = QLabel(f"{platform_title}控制台")
-        self.info_lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 14px; background: transparent;")
+        self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 15px; background: transparent; border: none;")
 
-        self.skip_exam_checkbox = QCheckBox("本次跳過測驗，先做問卷")
-        self.skip_exam_checkbox.setToolTip(
-            "只套用於本次按下開始執行的流程，不會儲存到帳號或系統設定。"
+        self.exam_mode_combo = QComboBox()
+        self.exam_mode_combo.addItem("自動作答（題庫優先）", "auto")
+        self.exam_mode_combo.addItem("人機協同作答（彈窗回貼）", "interactive")
+        self.exam_mode_combo.addItem("跳過測驗，先填問卷", "skip")
+        self.exam_mode_combo.setToolTip(
+            "僅套用於本次執行。自動作答會優先使用題庫；人機協同會開啟題目複製與答案回貼視窗；跳過測驗不會把課程視為完成。"
         )
-        self.skip_exam_checkbox.setStyleSheet(
-            "QCheckBox { color: #92400E; font-weight: bold; font-size: 13px; background: transparent; }"
-        )
+        self.exam_mode_combo.setMinimumWidth(250)
+        self.exam_mode_combo.setStyleSheet("""
+            QComboBox {
+                background: #FAF9F6; color: #2F3B43;
+                border: 1px solid #B9B5AE; border-radius: 7px;
+                padding: 8px 32px 8px 11px; font-size: 13px; font-weight: 600;
+            }
+            QComboBox:hover { border-color: #70889B; background: #F4F2EE; }
+            QComboBox:disabled { background: #E4E0DA; color: #88847E; }
+            QComboBox QAbstractItemView {
+                background: #FAF9F6; color: #2F3B43;
+                selection-background-color: #70889B; selection-color: #FFFFFF;
+                border: 1px solid #B9B5AE;
+            }
+        """)
 
-        self.interactive_quiz_checkbox = QCheckBox("人機協同作答（彈窗回貼）")
-        self.interactive_quiz_checkbox.setToolTip(
-            "遇到測驗時彈出視窗，自動格式化考卷為 AI Prompt 供您複製到 ChatGPT/Gemini，並支援回貼答案自動勾選。逾時 180 秒未操作將彈出決策確認對話框。"
-        )
-        self.interactive_quiz_checkbox.setStyleSheet(
-            "QCheckBox { color: #1D4ED8; font-weight: bold; font-size: 13px; background: transparent; }"
-        )
-
-        self.start_btn = QPushButton("▶️ 開始執行")
+        self.start_btn = QPushButton("▶️ 開始此平台")
         self.start_btn.setStyleSheet("""
             QPushButton {
-                background: #10B981; color: #FFFFFF; border-radius: 8px;
-                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+                background: #6F917B; color: #FFFFFF; border-radius: 8px;
+                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
             }
-            QPushButton:hover { background: #059669; }
+            QPushButton:hover { background: #5D7D69; }
         """)
         self.start_btn.clicked.connect(self._handle_start)
 
-        self.stop_btn = QPushButton("⏹ 停止")
+        self.stop_btn = QPushButton("⏹ 停止此平台")
         self.stop_btn.setStyleSheet("""
             QPushButton {
-                background: #EF4444; color: #FFFFFF; border-radius: 8px;
-                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+                background: #A96F6B; color: #FFFFFF; border-radius: 8px;
+                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
             }
-            QPushButton:hover { background: #DC2626; }
-            QPushButton:disabled { background: #E5E7EB; color: #9CA3AF; }
+            QPushButton:hover { background: #925D59; }
+            QPushButton:disabled { background: #DDD9D3; color: #8A8782; }
         """)
         self.stop_btn.clicked.connect(self._handle_stop)
         self.stop_btn.setEnabled(False)
@@ -2662,10 +2673,10 @@ class PlatformTabPanel(QWidget):
         self.toggle_browser_btn = QPushButton("👁️ 顯示瀏覽器")
         self.toggle_browser_btn.setStyleSheet("""
             QPushButton {
-                background: #3B82F6; color: #FFFFFF; border-radius: 8px;
-                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+                background: #748399; color: #FFFFFF; border-radius: 8px;
+                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
             }
-            QPushButton:hover { background: #2563EB; }
+            QPushButton:hover { background: #657489; }
         """)
         self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
@@ -2677,17 +2688,25 @@ class PlatformTabPanel(QWidget):
         layout.addLayout(btn_bar)
 
         option_card = QFrame()
+        option_card.setObjectName("examModeCard")
         option_card.setStyleSheet("""
-            QFrame { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 8px; }
-            QLabel { color: #92400E; font-size: 12px; font-weight: 700; background: transparent; }
+            QFrame#examModeCard { background: #F5F2ED; border: 1px solid #D6D1C9; border-radius: 9px; }
+            QFrame#examModeCard QLabel { color: #35434C; background: transparent; border: none; }
         """)
-        option_layout = QHBoxLayout(option_card)
-        option_layout.setContentsMargins(12, 7, 12, 7)
-        option_layout.setSpacing(18)
-        option_layout.addWidget(QLabel("本次執行選項"))
-        option_layout.addWidget(self.skip_exam_checkbox)
-        option_layout.addWidget(self.interactive_quiz_checkbox)
-        option_layout.addStretch()
+        option_layout = QVBoxLayout(option_card)
+        option_layout.setContentsMargins(14, 8, 14, 8)
+        option_layout.setSpacing(3)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(12)
+        mode_label = QLabel("本次測驗處理方式")
+        mode_label.setStyleSheet("color: #35434C; font-size: 13px; font-weight: 700; background: transparent; border: none;")
+        mode_row.addWidget(mode_label)
+        mode_row.addWidget(self.exam_mode_combo)
+        mode_row.addStretch()
+        option_layout.addLayout(mode_row)
+        mode_hint = QLabel("僅影響這次執行，不會改變帳號設定")
+        mode_hint.setStyleSheet("color: #6B777F; font-size: 12px; font-weight: 500; background: transparent; border: none;")
+        option_layout.addWidget(mode_hint)
         layout.addWidget(option_card)
 
         # Log 視窗
@@ -2696,26 +2715,26 @@ class PlatformTabPanel(QWidget):
         self.log_view.document().setMaximumBlockCount(300)
         self.log_view.setStyleSheet("""
             QTextEdit {
-                background-color: #111827;
-                border: 1px solid #1F2937;
+                background-color: #26333B;
+                border: 1px solid #36464F;
                 border-radius: 12px;
-                color: #F9FAFB;
+                color: #F7F4EE;
                 font-family: 'Cascadia Mono', 'Microsoft JhengHei UI', 'Segoe UI', monospace;
                 font-size: 13px;
                 padding: 12px;
             }
             QScrollBar:vertical {
-                background: #111827;
+                background: #26333B;
                 width: 8px;
                 border-radius: 4px;
             }
             QScrollBar::handle:vertical {
-                background: #374151;
+                background: #596A73;
                 border-radius: 4px;
                 min-height: 24px;
             }
             QScrollBar::handle:vertical:hover {
-                background: #4B5563;
+                background: #71848E;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
@@ -2734,7 +2753,8 @@ class PlatformTabPanel(QWidget):
             res_holder["result"] = dlg.parsed_result
         except Exception as e:
             logger.error(f"人機協同彈窗發生異常: {e}")
-            res_holder["result"] = None
+            # 與使用者主動點選「跳過」區隔，避免背景流程把 UI 異常誤判為跳過指令。
+            res_holder["result"] = "DIALOG_ERROR"
         finally:
             event.set()
 
@@ -2777,14 +2797,13 @@ class PlatformTabPanel(QWidget):
         """同步控制列可用狀態與固定摘要，避免誤按停止或重複啟動。"""
         self.start_btn.setEnabled(not is_running)
         self.stop_btn.setEnabled(is_running)
-        self.skip_exam_checkbox.setEnabled(not is_running)
-        self.interactive_quiz_checkbox.setEnabled(not is_running)
+        self.exam_mode_combo.setEnabled(not is_running)
         if is_running:
             text = message or "● 執行中：請留意下方日誌與進度"
-            color = "#047857"
+            color = "#526F5C"
         else:
             text = message or "● 待命：尚未開始本次執行"
-            color = "#64748B"
+            color = "#66737D"
         self.execution_status_lbl.setText(text)
         self.execution_status_lbl.setStyleSheet(
             f"color: {color}; font-size: 12px; font-weight: 700; background: transparent;"
@@ -2796,19 +2815,19 @@ class PlatformTabPanel(QWidget):
             self.toggle_browser_btn.setText("🙈 隱藏瀏覽器")
             self.toggle_browser_btn.setStyleSheet("""
                 QPushButton {
-                    background: #6B7280; color: white; border-radius: 8px;
+                    background: #8A8076; color: #FFFFFF; border-radius: 8px;
                     padding: 8px 16px; font-weight: bold; font-size: 13px; border: none;
                 }
-                QPushButton:hover { background: #4B5563; }
+                QPushButton:hover { background: #746A61; }
             """)
         else:
             self.toggle_browser_btn.setText("👁️ 顯示瀏覽器")
             self.toggle_browser_btn.setStyleSheet("""
                 QPushButton {
-                    background: #3B82F6; color: white; border-radius: 8px;
+                    background: #78869A; color: #FFFFFF; border-radius: 8px;
                     padding: 8px 16px; font-weight: bold; font-size: 13px; border: none;
                 }
-                QPushButton:hover { background: #2563EB; }
+                QPushButton:hover { background: #657489; }
             """)
         if self.on_toggle_browser:
             self.on_toggle_browser(self.platform_key, self.browser_visible)
@@ -2872,7 +2891,7 @@ class PlatformTabPanel(QWidget):
                 pct_int = min(100, max(0, int(pct_float)))
                 # 實時無條件動態驅動右側進度條！
                 self.progress_bar.setValue(pct_int)
-                self.stats_lbl.setText(f"📊 當前單元時數：{time_str} ({pct_float:.1f}%)")
+                self.stats_lbl.setText(f"📊 本課程研習時數：{time_str} ({pct_float:.1f}%)")
 
             # 3. 攔截「進入單元...」
             m_unit = re.search(r"進入單元\s*[:：]\s*(.*)", msg_part)
@@ -2886,26 +2905,26 @@ class PlatformTabPanel(QWidget):
             pass
 
         level_colors = {
-            "INFO": "#38BDF8",      # 亮天藍
-            "WARNING": "#FB923C",   # 高亮暖橘
-            "WARN": "#FB923C",
-            "ERROR": "#F87171",     # 鮮紅亮粉
-            "CRITICAL": "#F43F5E",
-            "DEBUG": "#9CA3AF",
+            "INFO": "#8DB7C6",
+            "WARNING": "#D7AD75",
+            "WARN": "#D7AD75",
+            "ERROR": "#D8918C",
+            "CRITICAL": "#D67F82",
+            "DEBUG": "#B1B7BA",
         }
-        level_color = level_colors.get(level_part, "#9CA3AF")
+        level_color = level_colors.get(level_part, "#B1B7BA")
 
         # 動態判斷訊息內容高亮顏色
-        msg_color = "#F3F4F6"  # 預設亮白銀
+        msg_color = "#F4F1EB"
         if any(k in msg_part for k in ["✅", "🏆", "成功", "圓滿達成", "完成"]):
-            msg_color = "#34D399"  # 螢光翠綠
+            msg_color = "#9CC4A8"
         elif any(k in msg_part for k in ["⚠️", "警告", "重試", "失敗", "跳過"]):
-            msg_color = "#FCD34D"  # 亮琥珀黃
+            msg_color = "#DFC184"
         elif "研習進度" in msg_part or "時數" in msg_part:
-            msg_color = "#60A5FA"  # 亮冰藍
+            msg_color = "#A5BDD3"
 
         html = (
-            f'<span style="color:#FBBF24; font-weight:600; font-family:\'Consolas\',monospace;">{esc(time_part)}</span> '
+            f'<span style="color:#D8B576; font-weight:600; font-family:\'Consolas\',monospace;">{esc(time_part)}</span> '
             f'<span style="color:{level_color}; font-weight:bold;">[{esc(level_part)}]</span> '
             f'<span style="color:{msg_color}; font-family:\'Consolas\',monospace;">{esc(msg_part)}</span>'
         )
@@ -2923,25 +2942,27 @@ class AccountSettingsTabPanel(QWidget):
         layout.setSpacing(14)
 
         lbl = QLabel("⚙️ 帳號管理與系統設定")
-        lbl.setStyleSheet("color: #111827; font-weight: bold; font-size: 16px; background: transparent;")
+        lbl.setStyleSheet("color: #2F3B43; font-weight: bold; font-size: 16px; background: transparent;")
         lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         lbl.setFixedHeight(30)
         layout.addWidget(lbl)
 
         form_card = QFrame()
+        form_card.setObjectName("accountSettingsCard")
         form_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         form_card.setStyleSheet("""
-            QFrame {
-                background: #FFFFFF;
-                border: 1px solid #E5E5E5;
+            QFrame#accountSettingsCard {
+                background: #FAF9F6;
+                border: 1px solid #D6D3CC;
                 border-radius: 12px;
                 padding: 20px;
             }
-            QLabel {
-                color: #374151;
+            QFrame#accountSettingsCard QLabel {
+                color: #35434C;
                 font-weight: bold;
                 font-size: 13px;
                 background: transparent;
+                border: none;
                 min-height: 28px;
                 padding: 2px 0px;
             }
@@ -2952,17 +2973,17 @@ class AccountSettingsTabPanel(QWidget):
 
         input_style = """
             QLineEdit, QComboBox {
-                background: #F9FAFB;
-                color: #1F2937;
-                border: 1px solid #D1D5DB;
+                background: #F3F1ED;
+                color: #2F3B43;
+                border: 1px solid #BDB9B2;
                 border-radius: 6px;
                 padding: 8px 12px;
                 font-size: 13px;
                 min-height: 20px;
             }
             QLineEdit:focus, QComboBox:focus {
-                border: 2px solid #0067C0;
-                background: #FFFFFF;
+                border: 2px solid #70889B;
+                background: #FAF9F6;
             }
         """
 
@@ -2997,10 +3018,11 @@ class AccountSettingsTabPanel(QWidget):
         self.egov_pwd_input.setPlaceholderText("eCPA 或我的 E 政府密碼")
         self.egov_pwd_input.setStyleSheet(input_style)
 
-        self.headless_cb = QCheckBox("背景執行 (Headless 隱藏瀏覽器視窗)")
+        self.headless_cb = QCheckBox("隱藏瀏覽器視窗（背景執行）")
+        self.headless_cb.setToolTip("勾選後瀏覽器不顯示在桌面；課程仍會在背景執行。")
         self.headless_cb.setStyleSheet("""
             QCheckBox {
-                color: #1F2937;
+                color: #2F3B43;
                 font-weight: bold;
                 font-size: 13px;
                 background: transparent;
@@ -3009,22 +3031,22 @@ class AccountSettingsTabPanel(QWidget):
             QCheckBox::indicator {
                 width: 18px;
                 height: 18px;
-                border: 2px solid #9CA3AF;
+                border: 2px solid #98958F;
                 border-radius: 4px;
-                background-color: #FFFFFF;
+                background-color: #FAF9F6;
             }
             QCheckBox::indicator:hover {
-                border-color: #0067C0;
+                border-color: #70889B;
             }
             QCheckBox::indicator:checked {
-                background-color: #0067C0;
-                border-color: #0067C0;
+                background-color: #70889B;
+                border-color: #70889B;
             }
         """)
 
         self.ai_key_input = QLineEdit()
         self.ai_key_input.setEchoMode(QLineEdit.Password)
-        self.ai_key_input.setPlaceholderText("可選：填入 Gemini API Key 以開啟 AI 自動考試作答功能")
+        self.ai_key_input.setPlaceholderText("選填；未填時只使用本機題庫，不會呼叫 AI")
         self.ai_key_input.setStyleSheet(input_style)
 
         form_layout.addRow(QLabel("臺北E大名稱:"), self.name_input)
@@ -3035,7 +3057,7 @@ class AccountSettingsTabPanel(QWidget):
         form_layout.addRow(QLabel("e等登入帳號:"), self.egov_acc_input)
         form_layout.addRow(QLabel("e等登入密碼:"), self.egov_pwd_input)
         form_layout.addRow(QLabel("執行模式:"), self.headless_cb)
-        form_layout.addRow(QLabel("Gemini API Key:"), self.ai_key_input)
+        form_layout.addRow(QLabel("Gemini API Key（選填）:"), self.ai_key_input)
 
         layout.addWidget(form_card)
 
@@ -3043,10 +3065,10 @@ class AccountSettingsTabPanel(QWidget):
         self.save_btn = QPushButton("💾 儲存並套用設定")
         self.save_btn.setStyleSheet("""
             QPushButton {
-                background: #0067C0; color: #FFFFFF; border-radius: 8px;
+                background: #70889B; color: #FFFFFF; border-radius: 8px;
                 padding: 10px 24px; font-weight: bold; font-size: 14px; border: none;
             }
-            QPushButton:hover { background: #005A9E; }
+            QPushButton:hover { background: #60798D; }
         """)
         self.save_btn.clicked.connect(self.save_settings)
         btn_bar.addStretch()
@@ -3164,8 +3186,8 @@ class ImmersivePage(QWidget):
         self.on_toggle_browser = None
         self.on_start_all = None
 
-        # Windows 11 經典 Mica 輕量化主背景
-        self.setStyleSheet("background-color: #F3F3F3;")
+        # 莫蘭迪暖灰主背景
+        self.setStyleSheet("background-color: #F2F0EC;")
 
         root = QVBoxLayout(self)
         root.setContentsMargins(16, 16, 16, 16)
@@ -3174,35 +3196,35 @@ class ImmersivePage(QWidget):
         # 頂部控制列
         top_bar = QHBoxLayout()
         title_lbl = QLabel("行政效能領航員 - 控制中心")
-        title_lbl.setStyleSheet("color: #1C1C1E; font-weight: bold; font-size: 17px; background: transparent;")
+        title_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 18px; background: transparent; border: none;")
 
-        self.start_all_btn = QPushButton("🚀 一鍵全自動雙開")
+        self.start_all_btn = QPushButton("🚀 同時執行兩平台")
         self.start_all_btn.setStyleSheet("""
             QPushButton {
-                background: #0067C0; color: #FFFFFF; border-radius: 8px;
-                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+                background: #617E87; color: #FFFFFF; border-radius: 8px;
+                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
             }
-            QPushButton:hover { background: #005A9E; }
+            QPushButton:hover { background: #506B74; }
         """)
         self.start_all_btn.clicked.connect(self._handle_start_all)
 
-        self.stop_all_btn = QPushButton("🛑 停止全部")
+        self.stop_all_btn = QPushButton("🛑 停止所有平台")
         self.stop_all_btn.setStyleSheet("""
             QPushButton {
-                background: #D13438; color: #FFFFFF; border-radius: 8px;
-                padding: 8px 18px; font-weight: bold; font-size: 13px; border: none;
+                background: #A96F6B; color: #FFFFFF; border-radius: 8px;
+                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
             }
-            QPushButton:hover { background: #A80000; }
+            QPushButton:hover { background: #925D59; }
         """)
         self.stop_all_btn.clicked.connect(self.on_stop)
 
         self.account_mgr_btn = QPushButton("⚙️ 帳號與系統設定")
         self.account_mgr_btn.setStyleSheet("""
             QPushButton {
-                background: #FFFFFF; color: #1C1C1E; border-radius: 8px;
-                padding: 8px 16px; font-weight: bold; font-size: 13px; border: 1px solid #D1D1D1;
+                background: #FAF9F6; color: #2F3B43; border-radius: 8px;
+                padding: 9px 16px; font-weight: bold; font-size: 14px; border: 1px solid #C9C5BE;
             }
-            QPushButton:hover { background: #F3F4F6; }
+            QPushButton:hover { background: #E9E5DF; }
         """)
         self.account_mgr_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
 
@@ -3217,27 +3239,27 @@ class ImmersivePage(QWidget):
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet("""
             QTabWidget::pane {
-                border: 1px solid #E5E5E5;
+                border: 1px solid #D6D3CC;
                 border-radius: 12px;
-                background: #FFFFFF;
+                background: #FAF9F6;
             }
             QTabBar::tab {
-                background: #E5E7EB;
-                color: #4B5563;
+                background: #E4E0DA;
+                color: #4B5962;
                 border-top-left-radius: 8px;
                 border-top-right-radius: 8px;
-                padding: 10px 24px;
-                font-weight: bold;
+                padding: 10px 25px;
+                font-weight: 700;
                 font-size: 14px;
                 margin-right: 4px;
             }
             QTabBar::tab:selected {
-                background: #0067C0;
+                background: #5F798E;
                 color: #FFFFFF;
             }
             QTabBar::tab:hover:!selected {
-                background: #D1D5DB;
-                color: #1F2937;
+                background: #D4D0C9;
+                color: #2F3B43;
             }
         """)
 
@@ -3310,7 +3332,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("行政效能領航員")
-        self.setStyleSheet("background-color: #F3F3F3;")
+        self.setStyleSheet("background-color: #F2F0EC;")
 
         self.stack = QStackedLayout(self)
 
@@ -3367,10 +3389,10 @@ class MainWindow(QWidget):
         show_action = tray_menu.addAction("📖 顯示控制中心")
         show_action.triggered.connect(self.show_normal_window)
 
-        start_all_action = tray_menu.addAction("🚀 一鍵全自動雙開")
+        start_all_action = tray_menu.addAction("🚀 同時執行兩平台")
         start_all_action.triggered.connect(self._start_all_platforms)
 
-        stop_all_action = tray_menu.addAction("🛑 停止全部")
+        stop_all_action = tray_menu.addAction("🛑 停止所有平台")
         stop_all_action.triggered.connect(self._stop_all_platforms)
 
         tray_menu.addSeparator()
@@ -3454,12 +3476,15 @@ class MainWindow(QWidget):
         # 🔒 實時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
         full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
         panel = self.immersive.taipei_panel if key == "taipei_eda" else self.immersive.egov_panel
-        full_config["skip_exam_for_session"] = panel.skip_exam_checkbox.isChecked()
-        full_config["interactive_quiz_for_session"] = panel.interactive_quiz_checkbox.isChecked()
+        exam_mode = panel.exam_mode_combo.currentData() or "auto"
+        full_config["skip_exam_for_session"] = exam_mode == "skip"
+        full_config["interactive_quiz_for_session"] = exam_mode == "interactive"
         if full_config["skip_exam_for_session"]:
             logger.info("本次執行已啟用「跳過測驗，先做問卷」模式。")
-        if full_config["interactive_quiz_for_session"]:
+        elif full_config["interactive_quiz_for_session"]:
             logger.info("本次執行已啟用「人機協同作答（彈窗回貼）」模式。")
+        else:
+            logger.info("本次執行採用「自動作答（題庫優先）」模式。")
 
         if key == "taipei_eda":
             # 檢查並自動清理已死掉的舊 Thread
@@ -3912,7 +3937,7 @@ class MainWindow(QWidget):
         # Step 1️⃣：立即設置停止旗標
         self._request_stop_current_pilot()
 
-        # Step 2️⃣：立即切換 UI 回到入���頁面（重點：不等待）
+        # Step 2️⃣：立即切換 UI 回到入口頁面（重點：不等待）
         self.stack.setCurrentWidget(self.entry)
 
         # Step 3️⃣：重置入口頁面的 combo
