@@ -16500,5 +16500,15 @@
       "電腦本機的 C 槽"
     ],
     "course": "Google AI-Gemini應用"
+  },
+  {
+    "question": "使用 Gemini 內建的「Canvas」工具來撰文或寫程式時，畫面會一分為二，通常左邊較窄用於提示詞分析與輔助，右邊則呈現產出的報告資料，並支援針對特定段落進行局部修改。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "Google AI-Gemini應用"
   }
 ]
