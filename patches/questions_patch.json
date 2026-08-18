@@ -20387,5 +20387,29 @@
       "以上皆是"
     ],
     "course": "新興資安威脅與防護思維(113)"
+  },
+  {
+    "question": "Zero Trust Maturity Model 信任成熟度模型是由哪個機構提出？",
+    "answer": "1",
+    "type": "單選",
+    "options": [
+      "National Institute of Standards and Technology (NIST)",
+      "Cybersecurity and Infrastructure Security Agency (CISA)",
+      "The President's National Security Telecommunications Advisory Committee (NSTAC)",
+      "World Trade Organization (WTO)"
+    ],
+    "course": "新興資安威脅與防護思維(113)"
+  },
+  {
+    "question": "ZTA, Zero Trust Architecture之概念，下述何者正確？",
+    "answer": "4",
+    "type": "單選",
+    "options": [
+      "目標為防止對資料和服務未經授權的訪問，存取控制實施盡可能細化",
+      "一種網路安全策略，任何用戶或資產都不應被隱式信任",
+      "不能透過企業外圍的單一驗證來授予使用者存取敏感資訊的權限，每個用戶、設備、應用程式和交易都必須不斷得到驗證",
+      "以上皆是"
+    ],
+    "course": "新興資安威脅與防護思維(113)"
   }
 ]
