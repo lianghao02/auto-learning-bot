@@ -23926,5 +23926,125 @@
       "even"
     ],
     "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "The doctor listened closely as Gina took some deep _____ through her mouth.",
+    "answer": "breaths",
+    "type": "單選",
+    "options": [
+      "advice",
+      "medicine",
+      "causes",
+      "breaths"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "Morton _____ sweet foods because they give him a headache.",
+    "answer": "avoids",
+    "type": "單選",
+    "options": [
+      "stops",
+      "stays",
+      "brings",
+      "avoids"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "I think I ate something bad; my _____ hurts.",
+    "answer": "stomach",
+    "type": "單選",
+    "options": [
+      "stomach",
+      "shoulder",
+      "nose",
+      "finger"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "You should get a _____ to look at your car rather than try to fix it yourself.",
+    "answer": "professional",
+    "type": "單選",
+    "options": [
+      "professional",
+      "centimeter",
+      "character",
+      "principal"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "Frank studied all night, so he feels _____ for the test.",
+    "answer": "prepared",
+    "type": "單選",
+    "options": [
+      "surprised",
+      "prepared",
+      "married",
+      "confused"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "Daisy checked herself in the _____ before she left for work.",
+    "answer": "mirror",
+    "type": "單選",
+    "options": [
+      "frame",
+      "dark",
+      "mirror",
+      "radio"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "The singer took a _____ breath before starting to sing.",
+    "answer": "deep",
+    "type": "單選",
+    "options": [
+      "noisy",
+      "deep",
+      "mad",
+      "light"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "Every student has to give a _____ in front of the whole class.",
+    "answer": "speech",
+    "type": "單選",
+    "options": [
+      "wallet",
+      "picnic",
+      "speech",
+      "shirt"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "It was so cold that my hands were _____.",
+    "answer": "shaking",
+    "type": "單選",
+    "options": [
+      "shaking",
+      "robbing",
+      "doubting",
+      "mixing"
+    ],
+    "course": "教你上台不緊張"
+  },
+  {
+    "question": "Bill was very _____ before his first date with Alice.",
+    "answer": "nervous",
+    "type": "單選",
+    "options": [
+      "light",
+      "nervous",
+      "national",
+      "jealous"
+    ],
+    "course": "教你上台不緊張"
   }
 ]
