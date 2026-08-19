@@ -24178,5 +24178,121 @@
       "光線、鏡位與氛圍"
     ],
     "course": "生成式影片創作"
+  },
+  {
+    "question": "Please finish the report and hand it in by the ______, January 2.",
+    "answer": "deadline",
+    "type": "單選",
+    "options": [
+      "deadline",
+      "time",
+      "moment",
+      "numbers"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "I almost sent you an email, but I decided it would be easier to call ______.",
+    "answer": "instead",
+    "type": "單選",
+    "options": [
+      "already",
+      "however",
+      "instead",
+      "although"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "丹尼爾每天準時上班，他總是8點55分就到公司。可英譯為：Daniel is in time for work every day; he always arrives at 8:55 a.m.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "Cory didn't prepare a(n) ______ amount of food for all the people at the party.",
+    "answer": "enough",
+    "type": "單選",
+    "options": [
+      "enough",
+      "little",
+      "much",
+      "sufficient"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "「我可以跟你借我沒到的那堂課的筆記嗎？」「好啊，請便。」可英譯為：“May I borrow your notes from the class I missed?” “Sure, go ahead.”",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "Susan hasn't worked here long, but she's already ______ a lot.",
+    "answer": "achieved",
+    "type": "單選",
+    "options": [
+      "achieves",
+      "achieved",
+      "achieve",
+      "achieving"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "Nellie's room is ______, so she always knows where everything is.",
+    "answer": "tidy",
+    "type": "單選",
+    "options": [
+      "tidy",
+      "wide",
+      "messy",
+      "close"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "I was a slow runner at first, but I've run ______ faster over the year.",
+    "answer": "consistently",
+    "type": "單選",
+    "options": [
+      "usually",
+      "normally",
+      "consistently",
+      "recently"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "Since we only meet once a year, everyone comes to the ______ meeting.",
+    "answer": "annual",
+    "type": "單選",
+    "options": [
+      "weekly",
+      "annual",
+      "morning",
+      "monthly"
+    ],
+    "course": "令人失望的績效考核結果"
+  },
+  {
+    "question": "Duncan works in ______, so he often needs to think of ideas for selling products.",
+    "answer": "marketing",
+    "type": "單選",
+    "options": [
+      "accounting",
+      "cleaning",
+      "shopping",
+      "marketing"
+    ],
+    "course": "令人失望的績效考核結果"
   }
 ]
