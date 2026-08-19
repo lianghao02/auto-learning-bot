@@ -22743,5 +22743,121 @@
       "robes"
     ],
     "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "According to _____ from Scotland, a monster lives in a large lake there.",
+    "answer": "legends",
+    "type": "單選",
+    "options": [
+      "calendars",
+      "legends",
+      "efforts",
+      "strategies"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "It’s a tradition to wear new ______ on the first day of Chinese New Year.",
+    "answer": "clothing",
+    "type": "單選",
+    "options": [
+      "jury",
+      "board",
+      "smoking",
+      "clothing"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "Some festivals ______ on the same date each year; for others, the date changes.",
+    "answer": "occur",
+    "type": "單選",
+    "options": [
+      "occur",
+      "locate",
+      "float",
+      "contest"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "Everyone praised the scholar’s ______ book on the subject of ancient Greece.",
+    "answer": "brilliant",
+    "type": "單選",
+    "options": [
+      "alone",
+      "inferior",
+      "brilliant",
+      "vacant"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "薇薇安十二月能否去度假取決於她的工作排程。可英譯為：Depending to her work schedule, Vivian might be able to take a vacation in December.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "地毯銷售人員將他的產品展示在店內地板上，讓他的顧客可以檢視它們。可英譯為：The rug seller laid out his products on his shop floor so his customers could examine them.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "During Chinese New Year, we set off ______ and watch them burst in the sky.",
+    "answer": "fireworks",
+    "type": "單選",
+    "options": [
+      "fireplaces",
+      "fireworks",
+      "groceries",
+      "grooms"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "The Burj Khalifa (哈里發塔) is ______ as the tallest building in the world.",
+    "answer": "recognized",
+    "type": "單選",
+    "options": [
+      "recognize",
+      "recognized",
+      "recognizes",
+      "recognizing"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "Rita and Eileen are very close, and ______ each other’s joys and sorrows.",
+    "answer": "share",
+    "type": "單選",
+    "options": [
+      "share",
+      "conclude",
+      "hire",
+      "poison"
+    ],
+    "course": "光之慶典：印度排燈節"
+  },
+  {
+    "question": "The two armies fought until one _____ the other and won the war.",
+    "answer": "defeated",
+    "type": "單選",
+    "options": [
+      "defeated",
+      "awoke",
+      "imagined",
+      "rejected"
+    ],
+    "course": "光之慶典：印度排燈節"
   }
 ]
