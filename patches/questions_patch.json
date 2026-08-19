@@ -22627,5 +22627,121 @@
       "pole"
     ],
     "course": "日本兒童節：彩色鯉魚旗"
+  },
+  {
+    "question": "The baker ______ several different types of bread in his shop window.",
+    "answer": "displayed",
+    "type": "單選",
+    "options": [
+      "discounted",
+      "displayed",
+      "disabled",
+      "digested"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "We went to the hot springs and enjoyed a long, comfortable _____.",
+    "answer": "soak",
+    "type": "單選",
+    "options": [
+      "ditch",
+      "soak",
+      "factor",
+      "appetite"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "Olivia opened her ______ and saw that it was raining a little.",
+    "answer": "curtains",
+    "type": "單選",
+    "options": [
+      "curtains",
+      "cupboards",
+      "workbooks",
+      "wardrobes"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "This old castle was first built in the 11th ______, and was once lived in by a king.",
+    "answer": "century",
+    "type": "單選",
+    "options": [
+      "floor",
+      "century",
+      "level",
+      "stage"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "Edward went to the sports ______ of the department store while his wife shopped for shoes.",
+    "answer": "section",
+    "type": "單選",
+    "options": [
+      "section",
+      "female",
+      "holiday",
+      "lettuce"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "Fred ______ his foot in the sea, but decided it was too cold for a swim.",
+    "answer": "dipped",
+    "type": "單選",
+    "options": [
+      "predicted",
+      "chose",
+      "dipped",
+      "emerged"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "有鑑於詹姆士不吃肉，我們今晚的晚餐之約不應該選擇一間牛排店。可英譯為：According that James doesn’t eat meat, we shouldn’t choose a steak restaurant for our dinner tonight.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "這個電梯現在不能使用，你必須要走樓梯。可英譯為：This elevator isn’t in service right now; you’ll have to take the stairs.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "This work has to be completed by Friday, so it’s _____ that we all work hard.",
+    "answer": "essential",
+    "type": "單選",
+    "options": [
+      "classical",
+      "humble",
+      "essential",
+      "offensive"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
+  },
+  {
+    "question": "This hotel provides guests with ______ to wear after they take a shower.",
+    "answer": "robes",
+    "type": "單選",
+    "options": [
+      "accidents",
+      "scarfs",
+      "handkerchiefs",
+      "robes"
+    ],
+    "course": "日本庶民小奢侈：錢湯趣"
   }
 ]
