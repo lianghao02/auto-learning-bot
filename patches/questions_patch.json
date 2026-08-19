@@ -22395,5 +22395,121 @@
       "以上皆是"
     ],
     "course": "無障礙認證標章申請與注意事項"
+  },
+  {
+    "question": "Brett looked into the ______, and he saw a river and many trees at the bottom.",
+    "answer": "canyon",
+    "type": "單選",
+    "options": [
+      "mirror",
+      "canyon",
+      "future",
+      "murder"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "這座城市的這一區為許多有名餐廳和咖啡廳的發源地。可英譯為：This part of the city is home to an amount of famous restaurants and café.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "對路克來說，沒有人能比得上他的女朋友。在他眼裡，她是世界上最完美的人！可英譯為：For Luke, no one goes close to his girlfriend. She is the most perfect person in the world to him!",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "The tourist _____ the city by walking around it for an entire day.",
+    "answer": "explored",
+    "type": "單選",
+    "options": [
+      "explored",
+      "inspired",
+      "underlined",
+      "abused"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "The children looked forward to the _____ and fun of the rides at the park.",
+    "answer": "thrills",
+    "type": "單選",
+    "options": [
+      "trailers",
+      "thrills",
+      "comedies",
+      "charges"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "Many people come to this city for fine ______, since its restaurants are world-famous.",
+    "answer": "dining",
+    "type": "單選",
+    "options": [
+      "dining",
+      "study",
+      "meeting",
+      "vote"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "This ______ is known for its crops. There are many farms in this area.",
+    "answer": "region",
+    "type": "單選",
+    "options": [
+      "accent",
+      "ivory",
+      "region",
+      "passion"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "Hollywood is the ______ of the film industry. Many movies are filmed there.",
+    "answer": "capital",
+    "type": "單選",
+    "options": [
+      "pasta",
+      "tire",
+      "youth",
+      "capital"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "After a hard day at work, Gary likes to ______ in front of the TV.",
+    "answer": "relax",
+    "type": "單選",
+    "options": [
+      "retire",
+      "relax",
+      "remove",
+      "reset"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
+  },
+  {
+    "question": "Lisa often shops for fresh food at a ______ market. It's very close to her house.",
+    "answer": "nearby",
+    "type": "單選",
+    "options": [
+      "nearby",
+      "stock",
+      "abstract",
+      "labor"
+    ],
+    "course": "歡迎光臨皇后鎮：紐西蘭奇想探險勝地"
   }
 ]
