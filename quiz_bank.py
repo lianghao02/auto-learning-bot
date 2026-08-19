@@ -376,14 +376,14 @@ def _fill_answers(driver, answers):
                     # 嘗試將 val 轉為整數
                     val_int = int(val)
                     target_idx = -1
-                    
+
                     # 情況一：題庫存的是 1-based (1~4)，網頁是 0-based。當 val=4 且 radios 有 4 個時，目標 index 為 3
                     if 1 <= val_int <= len(radios):
                         target_idx = val_int - 1
                     # 情況二：如果 val 剛好是 0-based 的 index (0~3)
                     elif 0 <= val_int < len(radios):
                         target_idx = val_int
-                    
+
                     if target_idx != -1:
                         r = radios[target_idx]
                         driver.execute_script("arguments[0].click();", r)
@@ -522,7 +522,7 @@ def _is_100(score_text):
 
 # ── 主函式 ──────────────────────────────────────────
 
-def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, course_name='', username=''):
+def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, course_name='', username='', quiz_interactive_callback=None, min_pass_score=60.0):
     """
     臺北E大測驗流程：
     1. 第一次只用 GAS 題庫作答。
@@ -584,6 +584,17 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                 config=config,
             )
 
+    def _is_score_passed(score_str, min_score=60.0):
+        m = re.search(r'得\s*([\d.]+)\s*分', score_str)
+        if m:
+            try: return float(m.group(1)) >= min_score
+            except Exception: pass
+        m2 = re.search(r'(\d+)\s*/\s*\d+', score_str)
+        if m2:
+            try: return int(m2.group(1)) >= min_score
+            except Exception: pass
+        return False
+
     def _run_attempt(attempt_no, use_local_ai):
         print(f'\n  [測驗] 第 {attempt_no} 次作答：' + ('題庫 + 本機AI' if use_local_ai else '只用題庫'))
 
@@ -606,18 +617,65 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
         missing_qs = []
         ai_answered = []
 
+        # 1. 優先比對共用題庫
         for q in questions:
             val = lookup_bank(bank, q['qtext'])
             if val is not None:
                 answers[q['name']] = val
                 print(f'  ✓ [庫] {q["qtext"][:28]}... → val={val}')
+
+        # 2. 若有未命中題目，且啟用人機協同作答模式
+        cb = quiz_interactive_callback or config.get('quiz_interactive_callback')
+        is_interactive = bool(config.get('interactive_quiz_for_session')) and callable(cb)
+        unanswered_qs = [q for q in questions if q['name'] not in answers]
+
+        if is_interactive and unanswered_qs:
+            print('  🤖 啟用人機協同作答助理（彈窗回貼）...')
+            questions_data = []
+            opt_labels = ["A", "B", "C", "D", "E", "F", "G", "H"]
+            for idx, q in enumerate(questions, 1):
+                opts_list = []
+                for opt_idx, (opt_val, opt_txt) in enumerate(sorted(q['options'].items(), key=lambda x: str(x[0]))):
+                    label = opt_labels[opt_idx] if opt_idx < len(opt_labels) else str(opt_idx + 1)
+                    opts_list.append({"label": label, "text": opt_txt, "val": str(opt_val)})
+
+                is_tf = len(opts_list) == 2 and any(k in q['qtext'] or k in "".join(o['text'] for o in opts_list) for k in ["是非", "是否", "對錯", "○", "╳", "⭕", "❌"])
+                q_type = "是非" if is_tf else "單選"
+                questions_data.append({
+                    "index": idx,
+                    "name": q['name'],
+                    "type": q_type,
+                    "is_multiple": False,
+                    "q_text": q['qtext'],
+                    "options": opts_list,
+                    "raw_q": q
+                })
+
+            parsed = cb(course_name or f"課程 {course_id}", questions_data)
+            if parsed == "STOP_ALL":
+                print('  🛑 使用者選擇結束本次執行')
+                return '', False, {}, {}
+            elif isinstance(parsed, dict) and parsed:
+                for q_item in questions_data:
+                    idx = q_item["index"]
+                    if idx in parsed:
+                        chosen_labels = [l.upper() for l in parsed[idx]]
+                        for opt in q_item["options"]:
+                            if opt["label"].upper() in chosen_labels:
+                                answers[q_item["name"]] = opt["val"]
+                                print(f'  ✓ [人機] {q_item["q_text"][:28]}... → 選 {opt["label"]} (val={opt["val"]})')
+                                break
+
+        # 3. 仍未作答者，由本機 AI 或猜題保底
+        for q in questions:
+            if q['name'] in answers:
                 continue
 
             if use_local_ai and has_local_ai:
                 val = ai_guess_answer(q['qtext'], q['options'], config)
                 if val is not None:
-                    answers[q['name']] = val
-                    ai_answered.append((q, val))
+                    answers[q['name']] = str(val)
+                    ai_answered.append((q, str(val)))
                     print(f'  ✓ [AI] {q["qtext"][:28]}... → val={val}')
                     continue
 
@@ -670,12 +728,13 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
         if score_text:
             best_score_text = score_text
             best_is_100 = is_100
-        if is_100:
-            return score_text, True
+        if is_100 or _is_score_passed(score_text, min_score=min_pass_score):
+            print(f'  🎉 測驗達標通過！【{score_text}】（門檻: {int(min_pass_score)} 分）')
+            return score_text, is_100
         if idx == 1:
-            print('  [測驗] 第一次未滿分，準備第二次補答')
+            print('  [測驗] 第一次未達及格標準，準備第二次補答')
         elif idx < len(attempt_plan):
-            print('  [測驗] 尚未滿分，繼續下一次')
+            print('  [測驗] 尚未及格，繼續下一次')
 
     return best_score_text, best_is_100
 

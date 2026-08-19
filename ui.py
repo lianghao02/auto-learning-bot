@@ -2312,6 +2312,12 @@ Log "ps1 done"
 
 
 # =========================
+# 全域人機協同排隊鎖（防範雙開模態事件循環衝突與閃退）
+# =========================
+GLOBAL_QUIZ_DIALOG_LOCK = threading.Lock()
+
+
+# =========================
 # 人機協同測驗助理彈窗
 # =========================
 class InteractiveQuizDialog(QDialog):
@@ -2390,6 +2396,39 @@ class InteractiveQuizDialog(QDialog):
         """)
         self.copy_btn.clicked.connect(self._copy_prompt)
         left_box.addWidget(self.copy_btn)
+
+        # 🌐 AI 平台快速捷徑按鈕列
+        ai_btn_row = QHBoxLayout()
+        ai_btn_row.setSpacing(10)
+
+        self.chatgpt_btn = QPushButton("🌐 開啟 ChatGPT", self)
+        self.chatgpt_btn.setToolTip("點此使用預設瀏覽器開啟 ChatGPT (chatgpt.com)")
+        self.chatgpt_btn.setStyleSheet("""
+            QPushButton {
+                background: #10A37F; color: #FFFFFF; font-weight: bold; font-size: 12px;
+                padding: 8px 12px; border-radius: 6px; border: none;
+            }
+            QPushButton:hover { background: #0E8A6C; }
+            QPushButton:pressed { background: #0B6E56; }
+        """)
+        self.chatgpt_btn.clicked.connect(self._open_chatgpt)
+
+        self.gemini_btn = QPushButton("✨ 開啟 Gemini", self)
+        self.gemini_btn.setToolTip("點此使用預設瀏覽器開啟 Google Gemini (gemini.google.com)")
+        self.gemini_btn.setStyleSheet("""
+            QPushButton {
+                background: #4E7BE8; color: #FFFFFF; font-weight: bold; font-size: 12px;
+                padding: 8px 12px; border-radius: 6px; border: none;
+            }
+            QPushButton:hover { background: #3B66D1; }
+            QPushButton:pressed { background: #2F52AB; }
+        """)
+        self.gemini_btn.clicked.connect(self._open_gemini)
+
+        ai_btn_row.addWidget(self.chatgpt_btn)
+        ai_btn_row.addWidget(self.gemini_btn)
+        left_box.addLayout(ai_btn_row)
+
         split_layout.addLayout(left_box, 1)
 
         # 右側欄位
@@ -2400,7 +2439,8 @@ class InteractiveQuizDialog(QDialog):
         right_lbl.setStyleSheet("font-weight: bold; color: #374151; font-size: 13px;")
 
         self.answer_input = QTextEdit()
-        self.answer_input.setPlaceholderText("請在此貼上 AI 回覆的內容...\n例如：\n1. B\n2. ⭕\n3. 以上皆是\n4. A, B, C")
+        self.answer_input.setAcceptRichText(False)  # 🔒 強制純文字貼上，防止 HTML/富文本標籤干擾解析
+        self.answer_input.setPlaceholderText("請在此貼上 AI 回覆的內容（支援直接 Ctrl+V）...\n例如：\n1. B\n2. ⭕\n3. 以上皆是\n4. A, B, C")
         self.answer_input.setStyleSheet("""
             QTextEdit {
                 background: #FFFFFF; border: 1px solid #D1D5DB; border-radius: 6px;
@@ -2408,6 +2448,7 @@ class InteractiveQuizDialog(QDialog):
                 color: #111827; padding: 8px;
             }
         """)
+        self.answer_input.textChanged.connect(self._on_answer_text_changed)
 
         self.paste_btn = QPushButton("📋 從剪貼簿直接貼上")
         self.paste_btn.setStyleSheet("""
@@ -2419,9 +2460,15 @@ class InteractiveQuizDialog(QDialog):
         """)
         self.paste_btn.clicked.connect(self._paste_from_clipboard)
 
+        # 即時解析狀態反饋標籤
+        self.parse_status_lbl = QLabel("💡 請直接貼上 AI 回覆內容（支援直接 Ctrl+V）")
+        self.parse_status_lbl.setStyleSheet("color: #6B7280; font-size: 12px; padding: 2px;")
+        self.parse_status_lbl.setWordWrap(True)
+
         right_layout.addWidget(right_lbl)
         right_layout.addWidget(self.answer_input)
         right_layout.addWidget(self.paste_btn)
+        right_layout.addWidget(self.parse_status_lbl)
         split_layout.addWidget(right_box, 1)
 
         layout.addLayout(split_layout)
@@ -2508,6 +2555,48 @@ class InteractiveQuizDialog(QDialog):
         clipboard.setText(self.prompt_text)
         self.copy_btn.setText("✅ 已複製至剪貼簿！")
         QTimer.singleShot(2000, lambda: self.copy_btn.setText("📋 一鍵複製 AI 提問 Prompt"))
+
+    def _open_url_native(self, url: str):
+        """使用系統原生機制與雙層備援開啟網頁，確保在 Windows 各種環境下 100% 成功喚起預設瀏覽器"""
+        try:
+            import webbrowser
+            webbrowser.open_new_tab(url)
+        except Exception:
+            try:
+                import os
+                os.startfile(url)
+            except Exception:
+                try:
+                    QDesktopServices.openUrl(QUrl(url))
+                except Exception:
+                    pass
+
+    def _open_chatgpt(self):
+        self._open_url_native("https://chatgpt.com/")
+
+    def _open_gemini(self):
+        self._open_url_native("https://gemini.google.com/")
+
+    def _on_answer_text_changed(self):
+        raw = self.answer_input.toPlainText().strip()
+        if not raw:
+            self.parse_status_lbl.setText("💡 請直接貼上 AI 回覆內容（支援直接 Ctrl+V）")
+            self.parse_status_lbl.setStyleSheet("color: #6B7280; font-size: 12px; padding: 2px;")
+            return
+        parsed = parse_ai_quiz_answers(raw, self.questions_data)
+        total_q = len(self.questions_data)
+        if parsed:
+            summary_items = []
+            for k, v in sorted(parsed.items()):
+                summary_items.append(f"{k}. {','.join(v)}")
+            summary_str = "、".join(summary_items[:6])
+            if len(summary_items) > 6:
+                summary_str += "..."
+            self.parse_status_lbl.setText(f"✅ 已成功辨識 {len(parsed)}/{total_q} 題解答：{summary_str}")
+            self.parse_status_lbl.setStyleSheet("color: #059669; font-size: 12px; font-weight: bold; padding: 2px;")
+        else:
+            self.parse_status_lbl.setText("⚠️ 尚未辨識出答案代號，請確認格式包含題號（如 1. B 或 1. ⭕）")
+            self.parse_status_lbl.setStyleSheet("color: #D97706; font-size: 12px; padding: 2px;")
 
     def _paste_from_clipboard(self):
         clipboard = QApplication.clipboard()
@@ -2748,9 +2837,11 @@ class PlatformTabPanel(QWidget):
     def _handle_quiz_interactive_request(self, course_name, questions_data, timeout_sec, holder):
         event, res_holder = holder
         try:
-            dlg = InteractiveQuizDialog(course_name, questions_data, timeout_sec, parent=self)
-            dlg.exec()
-            res_holder["result"] = dlg.parsed_result
+            # 🔒 全域排隊互斥鎖：確保雙開時同一時間僅有一個測驗助理彈窗，徹底防範 Qt 巢狀事件循環閃退
+            with GLOBAL_QUIZ_DIALOG_LOCK:
+                dlg = InteractiveQuizDialog(course_name, questions_data, timeout_sec, parent=self)
+                dlg.exec()
+                res_holder["result"] = dlg.parsed_result
         except Exception as e:
             logger.error(f"人機協同彈窗發生異常: {e}")
             # 與使用者主動點選「跳過」區隔，避免背景流程把 UI 異常誤判為跳過指令。

@@ -462,37 +462,38 @@ def get_course_list(driver, wait):
 def _clean_status(text):
     return str(text or '').strip()
 
-def is_study_incomplete(course):
+def is_study_incomplete(course, req_minutes=None):
     done_str = _clean_status(course.get('done'))
-    # 💡 若網頁顯示「已完成」，代表該課程已正式結案
     if '已完成' in done_str or done_str == '完成':
         return False
-    # 💡 若網頁顯示「未完成」，則代表尚需閱讀時數或未完工，一律歸類為待處理課程
-    if '未完成' in done_str:
-        return True
 
-    # 備用時數比對：若當前時數小於認證時數（例如 3 小時），亦屬於未完成
+    already_sec = parse_study_time(course.get('study', ''))
+
+    # 💡 優先採用課程頁偵測到的特定閱讀時數門檻（例如：閱讀時間達36分鐘以上）
+    target_min = req_minutes or course.get('req_minutes')
+    if target_min:
+        return already_sec < int(float(target_min) * 60)
+
+    # 備用時數比對：依認證時數之 50% 門檻計算
     try:
         cert_hrs = float(course.get('cert_hrs') or 0)
     except Exception:
         cert_hrs = 0
     if cert_hrs > 0:
-        target_sec = int(cert_hrs * 3600)
-        already_sec = parse_study_time(course.get('study', ''))
+        target_sec = int(cert_hrs * 3600 * 0.5)
         if target_sec > 0 and already_sec < target_sec:
             return True
-            
+
+    if '未完成' in done_str:
+        return True
+
     return False
 
 def is_questionnaire_pending(course):
     quest = _clean_status(course.get('quest'))
-    # Taipei E-da currently shows questionnaire status as only:
-    #   填寫   => pending
-    #   已完成 => done
-    # Treat '-' / empty as no questionnaire.
     return quest == '填寫'
 
-def is_quiz_passed(course):
+def is_quiz_passed(course, req_score=None):
     score = _clean_status(course.get('score')).replace(' ', '')
     if not score or score == '-':
         return False
@@ -504,18 +505,17 @@ def is_quiz_passed(course):
             nums.append(float(raw))
         except Exception:
             pass
-    # 修正：只要分數達到標準及格線 (>= 60 分) 即視為測驗通過，無需硬性要求 100 分
-    return bool(nums) and max(nums) >= 60
+    # 💡 支援個別課程設定之及格門檻（預設 60 分，若課程指定 80 分則以 80 分為準）
+    pass_threshold = float(req_score or course.get('req_score') or 60.0)
+    return bool(nums) and max(nums) >= pass_threshold
 
-def is_quiz_pending(course):
+def is_quiz_pending(course, req_score=None):
     score = _clean_status(course.get('score')).replace(' ', '')
     if not score or score == '-':
-        # '-' can mean either no quiz or not tested yet. We only run it after
-        # get_course_modules confirms the course actually has a quiz module.
         return False
     if any(word in score for word in ['未通過', '未完成', '不合格', '需補考', '待測驗']):
         return True
-    return not is_quiz_passed(course)
+    return not is_quiz_passed(course, req_score=req_score)
 
 def needs_course_processing(course):
     return (
@@ -603,6 +603,21 @@ def get_course_modules(driver, course_href):
             m = re.search(r'\?id=(\d+)', driver.current_url)
         if m:
             result['course_id'] = int(m.group(1))
+
+        # 掃描頁面上的特定完成條件（例如「閱讀時間達36分鐘以上」、「測驗分數達80分以上」）
+        try:
+            body_txt = driver.find_element(By.TAG_NAME, 'body').text
+            m_time = re.search(r'閱讀時間達\s*(\d+(?:\.\d+)?)\s*分鐘', body_txt)
+            if m_time:
+                result['req_minutes'] = float(m_time.group(1))
+                print(f'  🎯 偵測到課程特定時數門檻：{int(result["req_minutes"])} 分鐘')
+
+            m_score = re.search(r'測驗分數達\s*(\d+(?:\.\d+)?)\s*分', body_txt)
+            if m_score:
+                result['req_score'] = float(m_score.group(1))
+                print(f'  🎯 偵測到課程特定及格門檻：{int(result["req_score"])} 分')
+        except Exception:
+            pass
 
         # 掃所有連結
         links = driver.find_elements(By.CSS_SELECTOR, 'a[href]')
@@ -952,7 +967,7 @@ def is_chapter_done(driver, scoid):
     except Exception:
         return False
 
-def do_scorm_course(driver, wait, course, config=None, should_continue=None):
+def do_scorm_course(driver, wait, course, config=None, should_continue=None, modules=None):
     config = config or {}
     should_continue = should_continue or (lambda: True)
 
@@ -964,9 +979,13 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None):
         cert_hrs = 0
 
     target_percentage = float(config.get('target_percentage', 1.0) or 1.0)
-    # 💡 判斷是否為套裝課程/組合課程（如認證時數 3 小時），此類課程需補滿完整認證時數
+    req_minutes = (modules.get('req_minutes') if modules else None) or course.get('req_minutes')
     is_package = '套裝' in name or '組合' in name or cert_hrs >= 2.0
-    if is_package:
+
+    if req_minutes:
+        target_sec = int(float(req_minutes) * 60 * target_percentage)
+        print(f'  🎯 依課程特定要求設定目標時數：{int(req_minutes)} 分鐘')
+    elif is_package:
         target_sec = int(cert_hrs * 3600 * target_percentage)
     else:
         criteria_sec = int(cert_hrs * 3600 * 0.5)
@@ -1126,7 +1145,7 @@ def _release_taipei_run_lock(lock_path):
 
 
 
-def run_taipei_eda(config_override=None, should_continue=None, log_callback=None):
+def run_taipei_eda(config_override=None, should_continue=None, log_callback=None, quiz_interactive_callback=None):
     """Run the Taipei E-learning workflow from the GUI/back-end dispatcher."""
     should_continue = should_continue or (lambda: True)
     config = load_config()
@@ -1238,9 +1257,12 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 if m:
                     course_id = int(m.group(1))
 
-            study_needed = is_study_incomplete(course)
+            req_minutes = modules.get('req_minutes')
+            req_score = modules.get('req_score', 60.0)
+
+            study_needed = is_study_incomplete(course, req_minutes=req_minutes)
             if study_needed:
-                scorm_ok = do_scorm_course(driver, wait, course, config=config, should_continue=should_continue)
+                scorm_ok = do_scorm_course(driver, wait, course, config=config, should_continue=should_continue, modules=modules)
                 if not scorm_ok:
                     print('  ⚠️ SCORM 上課失敗，跳過測驗/問卷')
                     continue
@@ -1249,10 +1271,12 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
             skip_exam_for_session = bool(config.get('skip_exam_for_session', False))
             quiz_url = modules.get('quiz_url')
-            if quiz_url and course_id and not is_quiz_passed(course) and skip_exam_for_session:
+            quiz_passed = is_quiz_passed(course, req_score=req_score)
+
+            if quiz_url and course_id and not quiz_passed and skip_exam_for_session:
                 print('  ⚠️ 本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。')
-            elif quiz_url and course_id and not is_quiz_passed(course):
-                print(f'\n  📝 測驗 (course_id={course_id})')
+            elif quiz_url and course_id and not quiz_passed:
+                print(f'\n  📝 測驗 (course_id={course_id}，及格標準: {int(req_score)} 分)')
                 score_text, is_100 = do_quiz_with_bank(
                     driver, wait,
                     course_id=course_id,
@@ -1260,8 +1284,10 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     config=config,
                     course_name=course.get('name', ''),
                     username=config.get('name', '') or config.get('account', ''),
+                    quiz_interactive_callback=quiz_interactive_callback or config.get('quiz_interactive_callback'),
+                    min_pass_score=req_score,
                 )
-                print(f'  測驗結果: {score_text} | 100分: {is_100}')
+                print(f'  測驗結果: {score_text} | 達標: {is_100 or is_quiz_passed(course, req_score=req_score)}')
             elif quiz_url and course_id:
                 print('  ✅ 測驗已完成/通過，跳過')
             elif quiz_url and not course_id:
