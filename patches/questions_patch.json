@@ -23806,5 +23806,125 @@
       "以上皆是"
     ],
     "course": "一站式AI建模管理平台在公共服務領域的應用"
+  },
+  {
+    "question": "I like to see Mom’s old pictures. I can  _____ about her past from them.",
+    "answer": "learn",
+    "type": "單選",
+    "options": [
+      "learn",
+      "fight",
+      "turn",
+      "write"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "This  _____ map shows you the way to some nice coffee shops in the city.",
+    "answer": "useful",
+    "type": "單選",
+    "options": [
+      "careful",
+      "useful",
+      "painful",
+      "cheerful"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "Which is your favorite  _____? Mine is 7-Eleven.",
+    "answer": "convenience store",
+    "type": "單選",
+    "options": [
+      "musical instrument",
+      "family member",
+      "convenience store",
+      "kitchen appliance"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "You never tell us  _____.",
+    "answer": "what you want",
+    "type": "單選",
+    "options": [
+      "you want how",
+      "how you want",
+      "you want what",
+      "what you want"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "Caroline took pictures of the beautiful buildings with her  _____.",
+    "answer": "camera",
+    "type": "單選",
+    "options": [
+      "action",
+      "attention",
+      "camera",
+      "chopstick"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "You must be over 130 centimeters in  _____ to go on the ride.",
+    "answer": "height",
+    "type": "單選",
+    "options": [
+      "habit",
+      "height",
+      "health",
+      "heart"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "The students  _____ the answers to the puzzle.",
+    "answer": "guessed",
+    "type": "單選",
+    "options": [
+      "passed",
+      "pasted",
+      "glued",
+      "guessed"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "The thief  _____ the expensive jewelry from the store.",
+    "answer": "stole",
+    "type": "單選",
+    "options": [
+      "stole",
+      "started",
+      "paid",
+      "prayed"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "Fathers and mothers must keep their children  _____.",
+    "answer": "safe",
+    "type": "單選",
+    "options": [
+      "loud",
+      "high",
+      "wise",
+      "safe"
+    ],
+    "course": "超商門口的神祕數字"
+  },
+  {
+    "question": "You should think _____ before you quit your job.",
+    "answer": "twice",
+    "type": "單選",
+    "options": [
+      "twice",
+      "either",
+      "though",
+      "even"
+    ],
+    "course": "超商門口的神祕數字"
   }
 ]
