@@ -21425,5 +21425,35 @@
       ""
     ],
     "course": "歷史的傷．心會記得-政治暴力創傷知情概論"
+  },
+  {
+    "question": "在Google Play Store或Apple App Store上架的App都經過嚴格的審核機制，所以只要從這些管道下載的App都是安全無虞的",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "使用APP安全(112)"
+  },
+  {
+    "question": "執行公務應避免於行動裝置安裝大陸廠牌App，以避免資料遭不當竊取，導致機敏資訊外洩或造成國家資通安全危害風險。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "使用APP安全(112)"
+  },
+  {
+    "question": "許多App的營利模式為投放廣告，由於廣告內容可能並非由軟體開發商本身控制，所以只有大型企業，如YouTube、Facebook的廣告內容才能完全信任。",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "使用APP安全(112)"
   }
 ]
