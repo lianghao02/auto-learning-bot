@@ -21845,5 +21845,17 @@
       ""
     ],
     "course": "職涯非懸崖＿共創多元、公平、共融的友善職場"
+  },
+  {
+    "question": "安卓(Android)手機的行動化應用軟體無障礙軟體檢測工具名稱是什麼？",
+    "answer": "無障礙功能掃描工具",
+    "type": "單選",
+    "options": [
+      "Xcode",
+      "Accessibility Inspector-Xcode",
+      "無障礙功能掃描工具",
+      "VoiceOver"
+    ],
+    "course": "行動化應用軟體無障礙進階分享"
   }
 ]
