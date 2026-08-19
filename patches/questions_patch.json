@@ -22255,5 +22255,75 @@
       "以上皆是"
     ],
     "course": "認識網站無障礙"
+  },
+  {
+    "question": "「我們需要量測您的額溫。」的英文可以說：We need to check your forehead temperature.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「請自便」這句正確的用法是：Please make yourself at home.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "\"at the corner\" 翻譯為轉角的意思。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "英文有很多的字音很像，一定要把每個字的發音說清楚比較重要。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "「勤洗手」這句正確的用法是：wash hands often.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "講電話需要讓對方稍候、等一下時，可以說：Please hold the line.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
+  },
+  {
+    "question": "”Wash Hands Often”翻譯為「勤洗手」。",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "辦公室英語標語、指示及公告製作"
   }
 ]
