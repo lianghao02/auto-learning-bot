@@ -23356,5 +23356,121 @@
       "以上皆是"
     ],
     "course": "用AI科技解決假訊息擴散提升民主治理"
+  },
+  {
+    "question": "This company only ______ on the weekends; it’s closed Monday through Friday.",
+    "answer": "operates",
+    "type": "單選",
+    "options": [
+      "operates",
+      "accuses",
+      "gossiped",
+      "remained"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "因為這棟建築物常常有大量的人進進出出，業主最近增加了更多入口。 可英譯為：Since this building has a constant flow of people coming in and out, the owners added more entrances.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "We argued over the music for the party, but later made a _____ to play something everyone would enjoy.",
+    "answer": "compromise",
+    "type": "單選",
+    "options": [
+      "compromise",
+      "reputation",
+      "general",
+      "explosion"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "Janelle lives on the 22nd floor of a ______ in the heart of the city.",
+    "answer": "skyscraper",
+    "type": "單選",
+    "options": [
+      "exception",
+      "skyscraper",
+      "colleague",
+      "auditorium"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "大家老是把我誤認成我妹，因為我們兩個實在長得太像了。可英譯為：People always mistake me with my younger sister because the two of us look so much alike.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "Our company has offices in three ______: the US, Singapore, and Taiwan.",
+    "answer": "locations",
+    "type": "單選",
+    "options": [
+      "captions",
+      "ambitions",
+      "locations",
+      "foundations"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "One ______ of my students live in other towns; the other 75% are from here.",
+    "answer": "half",
+    "type": "單選",
+    "options": [
+      "half",
+      "fifty",
+      "quarter",
+      "fourty"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "For better ______, we’ve opened up three self-checkout lanes in the store.",
+    "answer": "convenience",
+    "type": "單選",
+    "options": [
+      "freedom",
+      "guidance",
+      "loyalty",
+      "convenience"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "There are many ______ to exercising, including better sleep and more energy.",
+    "answer": "benefits",
+    "type": "單選",
+    "options": [
+      "benefits",
+      "managers",
+      "interests",
+      "phrases"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
+  },
+  {
+    "question": "This book was so ______. The story made no sense and I was totally lost!",
+    "answer": "confusing",
+    "type": "單選",
+    "options": [
+      "fascinating",
+      "confusing",
+      "enchanting",
+      "charming"
+    ],
+    "course": "小「城」立大功：那些你總是搞錯的首都"
   }
 ]
