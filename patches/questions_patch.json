@@ -23015,5 +23015,121 @@
       "以上皆是"
     ],
     "course": "釋放生成式AI潛力驅動未來機器人與無人機應用新格局"
+  },
+  {
+    "question": "This ship is carrying a ______ of Japanese cars that will be sold in other countries.",
+    "answer": "cargo",
+    "type": "單選",
+    "options": [
+      "badge",
+      "input",
+      "cargo",
+      "wheel"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "The uncle ______ his nephew’s education and sent him to an excellent school.",
+    "answer": "funded",
+    "type": "單選",
+    "options": [
+      "find",
+      "funded",
+      "found",
+      "funding"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "This huge bookstore is a ______ for book-lovers.",
+    "answer": "paradise",
+    "type": "單選",
+    "options": [
+      "nightmare",
+      "column",
+      "paradise",
+      "demon"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "The city government ______ exercise by building several new sports centers.",
+    "answer": "promoted",
+    "type": "單選",
+    "options": [
+      "promoted",
+      "greeted",
+      "trained",
+      "retained"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "這位老師告訴她的學生要一直把學業當作第一優先。可英譯為：The teacher told her students to always put their school work first.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "Kelvin loves baseball, and his ______ is to play for an MLB team one day.",
+    "answer": "aim",
+    "type": "單選",
+    "options": [
+      "aim",
+      "aid",
+      "tear",
+      "text"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "我們考慮到可能會有意料外的支出，而將預算稍微提高一點。可英譯為：We made our budget a little larger to permit for unexpected costs.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "Becky_____faster than the other cyclists in order to win the bicycle race.",
+    "answer": "pedaled",
+    "type": "單選",
+    "options": [
+      "browsed",
+      "pedaled",
+      "registered",
+      "abandoned"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "After ______ the problem for a while, we began discussing a plan.",
+    "answer": "considering",
+    "type": "單選",
+    "options": [
+      "consider",
+      "considers",
+      "considered",
+      "considering"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
+  },
+  {
+    "question": "Public ______ in this city is great; there are lots of buses and a subway system.",
+    "answer": "transport",
+    "type": "單選",
+    "options": [
+      "information",
+      "transport",
+      "journal",
+      "library"
+    ],
+    "course": "帶你一覽荷蘭的單車文化"
   }
 ]
