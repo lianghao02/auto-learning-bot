@@ -21939,5 +21939,121 @@
       ""
     ],
     "course": "職場霸凌防治"
+  },
+  {
+    "question": "這座小滑雪村在夏季時很寧靜，但在冬季時變得活絡。可英譯為：This small ski village is quiet in the summer, but it comes alive in winter.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "這個房間充滿氣球，因為我們要在這幫馬西辦生日派對。可英譯為：This room is filled with balloons because we're throwing Marcy's birthday party here.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "I took a walk along the ______ through the forest and saw many plants.",
+    "answer": "trail",
+    "type": "單選",
+    "options": [
+      "trail",
+      "trial",
+      "tail",
+      "trade"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "I like traveling to different countries and learning about the ______ there.",
+    "answer": "cultures",
+    "type": "單選",
+    "options": [
+      "breath",
+      "fame",
+      "cultures",
+      "nerves"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "Let's go somewhere ______ after our wedding, like Paris or Italy!",
+    "answer": "romantic",
+    "type": "單選",
+    "options": [
+      "tropical",
+      "romantic",
+      "African",
+      "roman"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "_____ the dirty dishes in hot water for 10 minutes before washing them.",
+    "answer": "Soak",
+    "type": "單選",
+    "options": [
+      "Blink",
+      "Soak",
+      "Absorb",
+      "Associate"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "It took several months for Thomas's broken foot to ______ completely.",
+    "answer": "heal",
+    "type": "單選",
+    "options": [
+      "combine",
+      "stick",
+      "heal",
+      "bite"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "We found all the places we wanted to visit in this city on a great ______ map.",
+    "answer": "tourist",
+    "type": "單選",
+    "options": [
+      "welfare",
+      "tourist",
+      "constellation",
+      "learning"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "Dan ______ a problem with the TV he just bought, so he returned it to the store.",
+    "answer": "discovered",
+    "type": "單選",
+    "options": [
+      "discovered",
+      "discover",
+      "discovers",
+      "discovering"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
+  },
+  {
+    "question": "This small town has a lot of ______, which draws in a lot of visitors.",
+    "answer": "charm",
+    "type": "單選",
+    "options": [
+      "painting",
+      "motivation",
+      "trash",
+      "charm"
+    ],
+    "course": "捷克溫泉小鎮：卡羅維瓦利"
   }
 ]
