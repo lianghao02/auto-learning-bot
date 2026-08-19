@@ -23570,5 +23570,121 @@
       "個資風險評鑑"
     ],
     "course": "智慧財產局115年度個人資料保護教育訓練"
+  },
+  {
+    "question": "The wedding was a happy ______, with many people smiling and laughing together.",
+    "answer": "affair",
+    "type": "單選",
+    "options": [
+      "affair",
+      "warranty",
+      "assurance",
+      "pledge"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "French desserts are always ______. They not only taste good, but also look beautiful.",
+    "answer": "delicate",
+    "type": "單選",
+    "options": [
+      "rough",
+      "delicate",
+      "crude",
+      "fluent"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "Cindy hopes to ______ happiness by doing a few kind acts for people every day.",
+    "answer": "spread",
+    "type": "單選",
+    "options": [
+      "argue",
+      "recommend",
+      "graduate",
+      "spread"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "愛莉森是個用功的學生，因此她考試成績一定會很好的。可英譯為：Alison is a hard-working student, so she is sure to get a good grade on the test.",
+    "answer": "正確",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "Leon took a small ______ of the drink, only to find out that it was too sweet.",
+    "answer": "sip",
+    "type": "單選",
+    "options": [
+      "yam",
+      "tub",
+      "paw",
+      "sip"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "In this play, color ______ different moods. For example, red means anger.",
+    "answer": "reflects",
+    "type": "單選",
+    "options": [
+      "is reflecting",
+      "was reflected",
+      "reflects",
+      "reflect"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "This book is ______ reading. Both the characters and the story are very interesting.",
+    "answer": "worth",
+    "type": "單選",
+    "options": [
+      "worth",
+      "absent",
+      "evil",
+      "local"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "The old stone streets and colorful bricks in this small town give it a lot of ______.",
+    "answer": "character",
+    "type": "單選",
+    "options": [
+      "medium",
+      "instinct",
+      "character",
+      "patience"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "All the ______ families in the country were invited to the party hosted by the king and queen.",
+    "answer": "noble",
+    "type": "單選",
+    "options": [
+      "awful",
+      "noble",
+      "instant",
+      "plastic"
+    ],
+    "course": "五感藝術：日本傳統和菓子"
+  },
+  {
+    "question": "如果你在這座城市的這一帶走走，就會偶然發現很多有趣的老店。可英譯為：If you walk around this part of the city, you’ll come around many interesting old shops.",
+    "answer": "錯誤",
+    "type": "是非",
+    "options": [
+      "",
+      ""
+    ],
+    "course": "五感藝術：日本傳統和菓子"
   }
 ]
