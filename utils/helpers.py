@@ -152,31 +152,45 @@ def format_quiz_prompt(course_name: str, questions_data: list) -> str:
 
 
 def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
-    """智慧解析使用者貼回的 AI 解答字串，轉換為 {題號: [選中標籤清單]} 結構。"""
+    """智慧解析使用者貼回的 AI 解答字串，轉換為 {題號: [選中標籤清單]} 結構。全面相容 Markdown 格式、列表、表格與多種回覆風格。"""
     if not raw_text or not raw_text.strip():
         return {}
 
     parsed = {}
-    lines = raw_text.strip().split("\n")
-
-    # 建立題號與問題資訊的索引
     q_map = {q.get("index", idx + 1): q for idx, q in enumerate(questions_data)}
+
+    # 預處理：按行分割
+    lines = raw_text.strip().split("\n")
 
     for line in lines:
         line_clean = line.strip()
         if not line_clean:
             continue
 
-        # 匹配常見題號開頭：如 1. B, 1: B, 第1題: B, 1. (B), (1) B, 1: [B], 1. A, B, C 等
+        # 1. 脫除前置清單/引用符號：如 "- ", "* ", "+ ", "• ", "> "
+        line_clean = re.sub(r"^[\s\-\客\*\+\•\>\#\|]+\s*", "", line_clean).strip()
+        # 脫除後置表格符號：如 " |"
+        line_clean = re.sub(r"\s*\|\s*$", "", line_clean).strip()
+
+        # 2. 脫除 Markdown 粗體/斜體/行內程式碼標記：如 "**", "*", "__", "_", "`"
+        clean_text = re.sub(r"[\*\_\`\~]", "", line_clean).strip()
+        if not clean_text:
+            continue
+
+        # 3. 匹配題號模式：
+        # - "1. B", "1: B", "1、B", "1 - B", "1) B", "(1) B", "[1] B"
+        # - "第1題: B", "第 1 題：B", "題1: B"
+        # - 表格列 "1 | B" 或 "1 | B | 解析"
         match = re.match(
-            r"^(?:第\s*)?(\d+)\s*(?:題|\.|\:|\)|\、|\-|\s)\s*(?:\[|\()?(.+?)(?:\]|\))?$",
-            line_clean,
+            r"^(?:第\s*)?(\d+)\s*(?:題|\.|\:|\：|\)|\、|\-|\s|\|)\s*(?:\[|\()?(.+?)(?:\]|\))?$",
+            clean_text,
+            re.IGNORECASE,
         )
         if match:
             try:
                 q_idx = int(match.group(1))
                 ans_body = match.group(2).strip()
-            except ValueError:
+            except (ValueError, IndexError):
                 continue
 
             if q_idx not in q_map:
@@ -186,24 +200,34 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
             options = q_info.get("options", [])
             selected_labels = []
 
-            # 1. 搜尋 A-D / 1-4 英數選項代號
-            letters = re.findall(r"\b([A-Da-d])\b", ans_body)
-            if not letters:
-                letters = [ch.upper() for ch in ans_body if ch.upper() in ["A", "B", "C", "D"]]
+            # 清理 ans_body 前贅詞：如 "答案：", "答案是", "答：", "選項", "選擇", "建議選", "正確答案為"
+            ans_body = re.sub(
+                r"^(?:答案\s*[:：是為]?|答\s*[:：]?|選項\s*[:：]?|選擇\s*[:：]?|建議選\s*[:：]?|正確答案\s*[:：是為]?)\s*",
+                "",
+                ans_body,
+                flags=re.IGNORECASE,
+            ).strip()
 
-            if letters:
-                selected_labels.extend([l.upper() for l in letters])
-
-            # 2. 是非題特殊對應（⭕/O/是/對 -> 第一個選項，❌/X/否/錯 -> 第二個選項）
-            if not selected_labels and q_info.get("type") == "是非":
-                if any(sym in ans_body for sym in ["⭕", "O", "o", "是", "對", "正確"]):
+            # 1. 是非題特殊對應（優先判定是非）
+            if q_info.get("type") == "是非":
+                if any(sym in ans_body for sym in ["⭕", "○", "O", "o", "是", "對", "正確", "True", "true", "T", "t", "1", "V", "v"]):
                     if options:
                         selected_labels.append(options[0].get("label", "A").upper())
-                elif any(sym in ans_body for sym in ["❌", "X", "x", "否", "錯", "不正確"]):
+                elif any(sym in ans_body for sym in ["❌", "✕", "X", "x", "否", "錯", "不正確", "錯誤", "False", "false", "F", "f", "2"]):
                     if len(options) > 1:
                         selected_labels.append(options[1].get("label", "B").upper())
 
-            # 3. 模糊文字比對：若回貼的是選項文字（如「機器學習」），比對匹配的選項
+            # 2. 搜尋 A-D / 1-4 英數選項代號
+            if not selected_labels:
+                # 支援 "A, B, C" / "A、B、C" / "A B C" / "(A)" / "[A]" / "ABC"
+                letters = re.findall(r"\b([A-Da-d])\b", ans_body)
+                if not letters:
+                    # 連寫如 "ABC" 或有括號 "(A)"
+                    letters = [ch.upper() for ch in ans_body if ch.upper() in ["A", "B", "C", "D"]]
+                if letters:
+                    selected_labels.extend([l.upper() for l in letters])
+
+            # 3. 模糊文字比對：若回貼的是選項內容文字（如「巴黎協定」）
             if not selected_labels:
                 for opt in options:
                     opt_t = opt.get("text", "").strip()
@@ -211,8 +235,9 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                         selected_labels.append(opt.get("label", "").upper())
 
             if selected_labels:
-                # 若為單選題，只保留第一個選項
-                if not q_info.get("is_multiple", False):
+                # 判斷是否為多選題
+                is_multiple = q_info.get("is_multiple", False) or q_info.get("type") == "多選"
+                if not is_multiple:
                     selected_labels = [selected_labels[0]]
                 parsed[q_idx] = list(dict.fromkeys(selected_labels))  # 去重保持順序
 

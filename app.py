@@ -126,15 +126,14 @@ def _is_newer_version(latest, current):
 
 
 class AdminEfficiencyPilot:
-    VERSION = "V2.4.0"
+    VERSION = "V2.5.0"
     CHANGELOG = (
-        "V2.4.0：新增 Python 3.13 自癒啟動器並補齊安裝與可攜版文件\n"
-        "• 新增「人機協同測驗助理」彈窗模式（一鍵複製 AI 提問詞、答案回貼自動勾選、180秒逾時防卡死自動跳過）\n"
-        "• 新增組裝/套裝課程全自動展開子課程清單並完成跨分頁選課報名\n"
-        "• 新增測驗繳交後即時解析分數【得分：XX 分】與及格／不及格狀態通知\n"
-        "• 新增測驗未及格（如 30分、50分）精準重測機制與重複學習防護\n"
-        "• 支援直播與隨選課程容器相容放行與下架彈窗精準偵測\n"
-        "• 自動將人機協同作答題目與選項寫入本機 SQLite 題庫 questions.db 持久化"
+        "V2.5.0：人機協同測驗助理全面升級與雙開防閃退互斥鎖\n"
+        "• 題目區新增「🌐 開啟 ChatGPT」與「✨ 開啟 Gemini」快速捷徑按鈕（原生雙層秒開）\n"
+        "• 回貼區全面強化 Markdown 粗體、清單、表格、引導詞解析，並新增即時解析回饋標籤\n"
+        "• 實作全域人機作答排隊互斥鎖，徹底解決雙開同時觸發測驗時 Qt 模態事件循環崩潰與閃退\n"
+        "• 重構課程完成判定邏輯，嚴格落實「時數達標＋測驗及格＋問卷已填」，杜絕 0 分誤判已完成\n"
+        "• 組裝課程掃描優化：100% 已修畢者自動略過，未修畢者深度展開報名子課程"
     )
 
     def __init__(
@@ -1081,11 +1080,18 @@ class AdminEfficiencyPilot:
         return result
 
     def _read_exam_result(self, course, _ai_answered=None):
-        """讀取測驗繳交後的成績與通過狀態並記錄日誌。回傳 True=通過, False=未通過"""
+        """讀取測驗繳交後的成績與通過狀態並記錄日誌。依據每門課程之 criteria_exam_score 精確核定通過與否。"""
         course_id = str(course.get("course_id", ""))
         course_name = course.get("caption", course_id)
         passed = False
         time.sleep(3)
+
+        # 取得課程專屬及格門檻（例如 75 分、80 分或預設 60 分）
+        try:
+            pass_score = float(course.get("criteria_exam_score") or 60.0)
+        except Exception:
+            pass_score = 60.0
+
         try:
             body_text = self.driver.execute_script(
                 "return document.body ? document.body.innerText : '';"
@@ -1105,12 +1111,26 @@ class AdminEfficiencyPilot:
 
             # 擷取分數
             score_match = re.search(r"(?:成績|得分|分數|總分)[：:\s]*([0-9]+(?:\.[0-9]+)?)", body_text)
-            score_str = f"【得分：{score_match.group(1)} 分】" if score_match else ""
+            score_val = float(score_match.group(1)) if score_match else None
+            score_str = f"【得分：{score_val} 分 / 門檻：{pass_score} 分】" if score_val is not None else f"【門檻：{pass_score} 分】"
 
-            if "\u4e0d\u53ca\u683c" in body_text or "未通過" in body_text:
+            if score_val is not None:
+                if score_val >= pass_score:
+                    logger.info(f"   🎉 測驗結果：達標及格 {score_str}！")
+                    passed = True
+                    self._exam_fail_counts.pop(course_id, None)
+                    if _ai_answered:
+                        self._save_answers_to_db(_ai_answered, source="AI")
+                else:
+                    self._exam_fail_counts[course_id] = self._exam_fail_counts.get(course_id, 0) + 1
+                    fail_now = self._exam_fail_counts[course_id]
+                    logger.warning(f"   ❌ 測驗結果：未達門檻 {score_str}（已累計未達標 {fail_now} 次）")
+                    passed = False
+            elif "\u4e0d\u53ca\u683c" in body_text or "未通過" in body_text:
                 self._exam_fail_counts[course_id] = self._exam_fail_counts.get(course_id, 0) + 1
                 fail_now = self._exam_fail_counts[course_id]
                 logger.warning(f"   ❌ 測驗結果：不及格 / 未通過 {score_str}（已累計不及格 {fail_now} 次）")
+                passed = False
             elif "\u53ca\u683c" in body_text or "通過" in body_text:
                 logger.info(f"   🎉 測驗結果：及格 / 通過 {score_str}！")
                 passed = True
@@ -1119,10 +1139,10 @@ class AdminEfficiencyPilot:
                     self._save_answers_to_db(_ai_answered, source="AI")
             else:
                 logger.info(f"   📝 測驗已送出 {score_str}（請至學習紀錄查核狀態）")
-                passed = True
+                passed = False
         except Exception as e:
             logger.debug(f"讀取測驗成績失敗: {e}")
-            passed = True
+            passed = False
 
         return passed
 
@@ -2384,27 +2404,32 @@ class AdminEfficiencyPilot:
             return str(e)
 
     def fetch_course_list(self, year=None):
-        year = year or time.strftime("%Y")
+        cur_year = year or time.strftime("%Y")
         courses_map = {}
-        # 💡 同時查詢單門課程(single)、微學習課程(micro)、組裝課程(package)與直播課程(live)，完整收錄跨所有分頁(1~30頁)之項目
-        for c_type in ["single", "micro", "package", "live"]:
-            for page in range(1, 30):
-                payload = f"year={year}&keyword=&course_type={c_type}&page={page}&orderby=&sort="
-                try:
-                    resp = self.http_session.post(
-                        self.api_url, data=payload, timeout=10
-                    )
-                    data = resp.json().get("data", [])
-                    if not data or len(data) == 0:
+        # 💡 查詢所有課程類型：包含單門(single)、MOOCs(mooc/moocs)、開放式(open)、微學習(micro)、組裝(package)、直播(live)與不限類型("")
+        # 同時涵蓋當前年度與跨年度("")課程，確保所有已選修之 MOOCs 與一般課程皆 100% 納入
+        type_list = ["", "mooc", "moocs", "single", "open", "micro", "package", "live"]
+        year_list = [cur_year, ""]
+
+        for y in year_list:
+            for c_type in type_list:
+                for page in range(1, 35):
+                    payload = f"year={y}&keyword=&course_type={c_type}&page={page}&orderby=&sort="
+                    try:
+                        resp = self.http_session.post(
+                            self.api_url, data=payload, timeout=10
+                        )
+                        data = resp.json().get("data", [])
+                        if not data or len(data) == 0:
+                            break
+                        for item in data:
+                            cid = str(item.get("course_id", "") or item.get("id", ""))
+                            key = cid or item.get("caption", "")
+                            if key and key not in courses_map:
+                                courses_map[key] = item
+                    except Exception as e:
+                        logger.debug(f"讀取 [y={y}, type={c_type}] 第 {page} 頁課程: {e}")
                         break
-                    for item in data:
-                        cid = str(item.get("course_id", "") or item.get("id", ""))
-                        key = cid or item.get("caption", "")
-                        if key and key not in courses_map:
-                            courses_map[key] = item
-                except Exception as e:
-                    logger.warning(f"⚠️ 讀取 [{c_type}] 第 {page} 頁課程失敗: {e}")
-                    break
         return list(courses_map.values())
 
     def fetch_course_list_checked(self, year=None):
@@ -2443,17 +2468,18 @@ class AdminEfficiencyPilot:
         return courses
 
     def _is_open_course(self, course):
-        course_type = str(course.get("course_type", "") or "").strip()
+        course_type = str(course.get("course_type", "") or "").strip().lower()
         if course_type:
-            return course_type in {
+            return any(k in course_type for k in [
                 "開放式", "單門課程", "微學習", "組合課程", "單門",
-                "組裝課程", "套裝課程", "直播課程", "直播", "隨選視訊"
-            }
+                "組裝課程", "套裝課程", "直播課程", "直播", "隨選視訊",
+                "mooc", "moocs", "磨課師", "一般課程"
+            ])
         course_type_cd = str(course.get("course_type_cd", "") or "").strip().lower()
         if course_type_cd:
-            return course_type_cd in {
-                "single", "open", "micro", "package", "live", "broadcast"
-            }
+            return any(k in course_type_cd for k in [
+                "single", "open", "micro", "package", "live", "broadcast", "mooc", "moocs"
+            ])
         return True
 
     def _is_playable_course(self, course):
@@ -3431,6 +3457,7 @@ class AdminEfficiencyPilot:
                     config_override=self.config,
                     should_continue=lambda: self.running,
                     log_callback=self.log_callback,
+                    quiz_interactive_callback=self.quiz_interactive_callback,
                 )
                 if ok:
                     logger.info("🏆 臺北E大所有任務完成！")
