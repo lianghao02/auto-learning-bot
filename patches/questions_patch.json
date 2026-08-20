@@ -28435,5 +28435,29 @@
       "以上皆是"
     ],
     "course": "大數據與人工智慧在公部門應用與影響"
+  },
+  {
+    "question": "根據課程內容，「GPT為Generative、Pre-trained及Transformer三個詞構成」。下列敘述何者符合對於「Transformer」的說明？",
+    "answer": "4. 以上皆是",
+    "type": "單選",
+    "options": [
+      "除了OpenAI公司發展的ChatGPT之外，Google也以「Transformer」概念建立BERT模型",
+      "藉由追蹤序列資料中的關係，學習上下文之間的脈絡及意義",
+      "又被稱為「基礎模型」，推動了人工智慧的典範轉移",
+      "以上皆是"
+    ],
+    "course": "360度認識ChatGPT"
+  },
+  {
+    "question": "根據課程內容，AI模型可能有哪些問題？",
+    "answer": "4. 以上皆是",
+    "type": "單選",
+    "options": [
+      "資訊透明度問題，無從得知資訊來源，並且無法判斷資訊真偽",
+      "資訊安全疑慮",
+      "偏見和倫理問題",
+      "以上皆是"
+    ],
+    "course": "360度認識ChatGPT"
   }
 ]
