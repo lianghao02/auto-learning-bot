@@ -3003,7 +3003,13 @@ class AdminEfficiencyPilot:
             )
             time.sleep(2)
 
-            # 多重防禦性定位帳號欄位
+            # 💡 檢查點：若已經自動完成 SSO 導回 elearn.hrd.gov.tw，直接同步 Session
+            cur_url = self.driver.current_url
+            if "elearn.hrd.gov.tw" in cur_url and "egov_login" not in cur_url and "mooc/index.php" not in cur_url:
+                logger.info("✅ 偵測到 E政府已具備有效 SSO 授權，直接同步 Session。")
+                return self.sync_session()
+
+            # 多重防禦性定位帳號欄位（給予最多 12 秒等待政府入口網載入）
             user_f = None
             user_selectors = [
                 (By.ID, "AccountPassword_simple_txt_account"),
@@ -3013,7 +3019,7 @@ class AdminEfficiencyPilot:
             ]
             for by_type, val in user_selectors:
                 try:
-                    user_f = WebDriverWait(self.driver, 3).until(EC.presence_of_element_located((by_type, val)))
+                    user_f = WebDriverWait(self.driver, 12).until(EC.presence_of_element_located((by_type, val)))
                     if user_f and user_f.is_displayed():
                         break
                 except Exception:
@@ -3029,14 +3035,17 @@ class AdminEfficiencyPilot:
             ]
             for by_type, val in pass_selectors:
                 try:
-                    pass_f = WebDriverWait(self.driver, 3).until(EC.presence_of_element_located((by_type, val)))
+                    pass_f = WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((by_type, val)))
                     if pass_f and pass_f.is_displayed():
                         break
                 except Exception:
                     pass
 
             if not user_f or not pass_f:
-                logger.error("❌ 找不到我的E政府帳號或密碼輸入框")
+                # 若仍找不到且已在 elearn 平台，再次嘗試同步
+                if "elearn.hrd.gov.tw" in self.driver.current_url:
+                    return self.sync_session()
+                logger.error(f"❌ 找不到我的E政府帳號或密碼輸入框（當前頁面: {self.driver.current_url}）")
                 return False
 
             user_f.clear()
@@ -3309,8 +3318,13 @@ class AdminEfficiencyPilot:
                     err_text = f"{alert_text} {e}"
                     if alert_text:
                         logger.warning(f"   ⚠️ frame 切換時偵測到 Alert：{alert_text}")
-                    if self._is_logout_text(err_text):
-                        logger.warning("🔄 帳號閒置被登出，停止當前教室並觸發重新登入。")
+                    current_url = ""
+                    try:
+                        current_url = self.driver.current_url
+                    except Exception:
+                        pass
+                    if self._is_logout_text(err_text) or self._is_logout_text(current_url):
+                        logger.warning("🔄 帳號閒置或被重導至首頁/登入頁，停止當前教室並立即觸發重新登入。")
                         return "RELOGIN"
                     new_classroom_h = self.find_classroom_window()
                     if new_classroom_h and new_classroom_h != classroom_h:
