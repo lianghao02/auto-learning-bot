@@ -3649,5 +3649,53 @@
       "沒有意識就沒有脈搏"
     ],
     "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "下列何者為胸部按壓的正確技巧?",
+    "answer": "4. 以上皆是",
+    "type": "單選",
+    "options": [
+      "用力壓",
+      "快快壓",
+      "莫中斷",
+      "以上皆是"
+    ],
+    "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "根據AED 的操作說明，依照a.開 b.貼 c.電，請排列順序?",
+    "answer": "4. ACB",
+    "type": "單選",
+    "options": [
+      "CAB",
+      "ABC",
+      "CBA",
+      "ACB"
+    ],
+    "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "根據AED 的操作說明，下列貼片位置，何者最適當?\na.左鎖骨下 b.右鎖骨下 c.左下胸側面 d.右下胸側面",
+    "answer": "1. A-C",
+    "type": "單選",
+    "options": [
+      "A-C",
+      "B-D",
+      "B-C",
+      "A-D"
+    ],
+    "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "根據AED 的使用說明，AED 到達前，應持續CPR，下列敘述，何者最不適當?",
+    "answer": "4. 此時CPR 其實沒有意義，只是為了等待AED 到達",
+    "type": "單選",
+    "options": [
+      "此時CPR 是為了維持重要器官的灌流",
+      "此時CPR 是為了延長可電擊心律的時間",
+      "此時CPR 是為了心臟細胞有足夠的能量",
+      "此時CPR 其實沒有意義，只是為了等待AED 到達"
+    ],
+    "course": "民眾版CPR+AED教學影片"
   }
 ]
