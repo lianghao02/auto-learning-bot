@@ -2130,15 +2130,23 @@ class AdminEfficiencyPilot:
 
     def auto_questionnaire(self, course):
         """考試通過後，自動填寫問卷/評價。回傳 True=完成, False=失敗/跳過"""
+        # 💡 防呆檢查：若該課程已填寫問卷（fill == "1"），直接跳過不重複送出
+        if str(course.get("fill", "0")) == "1":
+            logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，直接跳過。")
+            return True
+        if not course.get("write_questionnaire") and str(course.get("criteria_survey", "0")) in ("0", "", "False"):
+            logger.info(f"   ℹ️ 「{course.get('caption', '')}」無問卷要求，直接跳過。")
+            return True
+
         logger.info("   📋 開始自動填寫問卷流程...")
         main_window = self.driver.current_window_handle
 
         try:
             # ── 1. 切回主視窗，點左側 sidebar「問卷/評價」──
-            # sidebar 在 mooc_sysbar frame
             self.driver.switch_to.window(main_window)
             self.driver.switch_to.default_content()
 
+            clicked_q = False
             try:
                 self.driver.switch_to.frame("mooc_sysbar")
                 q_link = self.driver.find_element(
@@ -2147,19 +2155,30 @@ class AdminEfficiencyPilot:
                 )
                 self.driver.execute_script("arguments[0].click();", q_link)
                 logger.info("   📋 已點擊「問卷/評價」")
-            except Exception as e:
-                logger.warning(f"   ⚠️ 找不到問卷連結（mooc_sysbar）: {e}")
-                return False
+                clicked_q = True
+            except Exception:
+                # 嘗試在 default_content 尋找問卷連結
+                self.driver.switch_to.default_content()
+                try:
+                    q_link = self.driver.find_element(
+                        By.CSS_SELECTOR,
+                        "a[href*='questionnaire'], a[href*='survey'], a[href*='feedback'], a[onclick*='questionnaire'], a[onclick*='survey']"
+                    )
+                    self.driver.execute_script("arguments[0].click();", q_link)
+                    logger.info("   📋 已點擊「問卷/評價」")
+                    clicked_q = True
+                except Exception as e:
+                    logger.warning(f"   ⚠️ 找不到問卷連結: {e}")
+                    return False
 
             time.sleep(2)
 
-            # ── 2. 切到 s_main frame ──
+            # ── 2. 切到 s_main frame（若為舊版架構） ──
             self.driver.switch_to.default_content()
             try:
                 self.driver.switch_to.frame("s_main")
             except Exception:
-                logger.warning("   ⚠️ 無法切換到 s_main frame")
-                return False
+                pass  # 若無 s_main，直接在 default_content 尋找按鈕
 
             time.sleep(1)
 
@@ -2904,7 +2923,7 @@ class AdminEfficiencyPilot:
         return True
 
     def find_classroom_window(self):
-        """Return the browser window that owns the course frame tree."""
+        """Return the browser window that owns the course frame tree or MOOCs player."""
         if not self.driver:
             return None
         try:
@@ -2912,6 +2931,7 @@ class AdminEfficiencyPilot:
         except Exception:
             return None
 
+        # 1. 優先尋找傳統 frameset 教室（s_catalog / pathtree）
         for handle in reversed(handles):
             try:
                 self.driver.switch_to.window(handle)
@@ -2926,6 +2946,41 @@ class AdminEfficiencyPilot:
                 except Exception:
                     pass
                 continue
+
+        # 2. 相容新版 MOOCs / HTML5 教室視窗（非登入頁/非學習概況統計頁，且包含課程相關路徑或播放器特徵）
+        for handle in reversed(handles):
+            try:
+                self.driver.switch_to.window(handle)
+                self.driver.switch_to.default_content()
+                url = self.driver.current_url or ""
+                # 排除純登入頁、首頁或學習概況/儀表板總覽頁
+                if any(k in url for k in ["Clogin.aspx", "egov_login.php", "learn_stat.php", "learn_dashboard.php", "mooc/index.php"]):
+                    continue
+                # 若 URL 包含課程相關路徑或頁面含有影音/章節容器
+                is_course_url = any(k in url for k in ["/learn/", "/info/", "/course/", "/controllers/"])
+                has_player_or_units = self.driver.execute_script("""
+                    return !!(
+                        document.querySelector('video, audio, .video-js, #player, .player, [class*="unit"], [class*="chapter"], [class*="node"], a[onclick*="play"]') ||
+                        window.API || window.LMSCommit
+                    );
+                """)
+                if is_course_url or has_player_or_units:
+                    return handle
+            except Exception:
+                continue
+
+        # 3. 若有多個視窗且非 stat 頁面，回傳最後開啟之視窗作為 fallback
+        if len(handles) > 1:
+            for handle in reversed(handles):
+                try:
+                    self.driver.switch_to.window(handle)
+                    url = self.driver.current_url or ""
+                    if not any(k in url for k in ["learn_stat.php", "learn_dashboard.php", "mooc/index.php", "Clogin.aspx"]):
+                        return handle
+                except Exception:
+                    pass
+            return handles[-1]
+
         return None
 
     def _wait_for_redirect_and_sync(
@@ -3157,8 +3212,9 @@ class AdminEfficiencyPilot:
             if not self.safe_sleep(3):
                 return "STOP"
 
+            orig_handles = list(self.driver.window_handles)
             self.driver.execute_script(f"gotoCourse({course['course_id']})")
-            if not self.safe_sleep(5):
+            if not self.safe_sleep(4):
                 return "STOP"
 
             # ⭐ 進入課程後先攔截 alert（如「您非本門課的學生」、「直播已結束」等）
@@ -3182,17 +3238,45 @@ class AdminEfficiencyPilot:
                 logger.info("🛑 使用者手動停止（進入課程）")
                 return "STOP"
 
-            try:
-                self.wait.until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, "button.btn-primary"))
-                ).click()
-            except Exception:
-                if not self.running:  # ⭐ 檢查點 3
-                    logger.info("🛑 使用者手動停止（等待按鈕）")
-                    return "STOP"
-                self.driver.execute_script(
-                    "document.querySelector('button.btn-primary').click();"
-                )
+            # 若 gotoCourse 開啟了新分頁，切換過去；若未開啟且仍在 stat_url，主動導航至 /info/{course_id}
+            new_handles = list(self.driver.window_handles)
+            if len(new_handles) > len(orig_handles):
+                self.driver.switch_to.window(new_handles[-1])
+            elif "learn_stat.php" in self.driver.current_url:
+                self.driver.get(f"https://elearn.hrd.gov.tw/info/{course['course_id']}")
+                self.safe_sleep(3)
+
+            # 若停留在 /info/ 介紹頁，點擊「上課去」/「進入課程」等按鈕進入真實教室
+            cur_u = self.driver.current_url or ""
+            if "/info/" in cur_u:
+                before_handles = list(self.driver.window_handles)
+                clicked = self.driver.execute_script("""
+                    var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+                    for (var i = 0; i < btns.length; i++) {
+                        var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                        if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                            btns[i].click();
+                            return t;
+                        }
+                    }
+                    return null;
+                """)
+                if clicked:
+                    logger.info(f"   📝 已點擊「{clicked}」進入課程教室")
+
+                # 💡 攔截點擊後彈出的外購平臺提示 Alert（如「本課程為外購Hahow平臺課程...」）
+                time.sleep(1)
+                info_alert = self._accept_alert_if_present()
+                if info_alert:
+                    logger.info(f"   ℹ️ 課程平台轉址提示：{info_alert}")
+
+                self.safe_sleep(4)
+                try:
+                    after_handles = list(self.driver.window_handles)
+                    if len(after_handles) > len(before_handles):
+                        self.driver.switch_to.window(after_handles[-1])
+                except Exception:
+                    pass
 
             for _ in range(10):
                 if not self.running:  # ⭐ 檢查點 4
@@ -3202,7 +3286,7 @@ class AdminEfficiencyPilot:
 
             classroom_h = self.find_classroom_window()
             if not classroom_h:
-                logger.warning("   ⚠️ 找不到課程教室主視窗（s_catalog/pathtree），嘗試重新登入後重試。")
+                logger.warning("   ⚠️ 找不到課程教室視窗，嘗試重新登入後重試。")
                 return "RELOGIN"
             self.driver.switch_to.window(classroom_h)
 
@@ -3253,11 +3337,19 @@ class AdminEfficiencyPilot:
                         self.driver.switch_to.window(classroom_h)
                         self.driver.switch_to.default_content()
 
+                is_traditional_frame = False
                 try:
                     self.driver.switch_to.frame("s_catalog")
                     self.driver.switch_to.frame("pathtree")
+                    is_traditional_frame = True
                     frame_fail_count = 0
+                except Exception:
+                    try:
+                        self.driver.switch_to.default_content()
+                    except Exception:
+                        pass
 
+                if is_traditional_frame:
                     all_links = [
                         link
                         for link in self.driver.find_elements(By.TAG_NAME, "a")
@@ -3267,7 +3359,6 @@ class AdminEfficiencyPilot:
                         link for link in all_links
                         if link.text.strip() not in self.config["blacklist"]
                     ]
-                    # 診斷：若無可用 link，記錄原始清單
                     if not links:
                         all_texts = [link.text.strip() for link in all_links]
                         logger.warning(f"   ⚠️ pathtree 無可選單元，原始清單({len(all_texts)}筆): {all_texts[:20]}")
@@ -3275,14 +3366,12 @@ class AdminEfficiencyPilot:
                         (link for link in links if link.text not in attempted),
                         random.choice(links) if links else None,
                     )
-                    # 所有單元都已嘗試過 → 重置讓下一輪重新輪
                     if target is None and links:
                         logger.info("   🔄 所有單元已輪完，重置重新輪...")
                         attempted.clear()
                         target = random.choice(links)
 
                     if target:
-                        # ⭐ 檢查點 7（進入單元前）
                         if not self.running:
                             logger.info("🛑 使用者手動停止（進入單元前）")
                             return "STOP"
@@ -3295,7 +3384,6 @@ class AdminEfficiencyPilot:
                         w_time = self.config.get("residence_time", 75)
                         st = time.time()
                         while time.time() - st < w_time:
-                            # ⭐ 檢查點 8（停留時間內）
                             if not self.running:
                                 logger.info("🛑 使用者手動停止（停留中）")
                                 return "STOP"
@@ -3307,17 +3395,13 @@ class AdminEfficiencyPilot:
                             )
                     else:
                         for _ in range(30):
-                            # ⭐ 檢查點 9（無目標課程時）
                             if not self.running:
-                                logger.info("🛑 使用者手動停止（無課程可選）")
                                 return "STOP"
                             time.sleep(1)
-                except Exception as e:
-                    # 優先攔截殘留 alert（如閒置登出），避免後續操作全部失敗
+                else:
+                    # ── MOOCs / HTML5 / 微學習單頁教室處理 ──
                     alert_text = self._accept_alert_if_present()
-                    err_text = f"{alert_text} {e}"
-                    if alert_text:
-                        logger.warning(f"   ⚠️ frame 切換時偵測到 Alert：{alert_text}")
+                    err_text = f"{alert_text}"
                     current_url = ""
                     try:
                         current_url = self.driver.current_url
@@ -3326,48 +3410,112 @@ class AdminEfficiencyPilot:
                     if self._is_logout_text(err_text) or self._is_logout_text(current_url):
                         logger.warning("🔄 帳號閒置或被重導至首頁/登入頁，停止當前教室並立即觸發重新登入。")
                         return "RELOGIN"
-                    new_classroom_h = self.find_classroom_window()
-                    if new_classroom_h and new_classroom_h != classroom_h:
-                        logger.warning("   🔄 目前視窗不是教室主視窗，已切回含課程選單的教室視窗。")
-                        classroom_h = new_classroom_h
-                        frame_fail_count = 0
-                        continue
-                    logger.warning(f"   ⚠️ frame 切換失敗: {e}")
-                    frame_fail_count += 1
-                    # 診斷：記錄當前 URL 與視窗數量，幫助判斷頁面狀態
-                    try:
-                        logger.warning(f"   🔍 當前 URL: {self.driver.current_url}, 視窗數: {len(self.driver.window_handles)}")
-                        frames = self.driver.find_elements(By.TAG_NAME, "iframe")
-                        frame_ids = [f.get_attribute("name") or f.get_attribute("id") or "(no id)" for f in frames]
-                        logger.warning(f"   🔍 頁面 iframe 清單: {frame_ids}")
-                    except Exception as diag_e:
-                        logger.warning(f"   🔍 診斷失敗: {diag_e}")
-                    if frame_fail_count >= 5:
-                        logger.error(
-                            "   ❌ 連續 5 次找不到課程選單，視窗可能已毀損，嘗試重啟。"
+
+                    frame_fail_count = 0
+
+                    # 💡 若當前停留在 /info/ 介紹頁，嘗試點擊「上課去」進入真實教室
+                    if "/info/" in current_url:
+                        self.driver.execute_script("""
+                            var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+                            for (var i = 0; i < btns.length; i++) {
+                                var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
+                                if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                                    btns[i].click();
+                                    break;
+                                }
+                            }
+                        """)
+
+                    # 尋找真實課程章節單元連結
+                    moocs_links = self.driver.find_elements(
+                        By.CSS_SELECTOR,
+                        "a.unit-item, .chapter-list a, .tree-node a, a[href*='node'], a[onclick*='play'], a[onclick*='read'], li.leaf a, .course-outline a, .outline a, a.list-group-item, .unit-title, a[href*='catalog'], [class*='unit'] a, [class*='chapter'] a"
+                    )
+                    if not moocs_links:
+                        moocs_links = self.driver.find_elements(
+                            By.XPATH,
+                            "//a[contains(@href, 'node') or contains(@href, 'play') or contains(@href, 'unit') or contains(@href, 'catalog') or contains(@class, 'unit') or contains(@class, 'chapter')]"
                         )
-                        return "STALLED"
-                    for _ in range(30):
-                        # ⭐ 檢查點 10（frame 異常時）
+
+                    # 排除非課程內容的通用導覽標籤（無效導航）
+                    ignored_keywords = [
+                        "跳到主要內容", ":::", "網站導覽", "常見問題", "下載專區", "加盟機關",
+                        "簡易操作", "隱私權", "安全政策", "版權聲明", "回首頁", "選課中心",
+                        "個人資料", "學習概況", "帳號管理", "登出", "登入", "我的課程", "問卷", "測驗"
+                    ]
+                    filtered_links = []
+                    for a in moocs_links:
+                        try:
+                            t = a.text.strip()
+                            if not t or len(t) < 2:
+                                continue
+                            if any(k in t for k in ignored_keywords):
+                                continue
+                            if t in self.config.get("blacklist", []):
+                                continue
+                            filtered_links.append(a)
+                        except Exception:
+                            continue
+
+                    target = next(
+                        (l for l in filtered_links if l.text.strip() not in attempted),
+                        random.choice(filtered_links) if filtered_links else None
+                    )
+                    if target is None and filtered_links:
+                        attempted.clear()
+                        target = random.choice(filtered_links)
+
+                    if target:
+                        u_name = target.text.strip()
+                        attempted.add(u_name)
+                        logger.info(f"   📍 進入單元（MOOCs）：{u_name[:25]}...")
+                        try:
+                            self.driver.execute_script("arguments[0].click();", target)
+                        except Exception:
+                            pass
+
+                    # 嘗試播放影片與定時 commit
+                    try:
+                        self.driver.execute_script("""
+                            var v = document.querySelector('video');
+                            if (v) { v.muted = true; v.play().catch(function(){}); }
+                        """)
+                    except Exception:
+                        pass
+
+                    w_time = self.config.get("residence_time", 75)
+                    st = time.time()
+                    while time.time() - st < w_time:
                         if not self.running:
-                            logger.info("🛑 使用者手動停止（frame 異常等待中）")
+                            logger.info("🛑 使用者手動停止（停留中）")
                             return "STOP"
+
                         time.sleep(1)
+                        self.driver.switch_to.window(classroom_h)
+                        self.driver.execute_script(
+                            "function deepCommit(win){ try{if(win.API)win.API.LMSCommit('');}catch(e){} if(win.frames){for(let i=0;i<win.frames.length;i++)deepCommit(win.frames[i]);}} deepCommit(window);"
+                        )
 
             # ⭐ 檢查點 11（結束前）
             if not self.running:
                 logger.info("🛑 使用者手動停止（課程結束前）")
                 return "STOP"
 
-            # 時數達標，嘗試自動作答測驗，通過後填寫問卷
+            # 時數達標，嘗試自動作答測驗，通過後填寫問卷（若問卷未完成）
             if self.running:
                 if self.config.get("skip_exam_for_session", False):
                     logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
-                    self.auto_questionnaire(course)
+                    if str(course.get("fill", "0")) != "1":
+                        self.auto_questionnaire(course)
+                    else:
+                        logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，跳過填寫。")
                 else:
                     exam_passed = self.auto_exam(course)
                     if self.running and exam_passed:
-                        self.auto_questionnaire(course)
+                        if str(course.get("fill", "0")) != "1":
+                            self.auto_questionnaire(course)
+                        else:
+                            logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，跳過填寫。")
 
             logger.info("   🔄 返回學習概況清單...")
             self.driver.get(self.stat_url)
@@ -3377,13 +3525,12 @@ class AdminEfficiencyPilot:
             return "SUCCESS"
 
         except UnexpectedAlertPresentException as e:
-            # 偵測「閒置過久被登出」Alert
             alert_text = ""
             try:
                 alert = self.driver.switch_to.alert
                 alert_text = alert.text
                 alert.accept()
-                logger.warning(f"⚠️ 偵測到 Alert：{alert_text}")
+                logger.info(f"ℹ️ 偵測並接受 Alert：{alert_text}")
             except Exception:
                 alert_text = str(e)
             if "閒置" in alert_text or "重新登入" in alert_text or "登出" in alert_text:
@@ -3399,22 +3546,21 @@ class AdminEfficiencyPilot:
                 else:
                     logger.error("❌ 重新登入失敗，跳過當前課程。")
                     return "ERROR"
-            elif any(kw in alert_text for kw in ["非本門課", "無法上課", "無權限", "不開放", "未選課"]):
+            elif any(kw in alert_text for kw in ["非本門課", "無法上課", "無權限", "不開放", "未選課", "尚未上架", "已下架", "直播已結束"]):
                 logger.warning(f"⚠️ 此課程無法上課（{alert_text}），永久跳過。")
+                self._completed_in_session.add(str(course.get("course_id", "")))
                 try:
                     self.driver.get(self.stat_url)
                 except Exception:
                     pass
                 time.sleep(3)
                 return "SKIP"
+            elif any(kw in alert_text for kw in ["外購", "Hahow", "平臺", "平台", "閱讀", "磨課師", "提醒", "另開", "視窗", "即將進入"]):
+                logger.info(f"   ℹ️ 外部平臺通知已自動確認（{alert_text}），重新進入教室...")
+                return "RELOGIN"
             else:
-                logger.error(f"   ❌ 研習異常（Alert）: {alert_text}", exc_info=True)
-                try:
-                    self.driver.get(self.stat_url)
-                except Exception:
-                    pass
-                time.sleep(5)
-                return "ERROR"
+                logger.warning(f"   ⚠️ 研習期間 Alert（{alert_text}），自動確認並重試...")
+                return "RELOGIN"
 
         except Exception as e:
             logger.error(f"   ❌ 研習異常: {e}", exc_info=True)
@@ -3637,6 +3783,8 @@ class AdminEfficiencyPilot:
                         needs_exam = (not exam_passed) and (self._exam_fail_counts.get(c_id, 0) < 3)
                         # 問卷未填（fill=="0" 且 write_questionnaire 非空）
                         needs_questionnaire = (str(c.get("fill", "0")) == "0") and bool(c.get("write_questionnaire", ""))
+                        if self.config.get("skip_exam_for_session", False):
+                            return needs_questionnaire
                         return needs_exam or needs_questionnaire
 
                     completed_hours = [
@@ -3684,7 +3832,7 @@ class AdminEfficiencyPilot:
                                         var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                                         for (var i = 0; i < btns.length; i++) {
                                             var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                                            if (['上課去', '進入課程', '開始上課', '前往教室'].some(k => t.indexOf(k) !== -1)) {
+                                            if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片'].some(k => t.indexOf(k) !== -1)) {
                                                 btns[i].click();
                                                 return t;
                                             }
@@ -3707,17 +3855,32 @@ class AdminEfficiencyPilot:
 
                             if self.config.get("skip_exam_for_session", False):
                                 logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
-                                if self.running:
+                                if self.running and str(c.get("fill", "0")) != "1":
                                     self.auto_questionnaire(c)
+                                else:
+                                    logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
                                 self._completed_in_session.add(c_id)
                                 continue
                             passed = self.auto_exam(c)
                             if passed and self.running:
-                                self.auto_questionnaire(c)
+                                if str(c.get("fill", "0")) != "1":
+                                    self.auto_questionnaire(c)
+                                else:
+                                    logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
                                 # 記錄本次已處理（避免每次迴圈重複執行）
                                 self._completed_in_session.add(
                                     str(c.get("course_id", ""))
                                 )
+                            if not passed:
+                                # 若不及格次數已達上限，視為「跳過」不阻擋結束
+                                c_id = str(c.get("course_id", ""))
+                                if self._exam_fail_counts.get(c_id, 0) < 3:
+                                    all_exam_done = False
+                                    # 還有重試機會，立刻跳回迴圈頂部繼續重考，不去上課
+                                    break
+                                else:
+                                    # 已達上限，本次不再重試，加入已處理集合
+                                    self._completed_in_session.add(c_id)
                             if not passed:
                                 # 若不及格次數已達上限，視為「跳過」不阻擋結束
                                 c_id = str(c.get("course_id", ""))
