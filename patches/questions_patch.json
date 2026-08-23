@@ -7787,5 +7787,29 @@
       "以上情況皆不可停止"
     ],
     "course": "民眾版CPR+AED教學影片"
+  },
+  {
+    "question": "Red Hat 平台如何進行模型監控與解釋？",
+    "answer": "TrustyAI 工具組",
+    "type": "單選",
+    "options": [
+      "使用 Google Analytics",
+      "TrustyAI 工具組",
+      "內建防火牆 API",
+      "SSH 指令列控制台"
+    ],
+    "course": "AI基礎建設與平台選型"
+  },
+  {
+    "question": "什麼是 Prompt Object？",
+    "answer": "可直接與儲存資料對話的 API",
+    "type": "單選",
+    "options": [
+      "對資料庫進行視覺化操作",
+      "一種資料備份方式",
+      "可直接與儲存資料對話的 API",
+      "與雲端硬體無關的部署架構"
+    ],
+    "course": "AI基礎建設與平台選型"
   }
 ]
