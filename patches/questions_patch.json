@@ -2198,5 +2198,17 @@
       "員工提供的憑證照片不符合規定，導致網路攻擊者藉此入侵系統"
     ],
     "course": "日常網路使用者應注意的資訊安全(113)"
+  },
+  {
+    "question": "在遇到加密勒索攻擊的時候，可以參考其中的過往解密工具程式，是下列哪個網站？",
+    "answer": "https://www.nomoreransom.org/",
+    "type": "單選",
+    "options": [
+      "https://www.nomoreransom.org/",
+      "https://haveibeenpwned.com/",
+      "https://www.virustotal.com/",
+      "https://www.google.com"
+    ],
+    "course": "日常網路使用者應注意的資訊安全(113)"
   }
 ]
