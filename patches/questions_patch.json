@@ -868,5 +868,27 @@
       "以上皆是"
     ],
     "course": "機關深度節能診斷與執行"
+  },
+  {
+    "question": "如果您拒絕配合我們的檢測，將處以新臺幣 2,400 元罰鍰。",
+    "answer": "refuse",
+    "type": "單選",
+    "options": [
+      "return",
+      "refuse",
+      "recall"
+    ],
+    "course": "警察人員實用英語(警察人員)"
+  },
+  {
+    "question": "這位女士，請靠邊停車。",
+    "answer": "pull over",
+    "type": "單選",
+    "options": [
+      "stop by",
+      "pull over",
+      "push away"
+    ],
+    "course": "警察人員實用英語(警察人員)"
   }
 ]
