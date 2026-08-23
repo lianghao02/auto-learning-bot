@@ -183,14 +183,16 @@ if ($NoLaunch) {
 }
 
 # ----------------------------------------------------------------------
-# 階段 6：啟動主程式
+# 階段 6：啟動主程式 (無終端視窗模式，啟動後 CMD 自動退出)
 # ----------------------------------------------------------------------
 $mainFile = Join-Path $projectDir $entryPoint
 if (-not (Test-Path -LiteralPath $mainFile)) {
     throw "找不到專案啟動進入點：$mainFile"
 }
 
-Write-Host "正在啟動 $projectName ($entryPoint)..." -ForegroundColor Green
-Write-Host ''
-
-& $embedPython $mainFile
+$pythonwExe = Join-Path $embedDir 'pythonw.exe'
+if (Test-Path -LiteralPath $pythonwExe) {
+    Start-Process -FilePath $pythonwExe -ArgumentList $entryPoint -WorkingDirectory $projectDir
+} else {
+    & $embedPython $mainFile
+}
