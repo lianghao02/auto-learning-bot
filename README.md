@@ -1,5 +1,9 @@
 # 行政效能領航員（auto-learning-bot）
 
+## 技術架構現況（2026-08-24）
+
+本專案主力為 **Python 3.13／PySide6／Selenium**，並使用 OpenCV、ddddocr 與 SQLite 處理行政網站自動化與人機協同流程。外部網站變動與 OCR 生態系是主要維護邊界，現階段不進行 C#、Rust 或 Web 重寫。
+
 [![Version](https://img.shields.io/badge/version-V3.0.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
@@ -9,7 +13,7 @@
 ## 下載、依賴與啟動
 
 - **系統**：Windows 10/11、Chrome 或 Edge；主要開發、自癒與可攜發行環境統一為 Python 3.13。
-- **可攜版啟動**：下載 `行政效能領航員_V3.0.1_Portable.zip`，完整解壓後雙擊 `啟動程式.bat`；內含 Python 3.13 runtime，不會在使用者電腦執行 pip。
+- **可攜版啟動**：下載 `AdminEfficiencyPilot_V3.0.1_Portable.zip`，完整解壓後雙擊 `啟動程式.bat`；解壓後仍是中文程式資料夾，內含 Python 3.13 runtime，不會在使用者電腦執行 pip。
 - **原始碼啟動**：可使用 `RUN.bat` 建立／修復本機 `python_embed`，或依下列方式建立虛擬環境。
 - **手動安裝**：`py -3.13 -m venv .venv`，啟用後執行 `python -m pip install -r requirements.txt`，再執行 `python ui.py`。
 - **執行依賴**：PySide6、Selenium、requests、psutil、NumPy、OpenCV、ddddocr 等，版本範圍都在 `requirements.txt`。

@@ -97,7 +97,7 @@ class PortableUpdateTests(unittest.TestCase):
             "html_url": "https://github.example/release",
             "assets": [
                 {
-                    "name": f"行政效能領航員_{self.VERSION}_Portable.zip",
+                    "name": f"AdminEfficiencyPilot_{self.VERSION}_Portable.zip",
                     "browser_download_url": "https://github.example/file.zip",
                     "size": 123,
                     "digest": digest,
@@ -115,7 +115,7 @@ class PortableUpdateTests(unittest.TestCase):
             "html_url": "https://github.example/release",
             "assets": [
                 {
-                    "name": f"行政效能領航員_{self.VERSION}_Portable.zip",
+                    "name": f"AdminEfficiencyPilot_{self.VERSION}_Portable.zip",
                     "browser_download_url": "https://github.example/file.zip",
                     "size": 123,
                 }
@@ -131,7 +131,7 @@ class PortableUpdateTests(unittest.TestCase):
             "html_url": "https://github.example/release",
             "assets": [
                 {
-                    "name": f"行政效能領航員_{self.VERSION}_Portable.zip",
+                    "name": f"AdminEfficiencyPilot_{self.VERSION}_Portable.zip",
                     "browser_download_url": "https://github.example/file.zip",
                     "size": 123,
                     "digest": "sha256:" + "z" * 64,
