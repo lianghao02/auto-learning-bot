@@ -1538,9 +1538,6 @@ class AdminEfficiencyPilot:
                                 ans_str = "、".join(selected_labels)
                                 _interactive_saved[q_data["q_text"]] = ans_str
 
-                        if _interactive_saved:
-                            self._save_answers_to_db(_interactive_saved, source="人機協同")
-
                         logger.info("   ✅ 選項勾選完成，正在送出考卷...")
                         time.sleep(1)
                         try:
@@ -1565,7 +1562,9 @@ class AdminEfficiencyPilot:
                         time.sleep(1)
                         self._accept_alert()
                         passed = self._read_exam_result(course)
-                        if not passed:
+                        if passed and _interactive_saved:
+                            self._save_answers_to_db(_interactive_saved, source="人機協同")
+                        elif not passed:
                             time.sleep(1)
                             try:
                                 cur_exam_url = self.driver.current_url
@@ -3631,14 +3630,18 @@ class AdminEfficiencyPilot:
                 if self.config.get("skip_exam_for_session", False):
                     logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
                     if str(course.get("fill", "0")) != "1":
-                        self.auto_questionnaire(course)
+                        q_ok = self.auto_questionnaire(course)
+                        if not q_ok:
+                            self._mark_exam_manual_review(course, "問卷填寫失敗，尚未確認完成")
                     else:
                         logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，跳過填寫。")
                 else:
                     exam_passed = self.auto_exam(course)
                     if self.running and exam_passed:
                         if str(course.get("fill", "0")) != "1":
-                            self.auto_questionnaire(course)
+                            q_ok = self.auto_questionnaire(course)
+                            if not q_ok:
+                                self._mark_exam_manual_review(course, "問卷填寫失敗，尚未確認完成")
                         else:
                             logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，跳過填寫。")
 
@@ -3882,10 +3885,6 @@ class AdminEfficiencyPilot:
                         and to_sec(c.get("rss", "00:00:00"))
                         < to_sec(c.get("criteria_content_hour", "00:00:00"))
                         * self.config.get("target_percentage", 1.0)
-                        # 考試已通過且問卷已填 → 視為真正完成，不再上課補時數
-                        and not (
-                            self._is_exam_passed(c) and c.get("fill") == "1"
-                        )
                         # 本次 session 已永久跳過（如「非本門課」）的課程
                         and str(c.get("course_id", "")) not in self._completed_in_session
                     ]
@@ -3989,41 +3988,36 @@ class AdminEfficiencyPilot:
 
                             if self.config.get("skip_exam_for_session", False):
                                 logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
+                                q_ok = True
                                 if self.running and str(c.get("fill", "0")) != "1":
-                                    self.auto_questionnaire(c)
+                                    q_ok = self.auto_questionnaire(c)
                                 else:
                                     logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
-                                self._completed_in_session.add(c_id)
+                                if q_ok:
+                                    self._completed_in_session.add(c_id)
+                                else:
+                                    self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
                                 continue
+
                             passed = self.auto_exam(c)
                             if passed and self.running:
+                                q_ok = True
                                 if str(c.get("fill", "0")) != "1":
-                                    self.auto_questionnaire(c)
+                                    q_ok = self.auto_questionnaire(c)
                                 else:
                                     logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
-                                # 記錄本次已處理（避免每次迴圈重複執行）
-                                self._completed_in_session.add(
-                                    str(c.get("course_id", ""))
-                                )
-                            if not passed:
-                                # 若不及格次數已達上限，視為「跳過」不阻擋結束
-                                c_id = str(c.get("course_id", ""))
-                                if self._exam_fail_counts.get(c_id, 0) < 3:
-                                    all_exam_done = False
-                                    # 還有重試機會，立刻跳回迴圈頂部繼續重考，不去上課
-                                    break
-                                else:
-                                    # 已達上限，本次不再重試，加入已處理集合
+                                if q_ok:
                                     self._completed_in_session.add(c_id)
-                            if not passed:
-                                # 若不及格次數已達上限，視為「跳過」不阻擋結束
-                                c_id = str(c.get("course_id", ""))
+                                else:
+                                    self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
+                            elif not passed:
+                                # 若不及格次數未達上限，跳回迴圈頂部繼續重考
                                 if self._exam_fail_counts.get(c_id, 0) < 3:
                                     all_exam_done = False
-                                    # 還有重試機會，立刻跳回迴圈頂部繼續重考，不去上課
                                     break
                                 else:
-                                    # 已達上限，本次不再重試，加入已處理集合
+                                    # 已達 3 次不及格上限，列為待人工處理清單，本次不再重試
+                                    self._mark_exam_manual_review(c, "測驗連續不及格已達 3 次上限")
                                     self._completed_in_session.add(c_id)
 
                         if not self.running:

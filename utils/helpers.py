@@ -208,14 +208,16 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                 flags=re.IGNORECASE,
             ).strip()
 
-            # 1. 是非題特殊對應（優先判定是非）
+            # 1. 是非題特殊對應（優先判定否定詞，避免「不正確」、「不是」被「正確」、「是」子字串誤傷）
             if q_info.get("type") == "是非":
-                if any(sym in ans_body for sym in ["⭕", "○", "O", "o", "是", "對", "正確", "True", "true", "T", "t", "1", "V", "v"]):
-                    if options:
-                        selected_labels.append(options[0].get("label", "A").upper())
-                elif any(sym in ans_body for sym in ["❌", "✕", "X", "x", "否", "錯", "不正確", "錯誤", "False", "false", "F", "f", "2"]):
+                neg_syms = ["❌", "✕", "X", "x", "否", "錯", "不正確", "錯誤", "不是", "不對", "False", "false", "F", "f", "2"]
+                pos_syms = ["⭕", "○", "O", "o", "是", "對", "正確", "True", "true", "T", "t", "1", "V", "v"]
+                if any(sym in ans_body for sym in neg_syms):
                     if len(options) > 1:
                         selected_labels.append(options[1].get("label", "B").upper())
+                elif any(sym in ans_body for sym in pos_syms):
+                    if options:
+                        selected_labels.append(options[0].get("label", "A").upper())
 
             # 2. 搜尋 A-D / 1-4 英數選項代號
             if not selected_labels:
@@ -240,6 +242,54 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                 if not is_multiple:
                     selected_labels = [selected_labels[0]]
                 parsed[q_idx] = list(dict.fromkeys(selected_labels))  # 去重保持順序
+
+    # 4. Fallback：若無顯式題號（如 A\nD\nC\nB），且非空行數等於測驗題數，按行序映射
+    if not parsed and questions_data:
+        candidate_lines = []
+        for line in raw_text.splitlines():
+            c_line = line.strip()
+            c_line = re.sub(r"^[\s\-\客\*\+\•\>\#\|]+\s*", "", c_line).strip()
+            c_line = re.sub(r"[\*\_\`\~]", "", c_line).strip()
+            if c_line:
+                candidate_lines.append(c_line)
+        if len(candidate_lines) == len(questions_data):
+            for i, line_text in enumerate(candidate_lines, 1):
+                if i in q_map:
+                    q_info = q_map[i]
+                    options = q_info.get("options", [])
+                    selected = []
+                    # 清理前綴贅詞
+                    line_body = re.sub(
+                        r"^(?:答案\s*[:：是為]?|答\s*[:：]?|選項\s*[:：]?|選擇\s*[:：]?|建議選\s*[:：]?|正確答案\s*[:：是為]?)\s*",
+                        "",
+                        line_text,
+                        flags=re.IGNORECASE,
+                    ).strip()
+                    if q_info.get("type") == "是非":
+                        neg_syms = ["❌", "✕", "X", "x", "否", "錯", "不正確", "錯誤", "不是", "不對", "False", "false", "F", "f", "2"]
+                        pos_syms = ["⭕", "○", "O", "o", "是", "對", "正確", "True", "true", "T", "t", "1", "V", "v"]
+                        if any(sym in line_body for sym in neg_syms):
+                            if len(options) > 1:
+                                selected.append(options[1].get("label", "B").upper())
+                        elif any(sym in line_body for sym in pos_syms):
+                            if options:
+                                selected.append(options[0].get("label", "A").upper())
+                    if not selected:
+                        letters = re.findall(r"\b([A-Da-d])\b", line_body)
+                        if not letters:
+                            letters = [ch.upper() for ch in line_body if ch.upper() in ["A", "B", "C", "D"]]
+                        if letters:
+                            selected.extend([l.upper() for l in letters])
+                    if not selected:
+                        for opt in options:
+                            opt_t = opt.get("text", "").strip()
+                            if opt_t and (opt_t in line_body or line_body in opt_t):
+                                selected.append(opt.get("label", "").upper())
+                    if selected:
+                        is_multiple = q_info.get("is_multiple", False) or q_info.get("type") == "多選"
+                        if not is_multiple:
+                            selected = [selected[0]]
+                        parsed[i] = list(dict.fromkeys(selected))
 
     return parsed
 

@@ -70,7 +70,8 @@ from utils.helpers import (
     parse_ai_quiz_answers,
     INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
 )
-from utils.security import validate_ai_base_url
+from utils.security import validate_ai_base_url, verify_file_sha256
+from utils.config_io import write_json_atomically
 from usage_tracker import UsageHeartbeat
 
 
@@ -1688,12 +1689,13 @@ class _DownloadProgressSignal(QObject):
 class UpdateDialog(QDialog):
     """兩階段更新對話框：階段一顯示版本資訊，階段二顯示下載進度與重啟"""
 
-    def __init__(self, parent, latest: str, changelog: str, url: str, size: int):
+    def __init__(self, parent, latest: str, changelog: str, url: str, size: int, expected_sha256: str = ""):
         super().__init__(parent)
         self.latest = latest
         self.changelog = changelog
         self.url = url
         self.size = size
+        self.expected_sha256 = expected_sha256
         self.downloaded_path = None  # 下載完成後的暫存檔案路徑
 
         from app import AdminEfficiencyPilot as _AEP
@@ -2038,6 +2040,17 @@ class UpdateDialog(QDialog):
                         f.write(chunk)
                         downloaded += len(chunk)
                         self._dl_signal.progress.emit(downloaded, total)
+
+            if self.expected_sha256:
+                if not verify_file_sha256(self.downloaded_path, self.expected_sha256):
+                    try:
+                        if os.path.exists(self.downloaded_path):
+                            os.remove(self.downloaded_path)
+                    except Exception:
+                        pass
+                    self._dl_signal.failed.emit("下載檔案 SHA-256 完整性校驗失敗，檔案可能已受損或遭竄改，已終止更新。")
+                    return
+
             self._dl_signal.finished.emit(self.downloaded_path)
         except Exception as e:
             self._dl_signal.failed.emit(str(e))
@@ -3258,8 +3271,7 @@ class AccountSettingsTabPanel(QWidget):
                 settings["ai_keys"]["Gemini"] = ai_key
             data["settings"] = settings
 
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=4)
+            write_json_atomically("config.json", data)
 
             if hasattr(self, "on_settings_saved") and callable(self.on_settings_saved):
                 self.on_settings_saved()
