@@ -1,12 +1,18 @@
 import re
 import time
 import logging
+import threading
 from colorama import Fore, Style, init
 
 init(autoreset=True)
 
 # 人機協同測驗倒數逾時預設秒數（統一採 180 秒 / 03:00）
 INTERACTIVE_QUIZ_TIMEOUT_SECONDS = 180
+
+# 新分頁／彈出視窗的 Win32 HWND 通常會晚於 Selenium 點擊才建立。
+# 以短時間防護取代常駐監控，避免背景模式在切頁時短暫露出 Chrome。
+_WINDOW_HIDE_GUARDS = {}
+_WINDOW_HIDE_GUARD_LOCK = threading.Lock()
 
 
 class CustomFormatter(logging.Formatter):
@@ -78,11 +84,16 @@ def draw_bar(cur, tot, length=20):
     return bar
 
 
-def set_driver_window_visibility(driver, visible: bool):
+def set_driver_window_visibility(driver, visible: bool) -> int:
     """Win32 API 無痕切換 Selenium 控制之 Chrome 視窗顯示 (SW_SHOW) 或隱藏 (SW_HIDE)，徹底排除黑屏控制台"""
     import sys
+    if visible and driver:
+        # 使用者主動顯示瀏覽器時，必須先取消尚未到期的隱藏防護，
+        # 否則背景執行緒會在下一輪掃描時又把視窗藏起來。
+        with _WINDOW_HIDE_GUARD_LOCK:
+            _WINDOW_HIDE_GUARDS.pop(id(driver), None)
     if sys.platform != "win32" or not driver:
-        return
+        return 0
     try:
         import ctypes
         import psutil
@@ -128,8 +139,67 @@ def set_driver_window_visibility(driver, visible: bool):
             user32.ShowWindow(hwnd, cmd)
             if visible:
                 user32.SetForegroundWindow(hwnd)
+        return len(found_hwnds)
     except Exception:
-        pass
+        return 0
+
+
+def maintain_driver_windows_hidden(
+    driver,
+    *,
+    duration: float = 2.0,
+    interval: float = 0.15,
+) -> None:
+    """立即隱藏 Chrome，並在短時間內持續攔截延遲建立的新 HWND。
+
+    同一個 driver 重複呼叫時只延長既有防護期限，不會建立大量背景執行緒。
+    """
+    if not driver:
+        return
+
+    set_driver_window_visibility(driver, False)
+    duration = max(0.0, float(duration))
+    interval = max(0.05, float(interval))
+    if duration <= 0:
+        return
+
+    key = id(driver)
+    deadline = time.monotonic() + duration
+    start_worker = False
+    with _WINDOW_HIDE_GUARD_LOCK:
+        state = _WINDOW_HIDE_GUARDS.get(key)
+        if state is None:
+            state = {"driver": driver, "deadline": deadline}
+            _WINDOW_HIDE_GUARDS[key] = state
+            start_worker = True
+        else:
+            state["deadline"] = max(float(state["deadline"]), deadline)
+
+    if not start_worker:
+        return
+
+    def _guard_worker():
+        try:
+            while True:
+                with _WINDOW_HIDE_GUARD_LOCK:
+                    current = _WINDOW_HIDE_GUARDS.get(key)
+                    if current is not state:
+                        return
+                    remaining = float(state["deadline"]) - time.monotonic()
+                if remaining <= 0:
+                    return
+                set_driver_window_visibility(driver, False)
+                time.sleep(min(interval, remaining))
+        finally:
+            with _WINDOW_HIDE_GUARD_LOCK:
+                if _WINDOW_HIDE_GUARDS.get(key) is state:
+                    _WINDOW_HIDE_GUARDS.pop(key, None)
+
+    threading.Thread(
+        target=_guard_worker,
+        daemon=True,
+        name=f"ChromeHideGuard-{key}",
+    ).start()
 
 
 def format_quiz_prompt(course_name: str, questions_data: list) -> str:
@@ -292,4 +362,3 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                         parsed[i] = list(dict.fromkeys(selected))
 
     return parsed
-

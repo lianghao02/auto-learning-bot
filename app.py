@@ -25,7 +25,8 @@ import psutil
 import atexit
 import signal
 import traceback
-from utils.config_io import get_db_connection
+from utils.config_io import get_db_connection, write_json_atomically
+from utils.app_paths import app_dir, ensure_seeded_database, log_path, user_data_path
 
 # 強制 stdout/stderr 使用 UTF-8，避免在 cp950 環境下因 emoji 崩潰
 if hasattr(sys.stdout, "buffer"):
@@ -48,6 +49,7 @@ from utils.helpers import (
     sec_to_str,
     draw_bar,
     set_driver_window_visibility,
+    maintain_driver_windows_hidden,
     INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
 )
 from utils.security import validate_ai_base_url
@@ -125,16 +127,21 @@ def _is_newer_version(latest, current):
     return _version_tuple(latest) > _version_tuple(current)
 
 
+def _read_local_version() -> str:
+    try:
+        return (app_dir() / "version.txt").read_text(encoding="utf-8-sig").strip()
+    except (OSError, UnicodeError):
+        return "V0.0.0"
+
+
 class AdminEfficiencyPilot:
-    VERSION = "V3.0.0"
+    VERSION = _read_local_version()
     CHANGELOG = (
-        "V3.0.0 重大架構升級：Python 3.13 統一環境、安全更新防護與人機協同 v2\n"
-        "• 統一採用 Python 3.13 基準架構，全面提升現代環境相容性與執行效能\n"
-        "• 人機協同測驗助理 v2：支援 AI 捷徑、否定詞優先解析與純行答案自動映射\n"
-        "• 題庫寫入防護：確認測驗成績及格（>= 60 分）後才沉澱至 SQLite 題庫\n"
-        "• 精準課程判定：修復時數過濾與問卷/測驗失敗狀態記錄，杜絕未完成誤判\n"
-        "• 安全性升級：設定檔採用原子寫入機制，下載更新支援 SHA-256 完整性校驗\n"
-        "• 視窗與播放器相容：支援現代磨課師 (MOOCs) 播放與 Win32 原生背景隱藏模式"
+        "V3.0.1 背景視窗穩定度修正\n"
+        "• 新視窗建立後短期重複套用 Win32 隱藏狀態，降低切頁時 Chrome 短暫跳出\n"
+        "• 補齊課程、測驗、問卷與 SCORM 新視窗切換後的隱藏攔截\n"
+        "• 使用者主動顯示瀏覽器時立即取消隱藏防護，避免視窗再次被藏起來\n"
+        "• 延續 V3.0.0 的 Python 3.13、安全可攜更新與人機協同測驗功能"
     )
 
     def __init__(
@@ -181,21 +188,10 @@ class AdminEfficiencyPilot:
         self.version = self.VERSION
         self.changelog = self.CHANGELOG
         self._update_checked = False
-        # 打包成 exe 時用 exe 所在目錄；一般執行時用腳本所在目錄
-        import sys
-
-        base_dir = (
-            os.path.dirname(sys.executable)
-            if getattr(sys, "frozen", False)
-            else os.path.dirname(os.path.abspath(__file__))
-        )
-        if config_path is None:
-            config_path = os.path.join(base_dir, "config.json")
-
         # 讀取題庫答案
         # 優先從 questions.db（SQLite）載入，建立 normalized lookup dict
         # fallback: answers.json -> answer.json
-        self.answer_path = os.path.join(base_dir, "answers.json")
+        self.answer_path = str(user_data_path("answers.json"))
         # _answer_map: normalize(q) -> {"answer":..., "options":[...], "question":...}
         # _answer_keys: key list 供 difflib fuzzy 使用
         self._answer_map = {}
@@ -206,7 +202,7 @@ class AdminEfficiencyPilot:
         loaded = self.config.get("login_type") == "taipei_eda"
 
         # 優先：questions.db（SQLite，含選項結構）
-        db_path = os.path.join(base_dir, "questions.db")
+        db_path = str(ensure_seeded_database())
         if not loaded and os.path.exists(db_path):
             try:
                 conn = get_db_connection(db_path)
@@ -347,7 +343,7 @@ class AdminEfficiencyPilot:
             self.ui_handler = None
 
         # 初始化日誌檔案 (每次覆蓋)
-        self.log_file = os.path.join(base_dir, f"debug_{self.config.get('login_type', 'default')}.log")
+        self.log_file = str(log_path(f"debug_{self.config.get('login_type', 'default')}.log"))
 
         if not any(isinstance(h, logging.FileHandler) for h in self.log_instance.handlers):
             fh = logging.FileHandler(self.log_file, mode="w", encoding="utf-8")
@@ -372,7 +368,7 @@ class AdminEfficiencyPilot:
 
     def load_config(self, path):
         if path is None:
-            path = "config.json"  # ⭐ 預設路徑
+            path = str(user_data_path("config.json"))
 
         # 第一次建立設定檔
         if not os.path.exists(path):
@@ -386,8 +382,7 @@ class AdminEfficiencyPilot:
                 "blacklist": ["課程環境", "勘誤說明", "前言", "新手導覽", "課程簡介", "環境檢測"],
             }
 
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(config_data, f, indent=4, ensure_ascii=False)
+            write_json_atomically(path, config_data)
 
         else:
             with open(path, "r", encoding="utf-8") as f:
@@ -727,7 +722,7 @@ class AdminEfficiencyPilot:
             if getattr(_sys, "frozen", False)
             else os.path.dirname(os.path.abspath(__file__))
         )
-        db_path = os.path.join(_base, "questions.db")
+        db_path = str(ensure_seeded_database())
         try:
             with GLOBAL_DB_LOCK:
                 conn = get_db_connection(db_path, timeout=30.0)
@@ -774,11 +769,14 @@ class AdminEfficiencyPilot:
         if hasattr(self, "driver") and self.driver:
             set_driver_window_visibility(self.driver, show)
 
-    def _auto_hide_popups_if_needed(self):
+    def _auto_hide_popups_if_needed(self, *, settle: bool = False):
         """若目前處於隱藏模式，自動連同新開的考試與問卷彈出視窗一併無痕隱藏"""
         if getattr(self, "_is_chrome_hidden", False) and hasattr(self, "driver") and self.driver:
             try:
-                set_driver_window_visibility(self.driver, False)
+                if settle:
+                    maintain_driver_windows_hidden(self.driver)
+                else:
+                    set_driver_window_visibility(self.driver, False)
             except Exception:
                 pass
 
@@ -839,7 +837,7 @@ class AdminEfficiencyPilot:
                 if getattr(_sys, "frozen", False)
                 else os.path.dirname(os.path.abspath(__file__))
             )
-            db_path = os.path.join(_base, "questions.db")
+            db_path = str(ensure_seeded_database())
             conn = get_db_connection(db_path)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS questions (
@@ -1025,9 +1023,7 @@ class AdminEfficiencyPilot:
 
             # 寫入 answers.json（list 格式 [{"題目": ..., "答案": ...}]）
             try:
-                answers_path = os.path.join(
-                    os.path.dirname(os.path.abspath(__file__)), "answers.json"
-                )
+                answers_path = str(user_data_path("answers.json"))
                 existing_list = []
                 if os.path.exists(answers_path):
                     with open(answers_path, encoding="utf-8") as f:
@@ -1209,7 +1205,7 @@ class AdminEfficiencyPilot:
                         if len(self.driver.window_handles) > 1:
                             main_window = self.driver.window_handles[-1]
                             self.driver.switch_to.window(main_window)
-                            self._auto_hide_popups_if_needed()
+                            self._auto_hide_popups_if_needed(settle=True)
                 except Exception:
                     pass
 
@@ -1219,7 +1215,7 @@ class AdminEfficiencyPilot:
                     By.CSS_SELECTOR, "a[href*='exam/exam_list.php']"
                 )
                 self.driver.execute_script("arguments[0].click();", exam_link)
-                self._auto_hide_popups_if_needed()
+                self._auto_hide_popups_if_needed(settle=True)
                 logger.info("   📝 已點擊「測驗/考試」")
             except Exception as e:
                 logger.warning(f"   ⚠️ 找不到測驗連結（可能為平台已下架或無測驗介面課程）: {e}")
@@ -1262,7 +1258,7 @@ class AdminEfficiencyPilot:
                     By.CSS_SELECTOR, "div.process-btn.pay.active"
                 )
                 self.driver.execute_script("arguments[0].click();", pay_btn)
-                self._auto_hide_popups_if_needed()
+                self._auto_hide_popups_if_needed(settle=True)
                 logger.info("   📝 已點擊「進行測驗」")
             except Exception as e:
                 logger.warning(f"   ⚠️ 找不到「進行測驗」按鈕: {e}")
@@ -1278,7 +1274,7 @@ class AdminEfficiencyPilot:
                 return False
 
             self.driver.switch_to.window(exam_window)
-            self._auto_hide_popups_if_needed()
+            self._auto_hide_popups_if_needed(settle=True)
             logger.info("   📝 已切換至考試視窗")
 
             # 等待考試頁面載入完成（最多 15 秒）
@@ -1514,7 +1510,6 @@ class AdminEfficiencyPilot:
                         logger.info(
                             f"   🚀 已收到回貼答案（共 {len(interactive_ans_map)} 題），正在自動勾選網頁選項..."
                         )
-                        _interactive_saved = {}
                         for q_idx, row in enumerate(rows):
                             q_num = q_idx + 1
                             if q_num not in interactive_ans_map:
@@ -1532,12 +1527,6 @@ class AdminEfficiencyPilot:
                                         self.driver.execute_script("arguments[0].click();", inputs[opt_idx])
                                     except Exception as e:
                                         logger.debug(f"勾選選項 {lbl} 失敗: {e}")
-
-                            # 收集題目與解答存入本機 SQLite 題庫
-                            q_data = next((q for q in questions_data if q["index"] == q_num), None)
-                            if q_data and selected_labels:
-                                ans_str = "、".join(selected_labels)
-                                _interactive_saved[q_data["q_text"]] = ans_str
 
                         logger.info("   ✅ 選項勾選完成，正在送出考卷...")
                         time.sleep(1)
@@ -1563,9 +1552,8 @@ class AdminEfficiencyPilot:
                         time.sleep(1)
                         self._accept_alert()
                         passed = self._read_exam_result(course)
-                        if passed and _interactive_saved:
-                            self._save_answers_to_db(_interactive_saved, source="人機協同")
-                        elif not passed:
+                        # 人機協同答案只用於本次作答，不寫回本機題庫。
+                        if not passed:
                             time.sleep(1)
                             try:
                                 cur_exam_url = self.driver.current_url
@@ -2195,6 +2183,7 @@ class AdminEfficiencyPilot:
 
             # ── 3. 點「填寫問卷」──
             self.driver.execute_script("arguments[0].click();", pay_btns[0])
+            self._auto_hide_popups_if_needed(settle=True)
             logger.info("   📋 已點擊「填寫問卷」")
             time.sleep(3)
 
@@ -2206,7 +2195,7 @@ class AdminEfficiencyPilot:
                 return False
 
             self.driver.switch_to.window(q_window)
-            self._auto_hide_popups_if_needed()
+            self._auto_hide_popups_if_needed(settle=True)
             logger.info("   📋 已切換至問卷視窗")
             time.sleep(2)
 
@@ -3263,13 +3252,13 @@ class AdminEfficiencyPilot:
 
             # 確保 driver 在 stat_url（gotoCourse 函式只在該頁面定義）
             self.driver.get(self.stat_url)
-            self._auto_hide_popups_if_needed()
+            self._auto_hide_popups_if_needed(settle=True)
             if not self.safe_sleep(3):
                 return "STOP"
 
             orig_handles = list(self.driver.window_handles)
             self.driver.execute_script(f"gotoCourse({course['course_id']})")
-            self._auto_hide_popups_if_needed()
+            self._auto_hide_popups_if_needed(settle=True)
             if not self.safe_sleep(4):
                 return "STOP"
 
@@ -3298,10 +3287,10 @@ class AdminEfficiencyPilot:
             new_handles = list(self.driver.window_handles)
             if len(new_handles) > len(orig_handles):
                 self.driver.switch_to.window(new_handles[-1])
-                self._auto_hide_popups_if_needed()
+                self._auto_hide_popups_if_needed(settle=True)
             elif "learn_stat.php" in self.driver.current_url:
                 self.driver.get(f"https://elearn.hrd.gov.tw/info/{course['course_id']}")
-                self._auto_hide_popups_if_needed()
+                self._auto_hide_popups_if_needed(settle=True)
                 self.safe_sleep(3)
 
             # 若停留在 /info/ 介紹頁，點擊「上課去」/「進入課程」等按鈕進入真實教室
@@ -3346,7 +3335,7 @@ class AdminEfficiencyPilot:
                     after_handles = list(self.driver.window_handles)
                     if len(after_handles) > len(before_handles):
                         self.driver.switch_to.window(after_handles[-1])
-                        self._auto_hide_popups_if_needed()
+                        self._auto_hide_popups_if_needed(settle=True)
                 except Exception:
                     pass
 
@@ -3361,7 +3350,7 @@ class AdminEfficiencyPilot:
                 logger.warning("   ⚠️ 找不到課程教室視窗，嘗試重新登入後重試。")
                 return "RELOGIN"
             self.driver.switch_to.window(classroom_h)
-            self._auto_hide_popups_if_needed()
+            self._auto_hide_popups_if_needed(settle=True)
 
             attempted = set()
             frame_fail_count = 0
@@ -3709,28 +3698,6 @@ class AdminEfficiencyPilot:
             time.sleep(5)
             return "ERROR"
 
-    def check_update(self):
-        """啟動時檢查 GitHub 是否有新版本，有則透過 UI 發送通知訊號"""
-        VERSION_URL = "https://raw.githubusercontent.com/lianghao02/auto-learning-bot/main/version.txt"
-        DOWNLOAD_URL = "https://drive.google.com/drive/u/0/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g"
-        try:
-            resp = requests.get(VERSION_URL, timeout=5)
-            if resp.status_code != 200:
-                logger.debug(f"版本檢查失敗（HTTP {resp.status_code}）")
-                return
-            latest = resp.text.strip()
-            if not latest or not latest.startswith("V"):
-                logger.debug(f"版本檢查失敗（回應格式不符：{latest!r}）")
-                return
-            if _is_newer_version(latest, self.version):
-                logger.info(f"🆕 發現新版本 {latest}（目前 {self.version}），請前往下載最新版。")
-                if hasattr(self, "update_signal"):
-                    self.update_signal.emit(latest, self.changelog, DOWNLOAD_URL)
-            else:
-                logger.info(f"✅ 已是最新版本（{self.version}）")
-        except Exception as e:
-            logger.debug(f"版本檢查失敗（無網路或暫時性問題）: {e}")
-
     def safe_sleep(self, seconds):
         """⭐ 正確位置：在類內"""
         for _ in range(int(seconds)):
@@ -3979,6 +3946,7 @@ class AdminEfficiencyPilot:
                                         break
                                     if len(self.driver.window_handles) > 1:
                                         self.driver.switch_to.window(self.driver.window_handles[-1])
+                                        self._auto_hide_popups_if_needed(settle=True)
                                 except Exception:
                                     pass
                                 logger.info(
