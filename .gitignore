@@ -44,6 +44,6 @@ env/
 .DS_Store
 Thumbs.db
 
-python_embed/Lib/
-python_embed/Scripts/
+python_embed/
+python-embed/
 *.lock
