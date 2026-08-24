@@ -79,7 +79,7 @@ def draw_bar(cur, tot, length=20):
 
 
 def set_driver_window_visibility(driver, visible: bool):
-    """Win32 API 無痕切換 Selenium 控制之 Chrome 視窗顯示 (SW_SHOW) 或隱藏 (SW_HIDE)"""
+    """Win32 API 無痕切換 Selenium 控制之 Chrome 視窗顯示 (SW_SHOW) 或隱藏 (SW_HIDE)，徹底排除黑屏控制台"""
     import sys
     if sys.platform != "win32" or not driver:
         return
@@ -94,9 +94,9 @@ def set_driver_window_visibility(driver, visible: bool):
         target_pids = set()
         if hasattr(driver, "service") and driver.service and driver.service.process:
             service_pid = driver.service.process.pid
-            target_pids.add(service_pid)
             try:
                 proc = psutil.Process(service_pid)
+                # 僅納入 Chrome 瀏覽器子行程，排除 chromedriver 本身
                 for child in proc.children(recursive=True):
                     target_pids.add(child.pid)
             except Exception:
@@ -111,9 +111,9 @@ def set_driver_window_visibility(driver, visible: bool):
                 class_buf = ctypes.create_unicode_buffer(256)
                 user32.GetClassNameW(hwnd, class_buf, 256)
                 cls_name = class_buf.value
-                
-                # 排除 IME 輸入法、MSCTF 輔助視窗及 Chrome 訊息視窗，防止在工作列彈出 Default IME 殘留圖示
-                if any(x in cls_name for x in ["IME", "MSCTFIME", "Chrome_WidgetWin_0"]):
+
+                # 排除黑屏控制台、IME 輸入法、MSCTF 輔助視窗及 Chrome 訊息視窗
+                if any(x in cls_name for x in ["ConsoleWindowClass", "IME", "MSCTFIME", "Chrome_WidgetWin_0"]):
                     return True
 
                 length = user32.GetWindowTextLengthW(hwnd)
