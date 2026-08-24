@@ -116,8 +116,8 @@ def set_driver_window_visibility(driver, visible: bool):
                 if any(x in cls_name for x in ["ConsoleWindowClass", "IME", "MSCTFIME", "Chrome_WidgetWin_0"]):
                     return True
 
-                length = user32.GetWindowTextLengthW(hwnd)
-                if length > 0:
+                # 只要是 Chrome 主視窗 (Chrome_WidgetWin_1) 或有標題之視窗，在剛彈出載入中時亦全面納入隱藏
+                if "Chrome_WidgetWin_1" in cls_name or user32.GetWindowTextLengthW(hwnd) > 0:
                     found_hwnds.append(hwnd)
             return True
 
