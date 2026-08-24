@@ -1,4 +1,5 @@
 import sys, io
+from utils.app_paths import log_path, user_data_path
 
 # Send Taipei E-da console output to both the UI/log and a console when one exists.
 # pythonw.exe has sys.stdout = None, so stdout.buffer must be guarded.
@@ -29,7 +30,7 @@ if sys.stdout is not None:
     else:
         _console = sys.stdout
 
-_logfile = open("taipei_eda_course.log", "a", encoding="utf-8")
+_logfile = open(log_path("taipei_eda_course.log"), "a", encoding="utf-8")
 # ⚠️ 保留原始 sys.stdout，讓 run_taipei_eda 的 _UILog 作為唯一 UI 路由
 # 不在模組載入時替換 sys.stdout，避免 _Tee 疊套造成訊息重複
 
@@ -43,7 +44,7 @@ from selenium.common.exceptions import NoAlertPresentException, UnexpectedAlertP
 
 from quiz_bank import do_quiz_with_bank, do_feedback
 
-from utils.helpers import set_driver_window_visibility
+from utils.helpers import maintain_driver_windows_hidden, set_driver_window_visibility
 
 # ── DOM 語意彈性相容防護網 (Resilient Selector Fallback) ──────────────────────
 def find_element_resilient(driver, css_selector=None, text_keywords=None, tag_names=None, timeout=5):
@@ -120,13 +121,16 @@ def toggle_taipei_driver_visibility(visible: bool):
         except Exception:
             pass
 
-def _auto_hide_taipei_popups_if_needed(driver=None):
+def _auto_hide_taipei_popups_if_needed(driver=None, *, settle=False):
     global _ACTIVE_DRIVER, _TAIPEI_IS_HIDDEN
     if _TAIPEI_IS_HIDDEN:
         d = driver or _ACTIVE_DRIVER
         if d:
             try:
-                set_driver_window_visibility(d, False)
+                if settle:
+                    maintain_driver_windows_hidden(d)
+                else:
+                    set_driver_window_visibility(d, False)
             except Exception:
                 pass
 
@@ -146,6 +150,7 @@ def load_config(path=None):
     """
     candidates = [
         path,
+        str(user_data_path('config.json')),
         os.path.join(os.path.dirname(__file__), 'config.json'),
         'config.json',
     ]
@@ -759,7 +764,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                     # 若點擊後開啟新視窗，自動切換至最新視窗
                     if len(driver.window_handles) > 1:
                         driver.switch_to.window(driver.window_handles[-1])
-                        _auto_hide_taipei_popups_if_needed(driver)
+                        _auto_hide_taipei_popups_if_needed(driver, settle=True)
                     if current_is_player():
                         return True
         except Exception:
@@ -824,7 +829,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                         # 若開啟了新分頁或新視窗，自動切換至最新視窗
                         if len(driver.window_handles) > 1:
                             driver.switch_to.window(driver.window_handles[-1])
-                            _auto_hide_taipei_popups_if_needed(driver)
+                            _auto_hide_taipei_popups_if_needed(driver, settle=True)
                         pause_and_mute_media(driver)
                         if current_is_player():
                             return True
@@ -1241,7 +1246,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         global _TAIPEI_IS_HIDDEN
         _TAIPEI_IS_HIDDEN = bool(headless_mode)
         if headless_mode and sys.platform == 'win32':
-            set_driver_window_visibility(driver, False)
+            maintain_driver_windows_hidden(driver)
         wait = WebDriverWait(driver, 20)
 
         print('=== 登入 ===')

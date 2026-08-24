@@ -16,6 +16,9 @@ dist/config.json
 *.sqlite
 *.sqlite3
 
+# 可攜版與原始碼執行時的個人資料
+data/
+
 # Log 檔
 *.log
 debug.log

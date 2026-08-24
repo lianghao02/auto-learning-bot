@@ -16,6 +16,8 @@ import uuid
 from pathlib import Path
 
 import requests
+from utils.app_paths import user_data_path
+from utils.config_io import write_json_atomically
 
 
 GAS_URL = "https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1M6rL2gM8nTGicmEjfh_1TNiBo12YcVsb37J7Cl/exec"
@@ -29,7 +31,7 @@ def _base_dir() -> Path:
 
 
 def _config_path() -> Path:
-    return _base_dir() / "config.json"
+    return user_data_path("config.json")
 
 
 def get_device_id() -> str:
@@ -48,7 +50,7 @@ def get_device_id() -> str:
     device_id = uuid.uuid4().hex
     try:
         data["usage_device_id"] = device_id
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=4), encoding="utf-8")
+        write_json_atomically(path, data)
     except Exception:
         pass
     return device_id

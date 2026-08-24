@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QStackedLayout,
     QStyle,
     QSystemTrayIcon,
+    QTextBrowser,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -53,11 +54,13 @@ from PySide6.QtCore import (
     QPropertyAnimation,
     QSize,
     QTimer,
+    QUrl,
     Signal,
 )
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QDesktopServices,
     QFont,
     QIcon,
     QPainter,
@@ -72,10 +75,21 @@ from utils.helpers import (
 )
 from utils.security import validate_ai_base_url, verify_file_sha256
 from utils.config_io import write_json_atomically
+from utils.app_paths import (
+    app_dir,
+    install_root,
+    is_portable_layout,
+    log_path,
+    prepare_user_data,
+    update_cache_path,
+    user_data_path,
+)
+from utils.portable_update import stage_portable_zip
 from usage_tracker import UsageHeartbeat
 
 
-BASE_DIR = os.path.dirname(__file__)
+BASE_DIR = str(app_dir())
+CONFIG_PATH = str(user_data_path("config.json"))
 
 logger = get_logger()
 
@@ -87,7 +101,7 @@ def icon(name):
 def resource_path(relative_path):
     if getattr(sys, "frozen", False):
         return os.path.join(sys._MEIPASS, relative_path)
-    return os.path.join(os.path.abspath("."), relative_path)
+    return os.path.join(BASE_DIR, relative_path)
 
 
 def version_tuple(version):
@@ -97,6 +111,44 @@ def version_tuple(version):
 
 def is_newer_version(latest, current):
     return version_tuple(latest) > version_tuple(current)
+
+
+def parse_release_update(data: dict, current_version: str):
+    """解析 GitHub latest release，精確選取同版本 Portable ZIP。"""
+    latest = str(data.get("tag_name") or "").strip()
+    if not latest.upper().startswith("V") or not is_newer_version(latest, current_version):
+        return None
+    changelog = str(data.get("body") or "").strip()
+    release_url = str(
+        data.get("html_url")
+        or "https://github.com/lianghao02/auto-learning-bot/releases/latest"
+    )
+    expected_name = f"行政效能領航員_{latest.upper()}_Portable.zip".casefold()
+    asset = next(
+        (
+            item
+            for item in (data.get("assets") or [])
+            if str(item.get("name") or "").casefold() == expected_name
+        ),
+        None,
+    )
+    if not asset:
+        return latest, changelog, release_url, 0, ""
+    digest = str(asset.get("digest") or "")
+    digest_value = digest.split(":", 1)[-1]
+    if (
+        not digest.lower().startswith("sha256:")
+        or len(digest_value) != 64
+        or any(char not in "0123456789abcdefABCDEF" for char in digest_value)
+    ):
+        return latest, changelog, release_url, int(asset.get("size", 0) or 0), ""
+    return (
+        latest,
+        changelog,
+        str(asset.get("browser_download_url") or release_url),
+        int(asset.get("size", 0) or 0),
+        digest,
+    )
 
 
 def looks_like_legacy_taipei_account(account):
@@ -756,13 +808,12 @@ class EntryPage(QWidget):
         pass
 
     def load_config(self):
-        path = "config.json"
+        path = CONFIG_PATH
 
         if not os.path.exists(path):
             # 初始空設定
             data = {"accounts": [], "settings": {}}
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=4, ensure_ascii=False)
+            write_json_atomically(path, data)
             return data
 
         with open(path, "r", encoding="utf-8") as f:
@@ -774,8 +825,7 @@ class EntryPage(QWidget):
     def _save_config(self) -> bool:
         """統一的設定儲存方法，含錯誤處理"""
         try:
-            with open("config.json", "w", encoding="utf-8") as f:
-                json.dump(self.config, f, indent=4, ensure_ascii=False)
+            write_json_atomically(CONFIG_PATH, self.config)
             return True
         except (OSError, IOError) as e:
             logger.error(f"設定儲存失敗: {e}")
@@ -1667,12 +1717,12 @@ class SettingsPanel(QFrame):
 from PySide6.QtCore import QObject
 
 class UpdateSignal(QObject):
-    # (latest_version, changelog, download_url, file_size_bytes)
-    notify = Signal(str, str, str, int)
+    # (latest_version, changelog, download_url, file_size_bytes, sha256_digest)
+    notify = Signal(str, str, str, int, str)
     up_to_date = Signal()           # 已是最新版
 
-    def emit(self, version, changelog, url, size=0):
-        self.notify.emit(version, changelog, url, size)
+    def emit(self, version, changelog, url, size=0, digest=""):
+        self.notify.emit(version, changelog, url, size, digest)
 
 
 class UsageSignal(QObject):
@@ -1684,6 +1734,34 @@ class _DownloadProgressSignal(QObject):
     progress = Signal(int, int)
     finished = Signal(str)   # 下載完成，帶完成檔案路徑
     failed = Signal(str)     # 失敗，帶錯誤訊息
+
+
+class SafeMarkdownBrowser(QTextBrowser):
+    """不自動載入遠端資源，外部連結須經使用者確認。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setOpenExternalLinks(False)
+        self.setOpenLinks(False)
+        self.anchorClicked.connect(self._confirm_external_link)
+
+    def loadResource(self, resource_type, name):
+        if isinstance(name, QUrl) and name.scheme().lower() in {"http", "https", "file"}:
+            return None
+        return super().loadResource(resource_type, name)
+
+    def _confirm_external_link(self, url: QUrl):
+        if url.scheme().lower() not in {"https", "http"}:
+            return
+        answer = QMessageBox.question(
+            self,
+            "開啟外部連結",
+            f"是否以預設瀏覽器開啟？\n{url.toString()}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer == QMessageBox.Yes:
+            QDesktopServices.openUrl(url)
 
 
 class UpdateDialog(QDialog):
@@ -1811,17 +1889,19 @@ class UpdateDialog(QDialog):
             change_title = QLabel("更新內容")
             change_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #34495e; margin-top: 4px;")
             content.addWidget(change_title)
-            change_body = QLabel(self.changelog)
+            change_body = SafeMarkdownBrowser(self)
+            change_body.setMarkdown(self.changelog)
+            change_body.setMinimumHeight(180)
+            change_body.setMaximumHeight(320)
             change_body.setStyleSheet("""
                 font-size: 11px; color: #555f6e;
                 padding: 8px 12px; background: #eaf4fb;
                 border-left: 3px solid #4fc3f7; border-radius: 4px;
             """)
-            change_body.setWordWrap(True)
             content.addWidget(change_body)
 
         # 警告框
-        warn = QLabel("自動更新功能仍屬於「實驗性」功能，若自動更新失敗，請至 GitHub Releases 手動下載。")
+        warn = QLabel("安裝前會驗證下載雜湊、更新包內容與版本；若驗證失敗，請至 GitHub Releases 手動下載完整 Portable ZIP。")
         warn.setStyleSheet("""
             font-size: 11px; color: #8a6d3b;
             background: #fcf3cf; border: 1px solid #f5e6a8;
@@ -1845,7 +1925,8 @@ class UpdateDialog(QDialog):
         """)
         btn_later.clicked.connect(self.reject)
 
-        btn_download = QPushButton("下載更新")
+        can_auto_update = bool(self.expected_sha256) and is_portable_layout()
+        btn_download = QPushButton("下載並安全更新" if can_auto_update else "開啟 GitHub Releases")
         btn_download.setFixedHeight(36)
         btn_download.setStyleSheet("""
             QPushButton {
@@ -1855,7 +1936,10 @@ class UpdateDialog(QDialog):
             }
             QPushButton:hover { background: #0277bd; }
         """)
-        btn_download.clicked.connect(self._start_download)
+        if can_auto_update:
+            btn_download.clicked.connect(self._start_download)
+        else:
+            btn_download.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.url)))
 
         btn_row.addStretch()
         btn_row.addWidget(btn_later)
@@ -2000,20 +2084,21 @@ class UpdateDialog(QDialog):
     # ---------- 下載邏輯 ----------
     def _start_download(self):
         import tempfile, os
-        # 確認執行環境為打包版（frozen）
-        if not getattr(sys, "frozen", False):
+        if not is_portable_layout():
             QMessageBox.warning(
                 self, "無法自動更新",
-                "目前是從原始碼執行（非打包版 exe），自動更新僅支援打包後的 .exe 版本。\n"
-                "請至 GitHub Releases 取得最新原始碼。"
+                "自動更新僅支援新版 Portable 目錄結構，請至 GitHub Releases 手動下載。"
             )
+            return
+        if not self.expected_sha256:
+            QMessageBox.warning(self, "缺少完整性摘要", "此 Release 未提供 SHA-256 digest，禁止自動安裝。")
             return
 
         self._build_stage_two(done=False)
 
         # 暫存檔案路徑
         tmp_dir = tempfile.gettempdir()
-        self.downloaded_path = os.path.join(tmp_dir, f"行政效能領航員_{self.latest}_new.exe")
+        self.downloaded_path = os.path.join(tmp_dir, f"行政效能領航員_{self.latest}_Portable.zip")
 
         # 訊號
         self._dl_signal = _DownloadProgressSignal()
@@ -2074,7 +2159,7 @@ class UpdateDialog(QDialog):
         from PySide6.QtGui import QDesktopServices
         from PySide6.QtCore import QUrl
 
-        FALLBACK_URL = "https://drive.google.com/drive/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g?usp=sharing"
+        RELEASES_URL = "https://github.com/lianghao02/auto-learning-bot/releases/latest"
 
         fail_dlg = QDialog(self)
         fail_dlg.setWindowTitle("自動下載失敗")
@@ -2123,8 +2208,8 @@ class UpdateDialog(QDialog):
 
         # 指引文字
         guide = QLabel(
-            "請點擊下方按鈕前往下載頁面，找到最新版的 <b>.exe</b> 檔下載後，"
-            "替換掉目前資料夾中的舊版本即可完成更新。"
+            "請前往 GitHub Releases 下載最新版 <b>Portable ZIP</b>，完整解壓至新資料夾；"
+            "不要以單檔覆蓋目前正在使用的程式目錄。"
         )
         guide.setStyleSheet("""
             font-size: 12px; color: #555f6e;
@@ -2161,7 +2246,7 @@ class UpdateDialog(QDialog):
             }
             QPushButton:hover { background: #0277bd; }
         """)
-        btn_open.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(self.url or FALLBACK_URL)))
+        btn_open.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(RELEASES_URL)))
         btn_open.clicked.connect(fail_dlg.accept)
 
         b_row.addStretch()
@@ -2173,155 +2258,64 @@ class UpdateDialog(QDialog):
         fail_dlg.exec()
         self.reject()
 
-    # ---------- 安裝（替換 exe 並重啟）----------
+    # ---------- 安裝（Portable staging 切換並重啟）----------
     def _install_and_restart(self):
-        import os, tempfile, subprocess
+        import shutil
+        import subprocess
+
         if not self.downloaded_path or not os.path.exists(self.downloaded_path):
             self._on_failed("找不到已下載的更新檔（可能被防毒軟體刪除）")
             return
-
-        # 移除 Zone.Identifier（網路下載標記），避免 Defender 攔截 DLL 載入
-        # 在 ps1 執行前就處理，確保無論 ps1 版本新舊都有效
         try:
-            subprocess.run(
-                ["powershell", "-NoProfile", "-Command",
-                 f"Unblock-File -LiteralPath '{self.downloaded_path}'"],
-                timeout=5, capture_output=True
+            staging_dir, staged_current = stage_portable_zip(
+                self.downloaded_path,
+                install_root(),
+                self.latest,
             )
-        except Exception:
-            pass
-
-        current_exe = sys.executable  # 目前運行中的 exe 完整路徑
-        new_exe = self.downloaded_path
-        exe_dir = os.path.dirname(current_exe)
-        # 統一目標檔名（去掉版本號），未來升級永遠用同一個檔名，
-        # 捷徑/工作列釘選/開機自啟動才不會因檔名改變而失效
-        target_exe = os.path.join(exe_dir, "行政效能領航員.exe")
-
-        # 用 PowerShell 寫 updater 腳本（PowerShell 原生支援 UTF-16，中文路徑無編碼問題；
-        # 過去用 bat 會因 cp950/UTF-8 編碼衝突導致中文路徑全變亂碼，所有命令失敗）
-        ps1_path = os.path.join(tempfile.gettempdir(), "auto_update.ps1")
-        # 路徑單引號跳脫：PowerShell 單引號字串中，單引號需寫成兩個單引號
-        cur_q = current_exe.replace("'", "''")
-        new_q = new_exe.replace("'", "''")
-        dir_q = exe_dir.replace("'", "''")
-        tgt_q = target_exe.replace("'", "''")
-        ps1_content = f"""$ErrorActionPreference = 'Continue'
-$logPath = '{dir_q}\\update_debug.log'
-function Log($msg) {{ Add-Content -LiteralPath $logPath -Value ("[ps1 " + (Get-Date -Format 'HH:mm:ss') + "] " + $msg) -Encoding UTF8 }}
-Log "ps1 started, pid=$PID"
-Start-Sleep -Milliseconds 800
-$exe = '{cur_q}'
-$new = '{new_q}'
-$dir = '{dir_q}'
-$tgt = '{tgt_q}'
-Log "exe=$exe"
-Log "new=$new"
-Log "tgt=$tgt"
-# 1. 主動 kill 殘留的舊程序
-Get-Process | Where-Object {{ $_.Path -eq $exe }} | ForEach-Object {{ Log "killing pid=$($_.Id)"; Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }}
-Start-Sleep -Milliseconds 300
-# 2. 重試刪除舊 exe（最多 10 次）
-for ($i = 0; $i -lt 10; $i++) {{
-    try {{ Remove-Item -LiteralPath $exe -Force -ErrorAction Stop; Log "deleted old exe at try $i"; break }}
-    catch {{ Log "delete try $i failed: $_"; Start-Sleep -Seconds 1 }}
-}}
-# 2b. 若目標檔名與舊 exe 不同（升級時改名情境），也嘗試刪除目標位置的舊檔
-if ($tgt -ne $exe) {{
-    try {{ if (Test-Path -LiteralPath $tgt) {{ Remove-Item -LiteralPath $tgt -Force -ErrorAction Stop; Log "deleted existing target" }} }}
-    catch {{ Log "delete target failed: $_" }}
-}}
-# 3. 移動新 exe 到目標位置（永遠用「行政效能領航員.exe」這個檔名）
-try {{
-    Move-Item -LiteralPath $new -Destination $tgt -Force -ErrorAction Stop
-    Log "moved new exe -> $tgt"
-}} catch {{
-    Log "move failed: $_"
-    exit 1
-}}
-# 3b. 移除 Zone.Identifier（網路下載標記），避免 Defender 攔截 DLL 載入
-Unblock-File -LiteralPath $tgt -ErrorAction SilentlyContinue
-Log "unblocked exe"
-# 4. 用排程工作啟動新版（系統信任的使用者互動，Defender 不會攔截 DLL）
-Start-Sleep -Seconds 2
-try {{
-    $exeDir = Split-Path -Parent $tgt
-    $action  = New-ScheduledTaskAction -Execute $tgt -WorkingDirectory $exeDir
-    $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddSeconds(3))
-    $settings = New-ScheduledTaskSettingsSet -DeleteExpiredTaskAfter (New-TimeSpan -Seconds 60)
-    Register-ScheduledTask -TaskName "AEP_AutoLaunch" -Action $action -Trigger $trigger -Settings $settings -Force -RunLevel Limited -ErrorAction Stop | Out-Null
-    Log "scheduled task registered, launching in 3s"
-}} catch {{
-    Log "task failed: $_, fallback ShellExecute"
-    try {{
-        $shell = New-Object -ComObject Shell.Application
-        $shell.ShellExecute($tgt, '', (Split-Path -Parent $tgt), 'open', 1)
-    }} catch {{
-        Log "ShellExecute also failed: $_"
-    }}
-}}
-# 5. 刪自己
-Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
-Log "ps1 done"
-"""
-        try:
-            # PowerShell 必須用 UTF-8 with BOM 寫，否則 PowerShell 5.1 預設用
-            # 系統 ANSI (cp950) 解碼，中文路徑會變亂碼導致 Move/Start 全失敗
-            with open(ps1_path, "w", encoding="utf-8-sig") as f:
-                f.write(ps1_content)
         except Exception as e:
-            self._on_failed(f"無法建立更新腳本：{e}")
+            self._on_failed(f"更新包 staging 驗證失敗：{e}")
             return
 
-        # 用 DETACHED_PROCESS 啟動 powershell，再立刻退出本程式
-        import subprocess, base64
+        updater = install_root() / "auto_update.ps1"
+        if not updater.is_file():
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            self._on_failed("安裝目錄缺少 auto_update.ps1，請手動下載完整 Portable ZIP。")
+            return
         try:
-            # 寫安裝 log 供事後排查
-            try:
-                log_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else "."
-                with open(os.path.join(log_dir, "update_debug.log"), "a", encoding="utf-8") as lf:
-                    lf.write(f"install: ps1={ps1_path}\n")
-                    lf.write(f"install: current_exe={current_exe}\n")
-                    lf.write(f"install: new_exe={new_exe}\n")
-                    lf.write(f"install: new_exe exists={os.path.exists(new_exe)}\n")
-            except Exception:
-                pass
-
-            # 用 -EncodedCommand (base64 UTF-16LE) 直接把 ps1 內容塞給 PowerShell，
-            # 完全繞過「讀檔編碼」問題。PowerShell 收到 -EncodedCommand 後會用
-            # UTF-16LE 解碼，中文 100% 保留。
-            encoded = base64.b64encode(ps1_content.encode("utf-16-le")).decode("ascii")
-
-            # 不用 DETACHED_PROCESS（會干擾 PowerShell 啟動），
-            # 改用 STARTUPINFO 隱藏視窗 + CREATE_NEW_PROCESS_GROUP 讓子程序獨立
             si = subprocess.STARTUPINFO()
             si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            si.wShowWindow = 0  # SW_HIDE
-
-            proc = subprocess.Popen(
-                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
-                 "-WindowStyle", "Hidden", "-EncodedCommand", encoded],
-                creationflags=0x00000200,  # CREATE_NEW_PROCESS_GROUP
+            si.wShowWindow = 0
+            subprocess.Popen(
+                [
+                    "powershell",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-WindowStyle",
+                    "Hidden",
+                    "-File",
+                    str(updater),
+                    "-InstallRoot",
+                    str(install_root()),
+                    "-StagedCurrent",
+                    str(staged_current),
+                    "-ArchivePath",
+                    str(self.downloaded_path),
+                    "-MainPid",
+                    str(os.getpid()),
+                ],
+                creationflags=0x00000200,
                 startupinfo=si,
                 close_fds=True,
             )
-            try:
-                with open(os.path.join(log_dir, "update_debug.log"), "a", encoding="utf-8") as lf:
-                    lf.write(f"install: ps proc pid={proc.pid} (encoded cmd, len={len(encoded)})\n")
-            except Exception:
-                pass
         except Exception as e:
+            shutil.rmtree(staging_dir, ignore_errors=True)
             self._on_failed(f"無法啟動更新程序：{e}")
             return
 
-        # 關閉對話框並退出主程式 — 給 PyInstaller 機會清理自己的 _MEI 目錄，
-        # 避免新 exe 啟動時與舊 _MEI 殘留衝突導致「Failed to load Python DLL」
-        import time
         self.accept()
         QApplication.processEvents()
-        time.sleep(0.2)
         QApplication.quit()
-        # 用 sys.exit 而非 os._exit，讓 PyInstaller atexit handler 有機會清 _MEI
         sys.exit(0)
 
 
@@ -3186,8 +3180,8 @@ class AccountSettingsTabPanel(QWidget):
 
     def load_settings(self):
         try:
-            if os.path.exists("config.json"):
-                with open("config.json", "r", encoding="utf-8") as f:
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 accounts = data.get("accounts", [])
                 taipei_acc = next(
@@ -3222,8 +3216,8 @@ class AccountSettingsTabPanel(QWidget):
 
     def save_settings(self):
         try:
-            if os.path.exists("config.json"):
-                with open("config.json", "r", encoding="utf-8") as f:
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
             else:
                 data = {"accounts": [], "settings": {}}
@@ -3271,7 +3265,7 @@ class AccountSettingsTabPanel(QWidget):
                 settings["ai_keys"]["Gemini"] = ai_key
             data["settings"] = settings
 
-            write_json_atomically("config.json", data)
+            write_json_atomically(CONFIG_PATH, data)
 
             if hasattr(self, "on_settings_saved") and callable(self.on_settings_saved):
                 self.on_settings_saved()
@@ -3382,8 +3376,8 @@ class ImmersivePage(QWidget):
     def load_accounts_into_tabs(self):
         """讀取 config.json 自動動態將使用者名稱與帳號帶入各頁籤標題中"""
         try:
-            if os.path.exists("config.json"):
-                with open("config.json", "r", encoding="utf-8") as f:
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 accounts = data.get("accounts", [])
                 
@@ -3695,13 +3689,11 @@ class MainWindow(QWidget):
             pass
 
     def _run_startup_update_check(self):
-        """程式啟動時，背景 thread 檢查 GitHub Releases，有新版則跳提示"""
+        """背景檢查 GitHub Release，支援 ETag 與 Portable asset digest。"""
         from app import AdminEfficiencyPilot
         import threading, requests as _req
 
-        VERSION_URL = "https://raw.githubusercontent.com/lianghao02/auto-learning-bot/main/version.txt"
         RELEASE_API = "https://api.github.com/repos/lianghao02/auto-learning-bot/releases/latest"
-        FALLBACK_URL = "https://drive.google.com/drive/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g?usp=sharing"
         current_version = AdminEfficiencyPilot.VERSION
 
         self._update_signal = UpdateSignal()
@@ -3709,8 +3701,7 @@ class MainWindow(QWidget):
         self._update_signal.up_to_date.connect(self._on_up_to_date)
         _update_signal = self._update_signal
 
-        import sys as _sys, os as _os
-        _log_path = _os.path.join(_os.path.dirname(_sys.executable if getattr(_sys, "frozen", False) else _os.path.abspath(__file__)), "update_debug.log")
+        _log_path = str(log_path("update_debug.log"))
 
         def _dbg(msg):
             try:
@@ -3722,35 +3713,41 @@ class MainWindow(QWidget):
         def _check():
             _dbg("update check thread started")
             try:
-                version_resp = _req.get(VERSION_URL, timeout=8)
-                _dbg(f"version_status={version_resp.status_code}")
-                if version_resp.status_code != 200:
-                    _dbg(f"version.txt HTTP {version_resp.status_code}: {version_resp.text[:200]}")
-                    return
-                latest = version_resp.text.strip()
-                changelog = ""
-                assets = []
-                resp = _req.get(RELEASE_API, timeout=8, headers={"Accept": "application/vnd.github+json"})
+                cache_file = update_cache_path()
+                cache = {}
+                try:
+                    if cache_file.is_file():
+                        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+                except Exception:
+                    cache = {}
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                if cache.get("etag"):
+                    headers["If-None-Match"] = str(cache["etag"])
+                resp = _req.get(RELEASE_API, timeout=8, headers=headers)
                 _dbg(f"release_status={resp.status_code}")
-                if resp.status_code == 200:
+                if resp.status_code == 304:
+                    data = cache.get("release") or {}
+                elif resp.status_code == 200:
                     data = resp.json()
-                    changelog = (data.get("body") or "").strip()
-                    assets = data.get("assets", []) or []
-                # V2.1.6 起優先導向 GitHub Release exe，沒有 asset 才 fallback 雲端。
-                exe_asset = next(
-                    (a for a in assets if (a.get("name") or "").lower().endswith(".exe")),
-                    None,
-                )
-                file_size = int(exe_asset.get("size", 0)) if exe_asset else 0
-                download_url = (exe_asset.get("browser_download_url") if exe_asset else "") or FALLBACK_URL
-
-                if not latest or not latest.upper().startswith("V"):
-                    _dbg(f"version.txt 格式不符：{latest!r}")
+                    write_json_atomically(
+                        cache_file,
+                        {"etag": resp.headers.get("ETag", ""), "release": data},
+                    )
+                else:
+                    _dbg(f"GitHub Release API HTTP {resp.status_code}: {resp.text[:200]}")
                     return
-                _dbg(f"latest={latest!r} current={current_version!r} size={file_size}")
-                if is_newer_version(latest, current_version):
+
+                update_info = parse_release_update(data, current_version)
+                if update_info:
+                    latest, changelog, download_url, file_size, digest = update_info
+                    _dbg(f"latest={latest!r} current={current_version!r} size={file_size}")
+                    if not digest:
+                        _dbg("Portable asset 缺少有效 SHA-256 digest，僅允許手動下載")
                     _dbg("emitting update signal")
-                    _update_signal.emit(latest, changelog, download_url, file_size)
+                    _update_signal.emit(latest, changelog, download_url, file_size, digest)
                 else:
                     _dbg("already latest")
                     _update_signal.up_to_date.emit()
@@ -3825,13 +3822,16 @@ class MainWindow(QWidget):
         if entry._has_update and entry._latest_update_info:
             # 有新版 → 跳更新視窗
             info = entry._latest_update_info
-            # 相容舊格式 (3 元素) 與新格式 (4 元素)
-            if len(info) == 4:
+            if len(info) == 5:
+                latest, changelog, url, size, digest = info
+            elif len(info) == 4:
                 latest, changelog, url, size = info
+                digest = ""
             else:
                 latest, changelog, url = info
                 size = 0
-            self._on_update_available(latest, changelog, url, size)
+                digest = ""
+            self._on_update_available(latest, changelog, url, size, digest)
         else:
             # 沒有新版或尚未檢查 → 跳「目前版本」視窗
             self._show_version_dialog()
@@ -3919,121 +3919,21 @@ class MainWindow(QWidget):
                 QPushButton:hover { background: transparent; }
             """)
 
-    def _on_update_available(self, latest: str, changelog: str, url: str, size: int = 0):
-        """在主執行緒顯示更新提示視窗（雲端下載版：直接引導使用者前往雲端手動下載）"""
-        from PySide6.QtGui import QDesktopServices
-        from PySide6.QtCore import QUrl
-
-        FALLBACK_URL = "https://drive.google.com/drive/folders/1Fm6CwmV2AsoWaUOGV0V5hZbgP_GJrU8g?usp=sharing"
-        download_url = url or FALLBACK_URL
-
-        # 儲存更新資訊，讓按鈕可以重複觸發
+    def _on_update_available(
+        self,
+        latest: str,
+        changelog: str,
+        url: str,
+        size: int = 0,
+        digest: str = "",
+    ):
+        """顯示安全更新對話框；缺少 digest 時只提供手動下載。"""
         self.entry._has_update = True
-        self.entry._latest_update_info = (latest, changelog, url, size)
+        self.entry._latest_update_info = (latest, changelog, url, size, digest)
         btn = getattr(self.entry, "_update_btn", None)
         if btn:
             btn.setToolTip(f"有新版本 {latest}！點此查看")
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: transparent;
-                    border: none;
-                    border-radius: 26px;
-                }
-                QPushButton:hover {
-                    background: rgba(0,0,0,0.12);
-                }
-            """)
-
-        # ── 輕量提示框：引導使用者前往雲端手動下載 ──
-        dlg = QDialog(self)
-        dlg.setWindowTitle("有新版本可用")
-        dlg.setFixedWidth(460)
-        dlg.setStyleSheet("QDialog { background: #f5f7fa; } QLabel { color: #2c3e50; background: transparent; }")
-
-        outer = QVBoxLayout(dlg)
-        outer.setSpacing(0)
-        outer.setContentsMargins(0, 0, 0, 0)
-
-        # 藍色頂部色帶
-        hdr = QLabel()
-        hdr.setFixedHeight(6)
-        hdr.setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #1976d2,stop:1 #42a5f5);")
-        outer.addWidget(hdr)
-
-        body = QVBoxLayout()
-        body.setSpacing(12)
-        body.setContentsMargins(28, 22, 28, 20)
-
-        # 標題列
-        title_row = QHBoxLayout()
-        title_row.setSpacing(12)
-        ico = QLabel("🔔")
-        ico.setFixedSize(42, 42)
-        ico.setStyleSheet("background: #e3f2fd; border-radius: 8px; font-size: 22px; qproperty-alignment: AlignCenter;")
-        title_row.addWidget(ico)
-
-        tbox = QVBoxLayout()
-        tbox.setSpacing(2)
-        ttl = QLabel(f"發現新版本 <b>{latest}</b>")
-        ttl.setTextFormat(Qt.RichText)
-        ttl.setStyleSheet("font-size: 16px; font-weight: bold; color: #1565c0;")
-        tbox.addWidget(ttl)
-        title_row.addLayout(tbox, 1)
-        body.addLayout(title_row)
-
-        # 說明文字
-        guide = QLabel(
-            "請點擊下方按鈕前往雲端下載最新版的 <b>.exe</b> 檔，"
-            "下載後直接替換掉目前的舊版本即可完成更新。"
-        )
-        guide.setTextFormat(Qt.RichText)
-        guide.setWordWrap(True)
-        guide.setStyleSheet(
-            "font-size: 12px; color: #555f6e; padding: 10px 12px;"
-            "background: #ffffff; border: 1px solid #e1e7ed; border-radius: 6px;"
-        )
-        body.addWidget(guide)
-
-        # 更新日誌（有的話顯示）
-        if changelog:
-            log_lbl = QLabel(changelog[:300] + ("…" if len(changelog) > 300 else ""))
-            log_lbl.setWordWrap(True)
-            log_lbl.setStyleSheet(
-                "font-size: 11px; color: #7f8c8d; padding: 8px 10px;"
-                "background: #f0f4f8; border: 1px solid #dce1e7; border-radius: 5px;"
-            )
-            body.addWidget(log_lbl)
-
-        # 按鈕列
-        b_row = QHBoxLayout()
-        b_row.setSpacing(10)
-
-        btn_close = QPushButton("稍後再說")
-        btn_close.setFixedHeight(36)
-        btn_close.setStyleSheet("""
-            QPushButton { background: #ecf0f1; color: #7f8c8d; border-radius: 6px;
-                          padding: 0 22px; font-size: 13px; border: 1px solid #dce1e7; }
-            QPushButton:hover { background: #dde3e8; }
-        """)
-        btn_close.clicked.connect(dlg.reject)
-
-        btn_open = QPushButton("前往雲端下載新版本")
-        btn_open.setFixedHeight(36)
-        btn_open.setStyleSheet("""
-            QPushButton { background: #1976d2; color: #fff; font-weight: bold;
-                          border-radius: 6px; padding: 0 22px; font-size: 13px; border: none; }
-            QPushButton:hover { background: #1565c0; }
-        """)
-        btn_open.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(download_url)))
-        btn_open.clicked.connect(dlg.accept)
-
-        b_row.addStretch()
-        b_row.addWidget(btn_close)
-        b_row.addWidget(btn_open)
-        body.addLayout(b_row)
-
-        outer.addLayout(body)
-        dlg.exec()
+        UpdateDialog(self, latest, changelog, url, size, digest).exec()
 
     def go_entry(self):
         """⭐ 修改版：立即返回入口，後臺清理"""
@@ -4105,33 +4005,14 @@ if __name__ == "__main__":
         # 強制把工作目錄切到 exe / 腳本所在資料夾，
         # 避免從捷徑或 updater.bat 啟動時 cwd 跑到 System32 導致 config.json 寫入權限錯誤
         try:
-            if getattr(sys, "frozen", False):
-                _base_dir = os.path.dirname(sys.executable)
-            else:
-                _base_dir = os.path.dirname(os.path.abspath(__file__))
-            os.chdir(_base_dir)
+            os.chdir(app_dir())
+            prepare_user_data()
         except Exception:
             pass
 
         app = QApplication(sys.argv)
         app.setStyleSheet(GLOBAL_QSS)
 
-        # 清理同目錄下的舊版 exe（default.exe、含版本號的 _VX.X.X.exe）
-        if getattr(sys, "frozen", False):
-            import glob as _glob
-            _exe_dir = os.path.dirname(sys.executable)
-            _correct = os.path.basename(sys.executable)
-            _patterns = [
-                os.path.join(_exe_dir, "default.exe"),
-                *_glob.glob(os.path.join(_exe_dir, "*_V[0-9]*.[0-9]*.[0-9]*.exe")),
-                *_glob.glob(os.path.join(_exe_dir, "*FAKE*.exe")),
-            ]
-            for _old in _patterns:
-                try:
-                    if os.path.exists(_old) and os.path.basename(_old) != _correct:
-                        os.remove(_old)
-                except Exception:
-                    pass
         w = MainWindow()
         w.show()
 
@@ -4149,7 +4030,7 @@ if __name__ == "__main__":
     except Exception as exc:
         err_msg = f"【程式啟動失敗】\n\n發生未預期的例外錯誤：\n{traceback.format_exc()}"
         try:
-            with open("startup_error.log", "w", encoding="utf-8") as f:
+            with open(log_path("startup_error.log"), "w", encoding="utf-8") as f:
                 f.write(err_msg)
         except Exception:
             pass

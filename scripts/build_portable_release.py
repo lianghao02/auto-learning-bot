@@ -7,16 +7,29 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _read_version() -> str:
+    version = (PROJECT_ROOT / "version.txt").read_text(encoding="utf-8-sig").strip().upper()
+    if not version.startswith("V") or not version[1:].replace(".", "").isdigit():
+        raise ValueError(f"version.txt 格式不正確：{version!r}")
+    return version
+
+
+VERSION = _read_version()
 CONFIG = {
-    "release_name": "行政效能領航員_V3.0.0_Portable",
+    "release_name": f"行政效能領航員_{VERSION}_Portable",
     "python_version": "3.13",
     "python_abi": "cp313",
     "platform": "win_amd64",
@@ -25,9 +38,9 @@ CONFIG = {
     "requirements": "requirements-release.txt",
 }
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DIST_ROOT = (PROJECT_ROOT / CONFIG["dist_dir"]).resolve()
 RELEASE_DIR = (DIST_ROOT / CONFIG["release_name"]).resolve()
+CURRENT_DIR = RELEASE_DIR / "current"
 
 APP_FILES = (
     "app.py",
@@ -35,8 +48,6 @@ APP_FILES = (
     "quiz_bank.py",
     "taipei_eda_course.py",
     "usage_tracker.py",
-    "answers.json",
-    "questions.db",
     "config.json.example",
     "version.txt",
     "README.md",
@@ -48,14 +59,16 @@ setlocal
 cd /d "%~dp0"
 title Admin Efficiency Pilot
 
-if not exist "runtime\pythonw.exe" goto RUNTIME_ERROR
-if not exist "config.json" copy /Y "config.json.example" "config.json" >nul
+if not exist "current\runtime\pythonw.exe" goto RUNTIME_ERROR
+if not exist "data" mkdir "data"
+if not exist "data\logs" mkdir "data\logs"
+if not exist "data\config.json" copy /Y "current\config.json.example" "data\config.json" >nul
 
-"runtime\python.exe" -B -c "import PySide6, selenium, requests" >"startup_error.log" 2>&1
+"current\runtime\python.exe" -B -c "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil" >"data\logs\startup_error.log" 2>&1
 if errorlevel 1 goto IMPORT_ERROR
-del /Q "startup_error.log" >nul 2>&1
+del /Q "data\logs\startup_error.log" >nul 2>&1
 
-start "" "runtime\pythonw.exe" -B "ui.py"
+start "" /D "%~dp0current" "%~dp0current\runtime\pythonw.exe" -B "ui.py"
 exit /b 0
 
 :RUNTIME_ERROR
@@ -65,12 +78,12 @@ exit /b 1
 
 :IMPORT_ERROR
 echo [ERROR] Portable runtime is incomplete. See startup_error.log.
-type "startup_error.log"
+type "data\logs\startup_error.log"
 pause
 exit /b 1
 """
 
-RELEASE_INFO = """行政效能領航員 V3.0.0 可攜式版本
+RELEASE_INFO = f"""行政效能領航員 {VERSION} 可攜式版本
 
 使用方式：
 1. 將整個資料夾解壓縮至本機可寫入的位置。
@@ -98,23 +111,48 @@ def _copy_application_files() -> None:
         source = PROJECT_ROOT / name
         if not source.is_file():
             raise FileNotFoundError(f"缺少發行必要檔案：{name}")
-        shutil.copy2(source, RELEASE_DIR / name)
+        shutil.copy2(source, CURRENT_DIR / name)
 
     for name in APP_DIRS:
         source = PROJECT_ROOT / name
         if not source.is_dir():
             raise FileNotFoundError(f"缺少發行必要資料夾：{name}")
-        shutil.copytree(source, RELEASE_DIR / name, ignore=ignore)
+        shutil.copytree(source, CURRENT_DIR / name, ignore=ignore)
+
+
+def _create_seed_database() -> None:
+    """由版本庫內的 answers.json 建立唯讀種子題庫，避免夾帶本機 questions.db。"""
+    source = PROJECT_ROOT / "answers.json"
+    rows = json.loads(source.read_text(encoding="utf-8")) if source.is_file() else []
+    assets = CURRENT_DIR / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    target = assets / "questions_seed.db"
+    conn = sqlite3.connect(target)
+    try:
+        conn.execute("CREATE TABLE questions (id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT UNIQUE NOT NULL, option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT, answer TEXT)")
+        for row in rows:
+            if isinstance(row, dict) and row.get("題目"):
+                conn.execute(
+                    "INSERT OR REPLACE INTO questions (question, answer) VALUES (?, ?)",
+                    (str(row["題目"]), str(row.get("答案", ""))),
+                )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _prepare_runtime() -> None:
     runtime_source = PROJECT_ROOT / CONFIG["runtime_source"]
-    runtime_target = RELEASE_DIR / "runtime"
+    runtime_target = CURRENT_DIR / "runtime"
     if not runtime_source.is_dir():
         raise FileNotFoundError("找不到官方 Python 嵌入式執行環境")
     shutil.copytree(runtime_source, runtime_target)
 
+    # python_embed 可能是開發者已使用過的環境。發行版不可混入其中的
+    # 舊套件，因此只清理「輸出副本」後再依鎖定清單乾淨安裝。
     site_packages = runtime_target / "Lib" / "site-packages"
+    if site_packages.exists():
+        shutil.rmtree(site_packages)
     site_packages.mkdir(parents=True, exist_ok=True)
     requirements = PROJECT_ROOT / CONFIG["requirements"]
     command = [
@@ -137,10 +175,34 @@ def _prepare_runtime() -> None:
     print("[BUILD] 正在下載並封裝 Windows 離線依賴套件...")
     subprocess.run(command, cwd=PROJECT_ROOT, check=True)
 
-    pth_path = runtime_target / "python311._pth"
+    compact_version = CONFIG["python_version"].replace(".", "")
+    pth_path = runtime_target / f"python{compact_version}._pth"
     pth_path.write_text(
-        "python311.zip\n.\n..\nLib\\site-packages\nimport site\n",
+        f"python{compact_version}.zip\n.\n..\nLib\\site-packages\nimport site\n",
         encoding="utf-8",
+    )
+
+    runtime_python = runtime_target / "python.exe"
+    version_result = subprocess.run(
+        [str(runtime_python), "--version"],
+        cwd=CURRENT_DIR,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    runtime_version = (version_result.stdout or version_result.stderr).strip()
+    if not runtime_version.startswith(f"Python {CONFIG['python_version']}."):
+        raise RuntimeError(f"可攜 runtime 版本不符：{runtime_version}")
+
+    subprocess.run(
+        [
+            str(runtime_python),
+            "-B",
+            "-c",
+            "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil",
+        ],
+        cwd=CURRENT_DIR,
+        check=True,
     )
 
     # pip 可能仍從快取帶入其他 Python 版本的 bytecode，發行前一律移除。
@@ -186,7 +248,9 @@ def _create_archive(archive_path: Path) -> None:
         archive_path,
         mode="w",
         compression=zipfile.ZIP_DEFLATED,
-        compresslevel=9,
+        # Qt runtime 已含大量壓縮資源；等級 6 可大幅縮短建置時間，
+        # 對最終檔案大小的影響有限。
+        compresslevel=6,
     ) as archive:
         for path in sorted(RELEASE_DIR.rglob("*")):
             if not path.is_file() or not _is_distributable(path):
@@ -200,13 +264,22 @@ def main() -> int:
     DIST_ROOT.mkdir(parents=True, exist_ok=True)
     if RELEASE_DIR.exists():
         shutil.rmtree(RELEASE_DIR)
-    RELEASE_DIR.mkdir(parents=True)
+    CURRENT_DIR.mkdir(parents=True)
 
     try:
         _copy_application_files()
+        _create_seed_database()
         _prepare_runtime()
         # 使用純 ASCII 且不含 BOM，確保 Windows cmd 能正確辨識 @echo off。
         (RELEASE_DIR / "啟動程式.bat").write_text(LAUNCHER, encoding="ascii")
+        # Windows PowerShell 5.1 需 BOM 才能可靠辨識中文路徑與訊息。
+        updater_source = (PROJECT_ROOT / "scripts" / "auto_update.ps1").read_text(
+            encoding="utf-8-sig"
+        )
+        (RELEASE_DIR / "auto_update.ps1").write_text(
+            updater_source,
+            encoding="utf-8-sig",
+        )
         (RELEASE_DIR / "發行說明.txt").write_text(RELEASE_INFO, encoding="utf-8-sig")
         _write_manifest()
 
@@ -220,7 +293,7 @@ def main() -> int:
         archive_hash = hashlib.sha256(archive_path.read_bytes()).hexdigest()
         archive_path.with_suffix(".zip.sha256").write_text(
             f"{archive_hash} *{archive_path.name}\n",
-            encoding="ascii",
+            encoding="utf-8",
         )
     except Exception:
         print("[ERROR] 建置失敗，保留輸出目錄供檢查。")
