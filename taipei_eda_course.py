@@ -96,6 +96,7 @@ def find_element_resilient(driver, css_selector=None, text_keywords=None, tag_na
 
 _DRIVER_LOCK = threading.Lock()
 _ACTIVE_DRIVER = None
+_TAIPEI_IS_HIDDEN = False
 
 def force_close_active_driver():
     global _ACTIVE_DRIVER
@@ -109,7 +110,8 @@ def force_close_active_driver():
             pass
 
 def toggle_taipei_driver_visibility(visible: bool):
-    global _ACTIVE_DRIVER
+    global _ACTIVE_DRIVER, _TAIPEI_IS_HIDDEN
+    _TAIPEI_IS_HIDDEN = not visible
     with _DRIVER_LOCK:
         driver = _ACTIVE_DRIVER
     if driver:
@@ -117,6 +119,16 @@ def toggle_taipei_driver_visibility(visible: bool):
             set_driver_window_visibility(driver, visible)
         except Exception:
             pass
+
+def _auto_hide_taipei_popups_if_needed(driver=None):
+    global _ACTIVE_DRIVER, _TAIPEI_IS_HIDDEN
+    if _TAIPEI_IS_HIDDEN:
+        d = driver or _ACTIVE_DRIVER
+        if d:
+            try:
+                set_driver_window_visibility(d, False)
+            except Exception:
+                pass
 
 _ocr = ddddocr.DdddOcr(show_ad=False)
 
@@ -747,6 +759,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                     # 若點擊後開啟新視窗，自動切換至最新視窗
                     if len(driver.window_handles) > 1:
                         driver.switch_to.window(driver.window_handles[-1])
+                        _auto_hide_taipei_popups_if_needed(driver)
                     if current_is_player():
                         return True
         except Exception:
@@ -811,6 +824,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                         # 若開啟了新分頁或新視窗，自動切換至最新視窗
                         if len(driver.window_handles) > 1:
                             driver.switch_to.window(driver.window_handles[-1])
+                            _auto_hide_taipei_popups_if_needed(driver)
                         pause_and_mute_media(driver)
                         if current_is_player():
                             return True
@@ -1026,6 +1040,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
     round_num = 0
 
     while should_continue():
+        _auto_hide_taipei_popups_if_needed(driver)
         round_num += 1
         elapsed_sec = time.time() - start_time
         chapters = get_chapters(driver)
@@ -1223,6 +1238,8 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             _ACTIVE_DRIVER = driver
         driver.set_window_size(1400, 900)
 
+        global _TAIPEI_IS_HIDDEN
+        _TAIPEI_IS_HIDDEN = bool(headless_mode)
         if headless_mode and sys.platform == 'win32':
             set_driver_window_visibility(driver, False)
         wait = WebDriverWait(driver, 20)

@@ -1208,6 +1208,7 @@ class AdminEfficiencyPilot:
                         if len(self.driver.window_handles) > 1:
                             main_window = self.driver.window_handles[-1]
                             self.driver.switch_to.window(main_window)
+                            self._auto_hide_popups_if_needed()
                 except Exception:
                     pass
 
@@ -1217,6 +1218,7 @@ class AdminEfficiencyPilot:
                     By.CSS_SELECTOR, "a[href*='exam/exam_list.php']"
                 )
                 self.driver.execute_script("arguments[0].click();", exam_link)
+                self._auto_hide_popups_if_needed()
                 logger.info("   📝 已點擊「測驗/考試」")
             except Exception as e:
                 logger.warning(f"   ⚠️ 找不到測驗連結（可能為平台已下架或無測驗介面課程）: {e}")
@@ -1259,6 +1261,7 @@ class AdminEfficiencyPilot:
                     By.CSS_SELECTOR, "div.process-btn.pay.active"
                 )
                 self.driver.execute_script("arguments[0].click();", pay_btn)
+                self._auto_hide_popups_if_needed()
                 logger.info("   📝 已點擊「進行測驗」")
             except Exception as e:
                 logger.warning(f"   ⚠️ 找不到「進行測驗」按鈕: {e}")
@@ -3260,11 +3263,13 @@ class AdminEfficiencyPilot:
 
             # 確保 driver 在 stat_url（gotoCourse 函式只在該頁面定義）
             self.driver.get(self.stat_url)
+            self._auto_hide_popups_if_needed()
             if not self.safe_sleep(3):
                 return "STOP"
 
             orig_handles = list(self.driver.window_handles)
             self.driver.execute_script(f"gotoCourse({course['course_id']})")
+            self._auto_hide_popups_if_needed()
             if not self.safe_sleep(4):
                 return "STOP"
 
@@ -3293,8 +3298,10 @@ class AdminEfficiencyPilot:
             new_handles = list(self.driver.window_handles)
             if len(new_handles) > len(orig_handles):
                 self.driver.switch_to.window(new_handles[-1])
+                self._auto_hide_popups_if_needed()
             elif "learn_stat.php" in self.driver.current_url:
                 self.driver.get(f"https://elearn.hrd.gov.tw/info/{course['course_id']}")
+                self._auto_hide_popups_if_needed()
                 self.safe_sleep(3)
 
             # 若停留在 /info/ 介紹頁，點擊「上課去」/「進入課程」等按鈕進入真實教室
@@ -3339,6 +3346,7 @@ class AdminEfficiencyPilot:
                     after_handles = list(self.driver.window_handles)
                     if len(after_handles) > len(before_handles):
                         self.driver.switch_to.window(after_handles[-1])
+                        self._auto_hide_popups_if_needed()
                 except Exception:
                     pass
 
@@ -3353,11 +3361,13 @@ class AdminEfficiencyPilot:
                 logger.warning("   ⚠️ 找不到課程教室視窗，嘗試重新登入後重試。")
                 return "RELOGIN"
             self.driver.switch_to.window(classroom_h)
+            self._auto_hide_popups_if_needed()
 
             attempted = set()
             frame_fail_count = 0
 
             while self.running:
+                self._auto_hide_popups_if_needed()
                 # 1. 檢查單次累計時數是否超過 2 小時 (7200秒)
                 if time.time() - session_start > 7200:
                     logger.warning(
