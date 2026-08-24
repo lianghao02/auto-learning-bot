@@ -1,6 +1,6 @@
 # 行政效能領航員（auto-learning-bot）
 
-[![Version](https://img.shields.io/badge/version-V2.5.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
+[![Version](https://img.shields.io/badge/version-V3.0.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 
@@ -8,14 +8,13 @@
 
 ## 下載、依賴與啟動
 
-- **系統**：Windows 10/11、Chrome 或 Edge；主要開發與自癒環境為 Python 3.13。
+- **系統**：Windows 10/11、Chrome 或 Edge；主要開發、自癒與可攜發行環境統一為 Python 3.13。
 - **推薦啟動**：下載 ZIP、解壓後先將 `config.json.example` 複製為 `config.json`，再雙擊 `RUN.bat`。沒有 Python 時會自動建立 `python_embed`。
 - **手動安裝**：`py -3.13 -m venv .venv`，啟用後執行 `python -m pip install -r requirements.txt`，再執行 `python ui.py`。
 - **執行依賴**：PySide6、Selenium、requests、psutil、NumPy、OpenCV、ddddocr 等，版本範圍都在 `requirements.txt`。
-- **可攜版打包**：`requirements-release.txt` 與 `scripts/build_portable_release.py` 使用 Python 3.11 建立相容發行包；這和日常 Python 3.13 開發環境是兩條獨立流程。
 - **敏感資料**：`config.json`、登入資訊、題庫與執行紀錄不可提交到 GitHub；平台流程變更時仍需人工確認。
 
-## 🌟 V2.5.0 重要功能與更新亮點
+## 🌟 V3.0.0 重要功能與更新亮點
 
 - 🎓 **人機協同測驗助理 (Interactive Quiz Assistant v2)**：
   - 遇到測驗時自動彈出輔助視窗，提供「📋 一鍵複製 AI 提問 Prompt」。
