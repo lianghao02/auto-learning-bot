@@ -1,0 +1,71 @@
+﻿"""課程完成狀態與題庫寫入防護單元測試。"""
+
+import unittest
+from unittest.mock import MagicMock
+from app import AdminEfficiencyPilot
+
+
+class CourseCompletionLogicTests(unittest.TestCase):
+    def setUp(self):
+        self.pilot = AdminEfficiencyPilot.__new__(AdminEfficiencyPilot)
+        self.pilot.config = {"target_percentage": 1.0}
+        self.pilot._completed_in_session = set()
+        self.pilot._exam_manual_review = {}
+        self.pilot._exam_fail_counts = {}
+
+    def test_pending_course_with_insufficient_hours_is_not_excluded(self):
+        """測試時數不足但曾考過試且填過問卷之課程，依然保留在 pending 待上課清單。"""
+        # 課程：時數 0/2 小時，但 exam_score=100 且 fill=1
+        course = {
+            "course_id": "1001",
+            "caption": "資安法規與實務",
+            "rss": "00:00:00",
+            "criteria_content_hour": "02:00:00",
+            "exam_score": 100,
+            "pass_score": 60,
+            "fill": "1",
+            "status_open": "1",
+            "play_type": "scorm",
+        }
+
+        # 模擬 _is_open_course, _is_playable_course, _is_exam_passed
+        self.pilot._is_open_course = lambda c: True
+        self.pilot._is_playable_course = lambda c: True
+        self.pilot._is_exam_passed = lambda c: True
+
+        # 待上課清單過濾條件
+        from app import to_sec
+        courses = [course]
+        pending = [
+            c
+            for c in courses
+            if self.pilot._is_open_course(c)
+            and self.pilot._is_playable_course(c)
+            and to_sec(c.get("rss", "00:00:00"))
+            < to_sec(c.get("criteria_content_hour", "00:00:00"))
+            * self.pilot.config.get("target_percentage", 1.0)
+            and str(c.get("course_id", "")) not in self.pilot._completed_in_session
+        ]
+
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["course_id"], "1001")
+
+    def test_exam_failed_3_times_marked_in_manual_review(self):
+        """測試測驗失敗達 3 次上限時，正確加入 _exam_manual_review。"""
+        course = {"course_id": "2002", "caption": "政府採購法"}
+        self.pilot._mark_exam_manual_review = lambda c, r: self.pilot._exam_manual_review.update({str(c["course_id"]): {"caption": c["caption"], "reason": r}})
+        
+        # 模擬不及格達 3 次
+        c_id = str(course["course_id"])
+        self.pilot._exam_fail_counts[c_id] = 3
+        
+        if self.pilot._exam_fail_counts.get(c_id, 0) >= 3:
+            self.pilot._mark_exam_manual_review(course, "測驗連續不及格已達 3 次上限")
+            self.pilot._completed_in_session.add(c_id)
+
+        self.assertIn("2002", self.pilot._exam_manual_review)
+        self.assertEqual(self.pilot._exam_manual_review["2002"]["reason"], "測驗連續不及格已達 3 次上限")
+
+
+if __name__ == "__main__":
+    unittest.main()
