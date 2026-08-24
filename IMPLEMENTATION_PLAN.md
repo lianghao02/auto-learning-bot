@@ -50,13 +50,14 @@
 ## 驗證紀錄
 
 - Python 3.13 語法檢查：通過。
-- `python -m unittest discover -s tests -v`：32 項全部通過。
+- `python -m unittest discover -s tests -v`：35 項全部通過。
 - PowerShell 來源與封裝腳本 parser：通過。
 - Windows PowerShell 5.1 隔離更新演練：成功切換與故障 rollback 均通過。
 - 最終 Portable runtime：Python 3.13.0，PySide6、Selenium、requests、OpenCV、NumPy、ddddocr、psutil 匯入通過。
 - 最終 ZIP：6,434 筆項目；無頂層 `data/`、個人 `config.json`、執行中 `questions.db`、日誌、`__pycache__` 或 bytecode。
 - 最終 ZIP 完整 staging、內部 manifest 驗證及暫存清理：通過。
-- 最終 ZIP SHA-256：`8892599a369cdba544288ee07f6340bbf61df912fc6b9f03aa4b38f991be8eb3`。
+- 最終資產：`AdminEfficiencyPilot_V3.0.1_Portable.zip`。
+- 最終 ZIP SHA-256：`ce9b3ec45062f004d75584f49ce6b061f3fac99c90c0878a276966bb2f7e0fe5`。
 
 ## 剩餘問題
 

@@ -30,6 +30,9 @@ def _read_version() -> str:
 VERSION = _read_version()
 CONFIG = {
     "release_name": f"行政效能領航員_{VERSION}_Portable",
+    # GitHub 會移除 Release asset 檔名中的非 ASCII 字元，導致更新器無法精確比對。
+    # ZIP 內頂層資料夾仍保留中文，僅下載資產採穩定 ASCII 名稱。
+    "archive_name": f"AdminEfficiencyPilot_{VERSION}_Portable",
     "python_version": "3.13",
     "python_abi": "cp313",
     "platform": "win_amd64",
@@ -283,7 +286,7 @@ def main() -> int:
         (RELEASE_DIR / "發行說明.txt").write_text(RELEASE_INFO, encoding="utf-8-sig")
         _write_manifest()
 
-        archive_base = DIST_ROOT / CONFIG["release_name"]
+        archive_base = DIST_ROOT / CONFIG["archive_name"]
         # 發行名稱含版本點號，不能用 with_suffix()，否則 V2.2.0 會被
         # 誤判成副檔名並截成 V2.2.zip。
         archive_path = Path(f"{archive_base}.zip")

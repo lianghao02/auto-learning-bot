@@ -1,5 +1,11 @@
 # 變更紀錄
 
+## [未發布] - 2026-08-24
+
+### 文件
+
+- 明列 Python 3.13／PySide6／Selenium 為主力架構；本次未進行語言遷移。
+
 本專案依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/) 的格式記錄重要異動。
 
 ## [V3.0.1] - 2026-08-24
@@ -13,6 +19,8 @@
   - 使用者主動顯示瀏覽器時立即取消尚未到期的隱藏防護，避免視窗再次被隱藏。
 - **Windows PowerShell 5.1 更新器相容性**：
   - 避免 `Path`／`PATH` 環境變數大小寫重複造成 `Start-Process` 失敗，改以不重建環境字典的方式啟動新版與還原舊版。
+- **GitHub Release 資產名稱相容性**：
+  - 可攜版 ZIP 改採穩定 ASCII 資產名稱 `AdminEfficiencyPilot_V3.0.1_Portable.zip`，避免 GitHub 移除中文檔名後導致更新器無法精確比對。
 
 ### 驗證
 

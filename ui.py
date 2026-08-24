@@ -123,7 +123,7 @@ def parse_release_update(data: dict, current_version: str):
         data.get("html_url")
         or "https://github.com/lianghao02/auto-learning-bot/releases/latest"
     )
-    expected_name = f"行政效能領航員_{latest.upper()}_Portable.zip".casefold()
+    expected_name = f"AdminEfficiencyPilot_{latest.upper()}_Portable.zip".casefold()
     asset = next(
         (
             item
@@ -2098,7 +2098,7 @@ class UpdateDialog(QDialog):
 
         # 暫存檔案路徑
         tmp_dir = tempfile.gettempdir()
-        self.downloaded_path = os.path.join(tmp_dir, f"行政效能領航員_{self.latest}_Portable.zip")
+        self.downloaded_path = os.path.join(tmp_dir, f"AdminEfficiencyPilot_{self.latest}_Portable.zip")
 
         # 訊號
         self._dl_signal = _DownloadProgressSignal()
