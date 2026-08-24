@@ -16,7 +16,7 @@ from pathlib import Path
 
 
 CONFIG = {
-    "release_name": "行政效能領航員_V2.4.0_Portable",
+    "release_name": "行政效能領航員_V2.5.0_Portable",
     "python_version": "3.11",
     "python_abi": "cp311",
     "platform": "win_amd64",
@@ -70,7 +70,7 @@ pause
 exit /b 1
 """
 
-RELEASE_INFO = """行政效能領航員 V2.4.0 可攜式版本
+RELEASE_INFO = """行政效能領航員 V2.5.0 可攜式版本
 
 使用方式：
 1. 將整個資料夾解壓縮至本機可寫入的位置。
