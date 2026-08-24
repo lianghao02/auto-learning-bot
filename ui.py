@@ -5,6 +5,7 @@ import re
 import threading
 import random
 import math
+import traceback
 from datetime import datetime
 
 # 確保 PyInstaller frozen 模式下 _MEIPASS 在 sys.path 最前面
@@ -4088,36 +4089,61 @@ class MainWindow(QWidget):
 # Run
 # =========================
 if __name__ == "__main__":
-    # 強制把工作目錄切到 exe / 腳本所在資料夾，
-    # 避免從捷徑或 updater.bat 啟動時 cwd 跑到 System32 導致 config.json 寫入權限錯誤
     try:
+        # 強制把工作目錄切到 exe / 腳本所在資料夾，
+        # 避免從捷徑或 updater.bat 啟動時 cwd 跑到 System32 導致 config.json 寫入權限錯誤
+        try:
+            if getattr(sys, "frozen", False):
+                _base_dir = os.path.dirname(sys.executable)
+            else:
+                _base_dir = os.path.dirname(os.path.abspath(__file__))
+            os.chdir(_base_dir)
+        except Exception:
+            pass
+
+        app = QApplication(sys.argv)
+        app.setStyleSheet(GLOBAL_QSS)
+
+        # 清理同目錄下的舊版 exe（default.exe、含版本號的 _VX.X.X.exe）
         if getattr(sys, "frozen", False):
-            _base_dir = os.path.dirname(sys.executable)
-        else:
-            _base_dir = os.path.dirname(os.path.abspath(__file__))
-        os.chdir(_base_dir)
-    except Exception:
-        pass
+            import glob as _glob
+            _exe_dir = os.path.dirname(sys.executable)
+            _correct = os.path.basename(sys.executable)
+            _patterns = [
+                os.path.join(_exe_dir, "default.exe"),
+                *_glob.glob(os.path.join(_exe_dir, "*_V[0-9]*.[0-9]*.[0-9]*.exe")),
+                *_glob.glob(os.path.join(_exe_dir, "*FAKE*.exe")),
+            ]
+            for _old in _patterns:
+                try:
+                    if os.path.exists(_old) and os.path.basename(_old) != _correct:
+                        os.remove(_old)
+                except Exception:
+                    pass
+        w = MainWindow()
+        w.show()
 
-    app = QApplication(sys.argv)
-    app.setStyleSheet(GLOBAL_QSS)
-
-    # 清理同目錄下的舊版 exe（default.exe、含版本號的 _VX.X.X.exe）
-    if getattr(sys, "frozen", False):
-        import glob as _glob
-        _exe_dir = os.path.dirname(sys.executable)
-        _correct = os.path.basename(sys.executable)
-        _patterns = [
-            os.path.join(_exe_dir, "default.exe"),
-            *_glob.glob(os.path.join(_exe_dir, "*_V[0-9]*.[0-9]*.[0-9]*.exe")),
-            *_glob.glob(os.path.join(_exe_dir, "*FAKE*.exe")),
-        ]
-        for _old in _patterns:
+        # 程式正常啟動並顯示主介面後，自動隱藏 CMD / Console 控制台視窗
+        if os.name == "nt" and "--debug" not in sys.argv and os.environ.get("DEBUG") != "1":
             try:
-                if os.path.exists(_old) and os.path.basename(_old) != _correct:
-                    os.remove(_old)
+                import ctypes
+                _hwnd = ctypes.windll.kernel32.GetConsoleWindow()
+                if _hwnd:
+                    ctypes.windll.user32.ShowWindow(_hwnd, 0)  # 0 = SW_HIDE
             except Exception:
                 pass
-    w = MainWindow()
-    w.show()
-    sys.exit(app.exec())
+
+        sys.exit(app.exec())
+    except Exception as exc:
+        err_msg = f"【程式啟動失敗】\n\n發生未預期的例外錯誤：\n{traceback.format_exc()}"
+        try:
+            with open("startup_error.log", "w", encoding="utf-8") as f:
+                f.write(err_msg)
+        except Exception:
+            pass
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(0, err_msg, "啟動失敗 - 行政效能領航員", 0x10)
+        except Exception:
+            print(err_msg, file=sys.stderr)
+        sys.exit(1)
