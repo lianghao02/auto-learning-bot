@@ -1187,14 +1187,17 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             print('臺北E大登入失敗：缺少帳號或密碼')
             return False
 
+        headless_mode = config.get('headless', False)
         opts = Options()
-        if config.get('headless', False):
-            opts.add_argument('--headless=new')
+        opts.add_argument('--window-size=1400,900')
         opts.add_argument('--disable-gpu')
         opts.add_argument('--mute-audio')
         opts.add_argument('--no-sandbox')
         opts.add_argument('--disable-dev-shm-usage')
         opts.add_argument('--disable-extensions')
+        opts.add_argument('--disable-background-timer-throttling')
+        opts.add_argument('--disable-backgrounding-occluded-windows')
+        opts.add_argument('--disable-renderer-backgrounding')
         # 防禦臺北E大資安升級引發的混合內容(HTTPS/HTTP)或不安全警告阻擋
         opts.add_argument('--allow-running-insecure-content')
         opts.add_argument('--ignore-certificate-errors')
@@ -1206,7 +1209,11 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             from selenium.webdriver.chrome.service import Service as ChromeService
             _driver_path = os.path.abspath(download_best_chromedriver())
             print(f'  🔧 使用 chromedriver: {_driver_path}')
-            driver = webdriver.Chrome(service=ChromeService(_driver_path), options=opts)
+            _service = ChromeService(_driver_path)
+            if sys.platform == 'win32':
+                import subprocess
+                _service.creation_flags = subprocess.CREATE_NO_WINDOW
+            driver = webdriver.Chrome(service=_service, options=opts)
         except Exception as _e:
             print(f'  ⚠️ 無法取得指定 chromedriver，嘗試系統 PATH: {_e}')
             driver = webdriver.Chrome(options=opts)
@@ -1215,6 +1222,9 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         with _DRIVER_LOCK:
             _ACTIVE_DRIVER = driver
         driver.set_window_size(1400, 900)
+
+        if headless_mode and sys.platform == 'win32':
+            set_driver_window_visibility(driver, False)
         wait = WebDriverWait(driver, 20)
 
         print('=== 登入 ===')

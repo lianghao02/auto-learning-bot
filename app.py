@@ -2330,42 +2330,32 @@ class AdminEfficiencyPilot:
 
             # ⭐ 關鍵：從 self.config 直接讀取
             headless_mode = self.config.get("headless", True)
+            self._is_chrome_hidden = bool(headless_mode)
 
-            # ⭐ 調試
-            logger.info(
-                f"🔧 Headless 模式: {headless_mode} (類型: {type(headless_mode).__name__})"
-            )
+            options.add_argument("--window-size=1920,1080")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--disable-background-timer-throttling")
+            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--disable-renderer-backgrounding")
 
             if headless_mode:
-                # ⚡ 背景執行：啟用極速輕量化參數封鎖非必要資源
-                logger.info("⚙️ 使用 Headless 模式（背景執行 + 極速輕量化）")
-                options.add_argument("--headless=old")
-                options.add_argument("--window-size=1920,1080")
-                options.add_argument("--disable-blink-features=AutomationControlled")
-                # 封鎖背景圖片請求，節省 60% 網路流量與 CPU 渲染
-                options.add_argument("--blink-settings=imagesEnabled=false")
-                # 防止 Chrome 在背景 Thread 中被 OS 降速節流
-                options.add_argument("--disable-background-timer-throttling")
-                options.add_argument("--disable-backgrounding-occluded-windows")
-                options.add_argument("--disable-renderer-backgrounding")
-                # 透過 Chrome Preferences 進一步限制圖片資源載入
-                prefs = {
-                    "profile.managed_default_content_settings.images": 2,
-                    "profile.default_content_setting_values.notifications": 2,
-                }
-                options.add_experimental_option("prefs", prefs)
+                logger.info("⚙️ 使用無痕背景模式（背景執行，可隨時點擊「👁️ 顯示瀏覽器」查看）")
             else:
-                # 顯示視窗模式：維持完整畫面，不做任何限制
-                logger.info("🖥️ 使用顯示模式（有窗口）")
-                options.add_argument("--window-size=1920,1080")
-                options.add_argument("--disable-blink-features=AutomationControlled")
+                logger.info("🖥️ 使用桌面顯示模式（視窗保持可見）")
 
             self._driver_service = Service(driver_path)
+            if sys.platform == "win32":
+                import subprocess
+                self._driver_service.creation_flags = subprocess.CREATE_NO_WINDOW
+
             self.driver = webdriver.Chrome(
                 service=self._driver_service, options=options
             )
             if self._driver_service.process:
                 self._managed_pids.add(self._driver_service.process.pid)
+
+            if headless_mode and sys.platform == "win32":
+                set_driver_window_visibility(self.driver, False)
 
             self.driver.execute_script(
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
@@ -2922,16 +2912,73 @@ class AdminEfficiencyPilot:
         logger.info("✅ 重新登入並同步 session 完成。")
         return True
 
+    def _resolve_hahow_device_sessions(self) -> bool:
+        """若外購平臺 Hahow 遇到登入裝置數量上限（device_sessions），自動登出舊裝置並點擊『繼續』"""
+        if not self.driver:
+            return False
+        curr_h = None
+        try:
+            curr_h = self.driver.current_window_handle
+        except Exception:
+            pass
+
+        try:
+            for handle in list(self.driver.window_handles):
+                try:
+                    self.driver.switch_to.window(handle)
+                    url = self.driver.current_url or ""
+                    if "hahow.in" in url:
+                        handled = self.driver.execute_script("""
+                            var text = document.body ? document.body.innerText : '';
+                            if (location.href.indexOf('device_sessions') !== -1 || text.indexOf('登入數量上限') !== -1 || text.indexOf('登出下面其中') !== -1) {
+                                var logoutBtns = document.querySelectorAll('button, a.btn');
+                                for (var i = 0; i < logoutBtns.length; i++) {
+                                    var t = (logoutBtns[i].innerText || logoutBtns[i].textContent || '').trim();
+                                    if (t === '登出') {
+                                        logoutBtns[i].click();
+                                        break;
+                                    }
+                                }
+                                return true;
+                            }
+                            return false;
+                        """)
+                        if handled:
+                            time.sleep(1.5)
+                            self.driver.execute_script("""
+                                var continueBtns = document.querySelectorAll('button, a.btn');
+                                for (var j = 0; j < continueBtns.length; j++) {
+                                    var ct = (continueBtns[j].innerText || continueBtns[j].textContent || '').trim();
+                                    if (ct === '繼續' && !continueBtns[j].disabled) {
+                                        continueBtns[j].click();
+                                        break;
+                                    }
+                                }
+                            """)
+                            logger.info("   🔓 偵測到 Hahow 裝置數量上限，已自動排除舊裝置並點擊「繼續」進入平臺！")
+                            time.sleep(2)
+                            return True
+                except Exception:
+                    continue
+        finally:
+            if curr_h:
+                try:
+                    self.driver.switch_to.window(curr_h)
+                except Exception:
+                    pass
+        return False
+
     def find_classroom_window(self):
-        """Return the browser window that owns the course frame tree or MOOCs player."""
+        """Return the browser window that owns the course frame tree or MOOCs/Hahow player."""
         if not self.driver:
             return None
+        self._resolve_hahow_device_sessions()
         try:
             handles = list(self.driver.window_handles)
         except Exception:
             return None
 
-        # 1. 優先尋找傳統 frameset 教室（s_catalog / pathtree）
+        # 1. 第一優先：尋找傳統 frameset 教室（s_catalog / pathtree）
         for handle in reversed(handles):
             try:
                 self.driver.switch_to.window(handle)
@@ -2947,29 +2994,29 @@ class AdminEfficiencyPilot:
                     pass
                 continue
 
-        # 2. 相容新版 MOOCs / HTML5 教室視窗（非登入頁/非學習概況統計頁，且包含課程相關路徑或播放器特徵）
+        # 2. 第二優先：尋找外購平臺 / 現代播放器視窗（如 Hahow, /learn/, /controllers/, 具備 <video> 或播放器之獨立分頁）
         for handle in reversed(handles):
             try:
                 self.driver.switch_to.window(handle)
                 self.driver.switch_to.default_content()
                 url = self.driver.current_url or ""
-                # 排除純登入頁、首頁或學習概況/儀表板總覽頁
-                if any(k in url for k in ["Clogin.aspx", "egov_login.php", "learn_stat.php", "learn_dashboard.php", "mooc/index.php"]):
+                # 排除純登入頁、首頁或學習概況/儀表板總覽頁與純介紹頁（/info/）
+                if any(k in url for k in ["Clogin.aspx", "egov_login.php", "learn_stat.php", "learn_dashboard.php", "mooc/index.php", "/info/"]):
                     continue
-                # 若 URL 包含課程相關路徑或頁面含有影音/章節容器
-                is_course_url = any(k in url for k in ["/learn/", "/info/", "/course/", "/controllers/"])
+                # 若 URL 包含課程相關路徑（hahow、learn、course、controllers）或頁面含有播放器特徵
+                is_player_url = any(k in url for k in ["hahow.in", "/learn/", "/course/", "/controllers/", "player"])
                 has_player_or_units = self.driver.execute_script("""
                     return !!(
-                        document.querySelector('video, audio, .video-js, #player, .player, [class*="unit"], [class*="chapter"], [class*="node"], a[onclick*="play"]') ||
+                        document.querySelector('video, audio, .video-js, #player, .player, [class*="unit"], [class*="chapter"], [class*="lecture"], [class*="LectureItem"], [class*="node"], a[onclick*="play"]') ||
                         window.API || window.LMSCommit
                     );
                 """)
-                if is_course_url or has_player_or_units:
+                if is_player_url or has_player_or_units:
                     return handle
             except Exception:
                 continue
 
-        # 3. 若有多個視窗且非 stat 頁面，回傳最後開啟之視窗作為 fallback
+        # 3. 第三優先：若有多個視窗且非 stat 頁面，回傳最後開啟之視窗作為 fallback
         if len(handles) > 1:
             for handle in reversed(handles):
                 try:
@@ -2980,6 +3027,10 @@ class AdminEfficiencyPilot:
                 except Exception:
                     pass
             return handles[-1]
+
+        # 4. 保底：若只有 1 個視窗
+        if len(handles) == 1:
+            return handles[0]
 
         return None
 
@@ -3269,6 +3320,19 @@ class AdminEfficiencyPilot:
                 info_alert = self._accept_alert_if_present()
                 if info_alert:
                     logger.info(f"   ℹ️ 課程平台轉址提示：{info_alert}")
+                    if any(k in info_alert for k in ["外購", "Hahow", "外部平臺"]):
+                        logger.warning(f"   ⏩ 「{course.get('caption', '')}」為外購平臺課程，自動略過並優先研習本平臺課程。")
+                        self._completed_in_session.add(str(course.get("course_id", "")))
+                        try:
+                            for h in list(self.driver.window_handles):
+                                if orig_handles and h != orig_handles[0]:
+                                    self.driver.switch_to.window(h)
+                                    self.driver.close()
+                            if orig_handles:
+                                self.driver.switch_to.window(orig_handles[0])
+                        except Exception:
+                            pass
+                        return "SKIP"
 
                 self.safe_sleep(4)
                 try:
@@ -3426,15 +3490,40 @@ class AdminEfficiencyPilot:
                             }
                         """)
 
-                    # 尋找真實課程章節單元連結
+                    # 💡 若當前停留在 Hahow /home 首頁，自動點擊當前課程或進入「我的學習」
+                    if "hahow.in" in current_url and "/home" in current_url:
+                        c_caption = str(course.get("caption", ""))[:8]
+                        self.driver.execute_script(f"""
+                            var links = document.querySelectorAll('a, button, [role="button"], .card, [class*="item"]');
+                            var found = false;
+                            for (var i = 0; i < links.length; i++) {{
+                                var t = (links[i].innerText || links[i].textContent || '').trim();
+                                if ('{c_caption}' && t.indexOf('{c_caption}') !== -1) {{
+                                    links[i].click();
+                                    found = true;
+                                    break;
+                                }}
+                            }}
+                            if (!found) {{
+                                for (var j = 0; j < links.length; j++) {{
+                                    var txt = (links[j].innerText || links[j].textContent || '').trim();
+                                    if (txt.indexOf('我的學習') !== -1) {{
+                                        links[j].click();
+                                        break;
+                                    }}
+                                }}
+                            }}
+                        """)
+
+                    # 尋找真實課程章節單元連結（含 Hahow / MOOCs 現代播放器）
                     moocs_links = self.driver.find_elements(
                         By.CSS_SELECTOR,
-                        "a.unit-item, .chapter-list a, .tree-node a, a[href*='node'], a[onclick*='play'], a[onclick*='read'], li.leaf a, .course-outline a, .outline a, a.list-group-item, .unit-title, a[href*='catalog'], [class*='unit'] a, [class*='chapter'] a"
+                        "a.unit-item, .chapter-list a, .tree-node a, a[href*='node'], a[onclick*='play'], a[onclick*='read'], li.leaf a, .course-outline a, .outline a, a.list-group-item, .unit-title, a[href*='catalog'], [class*='unit'] a, [class*='chapter'] a, a[href*='lecture'], [class*='LectureItem'], [class*='lecture-item'], button[class*='lecture'], div[role='button'][class*='item']"
                     )
                     if not moocs_links:
                         moocs_links = self.driver.find_elements(
                             By.XPATH,
-                            "//a[contains(@href, 'node') or contains(@href, 'play') or contains(@href, 'unit') or contains(@href, 'catalog') or contains(@class, 'unit') or contains(@class, 'chapter')]"
+                            "//a[contains(@href, 'node') or contains(@href, 'play') or contains(@href, 'unit') or contains(@href, 'catalog') or contains(@href, 'lecture') or contains(@class, 'unit') or contains(@class, 'chapter') or contains(@class, 'lecture')]"
                         )
 
                     # 排除非課程內容的通用導覽標籤（無效導航）
@@ -3468,17 +3557,35 @@ class AdminEfficiencyPilot:
                     if target:
                         u_name = target.text.strip()
                         attempted.add(u_name)
-                        logger.info(f"   📍 進入單元（MOOCs）：{u_name[:25]}...")
+                        logger.info(f"   📍 進入單元（MOOCs/Hahow）：{u_name[:25]}...")
                         try:
                             self.driver.execute_script("arguments[0].click();", target)
                         except Exception:
                             pass
+                    else:
+                        logger.info("   📍 正在播放課程影音內容（MOOCs/Hahow）...")
 
-                    # 嘗試播放影片與定時 commit
+                    # 嘗試播放影片與觸發播放器
                     try:
                         self.driver.execute_script("""
-                            var v = document.querySelector('video');
-                            if (v) { v.muted = true; v.play().catch(function(){}); }
+                            function playAllVideos(doc) {
+                                try {
+                                    var vs = doc.querySelectorAll('video');
+                                    for (var i = 0; i < vs.length; i++) {
+                                        vs[i].muted = true;
+                                        if (vs[i].paused) vs[i].play().catch(function(){});
+                                    }
+                                    var pbtn = doc.querySelector('[aria-label*="Play"], [aria-label*="播放"], button.vjs-big-play-button, .vjs-play-control, [class*="PlayButton"]');
+                                    if (pbtn) { pbtn.click(); }
+                                } catch(e){}
+                                try {
+                                    var iframes = doc.querySelectorAll('iframe');
+                                    for (var j = 0; j < iframes.length; j++) {
+                                        playAllVideos(iframes[j].contentDocument);
+                                    }
+                                } catch(e){}
+                            }
+                            playAllVideos(document);
                         """)
                     except Exception:
                         pass
@@ -3492,9 +3599,17 @@ class AdminEfficiencyPilot:
 
                         time.sleep(1)
                         self.driver.switch_to.window(classroom_h)
-                        self.driver.execute_script(
-                            "function deepCommit(win){ try{if(win.API)win.API.LMSCommit('');}catch(e){} if(win.frames){for(let i=0;i<win.frames.length;i++)deepCommit(win.frames[i]);}} deepCommit(window);"
-                        )
+                        self.driver.execute_script("""
+                            function deepCommit(win){
+                                try{if(win.API)win.API.LMSCommit('');}catch(e){}
+                                try{
+                                    var v = win.document.querySelector('video');
+                                    if (v && v.paused) { v.muted = true; v.play().catch(function(){}); }
+                                }catch(e){}
+                                if(win.frames){for(let i=0;i<win.frames.length;i++)deepCommit(win.frames[i]);}
+                            }
+                            deepCommit(window);
+                        """)
 
             # ⭐ 檢查點 11（結束前）
             if not self.running:
@@ -3555,7 +3670,16 @@ class AdminEfficiencyPilot:
                     pass
                 time.sleep(3)
                 return "SKIP"
-            elif any(kw in alert_text for kw in ["外購", "Hahow", "平臺", "平台", "閱讀", "磨課師", "提醒", "另開", "視窗", "即將進入"]):
+            elif any(kw in alert_text for kw in ["外購", "Hahow"]):
+                logger.warning(f"   ⏩ 「{course.get('caption', '')}」為外購平臺課程（{alert_text}），自動略過並切換下一門課程。")
+                self._completed_in_session.add(str(course.get("course_id", "")))
+                try:
+                    self.driver.get(self.stat_url)
+                except Exception:
+                    pass
+                time.sleep(2)
+                return "SKIP"
+            elif any(kw in alert_text for kw in ["平臺", "平台", "閱讀", "磨課師", "提醒", "另開", "視窗", "即將進入"]):
                 logger.info(f"   ℹ️ 外部平臺通知已自動確認（{alert_text}），重新進入教室...")
                 return "RELOGIN"
             else:
