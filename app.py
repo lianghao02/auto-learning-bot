@@ -137,11 +137,12 @@ def _read_local_version() -> str:
 class AdminEfficiencyPilot:
     VERSION = _read_local_version()
     CHANGELOG = (
-        "V3.0.1 背景視窗穩定度修正\n"
-        "• 新視窗建立後短期重複套用 Win32 隱藏狀態，降低切頁時 Chrome 短暫跳出\n"
-        "• 補齊課程、測驗、問卷與 SCORM 新視窗切換後的隱藏攔截\n"
-        "• 使用者主動顯示瀏覽器時立即取消隱藏防護，避免視窗再次被藏起來\n"
-        "• 延續 V3.0.0 的 Python 3.13、安全可攜更新與人機協同測驗功能"
+        "V3.1.0 Session 定期保養與跳轉防護\n"
+        "• 主動定期 Session 保養：預設每連續研習滿 5 小時，在課程結算後深度清理 Cookie 並全新重登，杜絕 SSO Token 衰退\n"
+        "• 修復平臺端重新導向異常 (ERR_TOO_MANY_REDIRECTS)，自動略過並記錄待查\n"
+        "• 排除 mooc/index.php 正常課程路徑之登出誤判，並加入單一課程重登重試防護鎖\n"
+        "• 全面涵蓋單門上課與批次問卷/測驗完成場景，確保長時間掛機（8~24 小時以上）穩定不中斷\n"
+        "• 延續 V3.0.0 的 Python 3.13 現代架構、SHA-256 安全更新與人機協同測驗助理"
     )
 
     def __init__(

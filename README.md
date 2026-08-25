@@ -4,7 +4,7 @@
 
 本專案主力為 **Python 3.13／PySide6／Selenium**，並使用 OpenCV、ddddocr 與 SQLite 處理行政網站自動化與人機協同流程。外部網站變動與 OCR 生態系是主要維護邊界，現階段不進行 C#、Rust 或 Web 重寫。
 
-[![Version](https://img.shields.io/badge/version-V3.0.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
+[![Version](https://img.shields.io/badge/version-V3.1.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 
@@ -13,11 +13,21 @@
 ## 下載、依賴與啟動
 
 - **系統**：Windows 10/11、Chrome 或 Edge；主要開發、自癒與可攜發行環境統一為 Python 3.13。
-- **可攜版啟動**：下載 `AdminEfficiencyPilot_V3.0.1_Portable.zip`，完整解壓後雙擊 `啟動程式.bat`；解壓後仍是中文程式資料夾，內含 Python 3.13 runtime，不會在使用者電腦執行 pip。
+- **可攜版啟動**：下載 `AdminEfficiencyPilot_V3.1.0_Portable.zip`，完整解壓後雙擊 `啟動程式.bat`；解壓後仍是中文程式資料夾，內含 Python 3.13 runtime，不會在使用者電腦執行 pip。
 - **原始碼啟動**：可使用 `RUN.bat` 建立／修復本機 `python_embed`，或依下列方式建立虛擬環境。
 - **手動安裝**：`py -3.13 -m venv .venv`，啟用後執行 `python -m pip install -r requirements.txt`，再執行 `python ui.py`。
 - **執行依賴**：PySide6、Selenium、requests、psutil、NumPy、OpenCV、ddddocr 等，版本範圍都在 `requirements.txt`。
 - **敏感資料**：`config.json`、登入資訊、題庫與執行紀錄不可提交到 GitHub；平台流程變更時仍需人工確認。
+
+## 🌟 V3.1.0 重要功能與更新亮點
+
+- 🧹 **主動定期 Session 保養與 Cookie 深度清理重登機制**：
+  - 研習主迴圈新增自動定時維護機制，預設每連續研習滿 **5 小時**（可於 `config.json` 的 `session_refresh_hours` 彈性調整），於課程結算（時數+問卷/測驗）完成後自動啟動。
+  - 保養流程主動關閉殘留子分頁，呼叫 `delete_all_cookies()` 與 `http_session.cookies.clear()` 深度清除積累之快取與過期 Session，並重新執行完整登入獲取全新 SSO 憑證。
+  - 全面覆蓋「單門逐面上課流程」與「批次問卷/測驗結算流程」，確保長時間掛機（8~24 小時以上）穩定不中斷。
+- 🛡️ **平臺重新導向異常 (ERR_TOO_MANY_REDIRECTS) 防護與死循環阻斷**：
+  - 自動偵測 Chrome `ERR_TOO_MANY_REDIRECTS`（重新導向次數過多）與 `ERR_NAME_NOT_RESOLVED` 等平臺故障，安全跳過（SKIP）並記錄至待人工查核清單。
+  - 排除 `mooc/index.php` 正常路徑之登出誤判，並加入單一課程重登重試防護鎖（連續 2 次異常自動略過），徹底消除無限重登死循環。
 
 ## 🛡️ V3.0.1 背景視窗穩定度修正
 
