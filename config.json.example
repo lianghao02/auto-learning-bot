@@ -18,6 +18,7 @@
         "allow_insecure_tls_compatibility": false,
         "residence_time": 75,
         "target_percentage": 1.05,
+        "session_refresh_hours": 5.0,
         "ai_provider": "Gemini",
         "ai_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
         "ai_model": "gemini-2.0-flash-lite",

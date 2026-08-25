@@ -316,6 +316,7 @@ class AdminEfficiencyPilot:
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
         self._exam_manual_review = {}  # course_id → 無法開啟測驗，待下次重新嘗試或人工確認
         self._course_relogin_counts = {}  # course_id → 重登/重試次數防護
+        self._last_session_refresh_time = time.time()  # 上次主動刷新 Session 時間
         self._expanded_packages = set()  # 手動修復模式已檢查之組裝/套裝課程 ID
         self._package_preflight_completed = False  # 組裝課程手動修復檢查狀態
         self._last_course_count = 0
@@ -2389,6 +2390,40 @@ class AdminEfficiencyPilot:
             logger.error(f"sync_session 失敗: {e}")
             return False
 
+    def _proactive_session_refresh(self) -> bool:
+        """🧹 主動定期 Session 保養與全新登入：清除積累之髒污 Cookie，獲取全新 SSO 憑證。"""
+        logger.info("🧹 執行主動定期 Session 保養：清理全站 Cookie 並重新登入...")
+        try:
+            if self.driver:
+                try:
+                    handles = list(self.driver.window_handles)
+                    if len(handles) > 1:
+                        for h in handles[1:]:
+                            self.driver.switch_to.window(h)
+                            self.driver.close()
+                        self.driver.switch_to.window(handles[0])
+                except Exception:
+                    pass
+                try:
+                    self.driver.delete_all_cookies()
+                except Exception:
+                    pass
+
+            self.http_session.cookies.clear()
+            login_ok = self.login()
+            if login_ok:
+                self.sync_session()
+                self._last_session_refresh_time = time.time()
+                self._course_relogin_counts.clear()
+                logger.info("✅ 主動 Session 保養與全新登入完成，憑證已刷新。")
+                return True
+            else:
+                logger.warning("⚠️ 主動 Session 保養重登失敗，稍後將依常規機制重試。")
+                return False
+        except Exception as e:
+            logger.warning(f"⚠️ 主動 Session 保養發生異常: {e}")
+            return False
+
     @staticmethod
     def _is_logout_text(text) -> bool:
         text = str(text or "")
@@ -4064,6 +4099,15 @@ class AdminEfficiencyPilot:
                         elif res == "ERROR":
                             logger.info("⏳ 發生研習異常，稍後嘗試下一門課程...")
                             time.sleep(5)
+
+                        # 💡 主動定期 Session 保養：每連續研習滿指定時數（預設 5 小時），在課程結算後自動刷新 Cookie 與 Session
+                        refresh_hours = float(self.config.get("session_refresh_hours", 5.0))
+                        if (
+                            self.running
+                            and refresh_hours > 0
+                            and (time.time() - self._last_session_refresh_time) >= (refresh_hours * 3600)
+                        ):
+                            self._proactive_session_refresh()
 
                 except Exception as e:
                     logger.error(f"⚠️ 核心迴圈發生錯誤: {e}")
