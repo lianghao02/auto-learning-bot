@@ -3105,21 +3105,46 @@ class AdminEfficiencyPilot:
             except Exception:
                 continue
 
-        # 3. 第三優先：若有多個視窗且非 stat 頁面，回傳最後開啟之視窗作為 fallback
+        # 3. 第三優先：若有多個視窗且非 stat/首頁/登入/介紹頁面，回傳最後開啟之視窗作為 fallback
         if len(handles) > 1:
             for handle in reversed(handles):
                 try:
                     self.driver.switch_to.window(handle)
                     url = self.driver.current_url or ""
-                    if not any(k in url for k in ["learn_stat.php", "learn_dashboard.php", "mooc/index.php", "Clogin.aspx"]):
+                    if not any(
+                        k in url
+                        for k in [
+                            "learn_stat.php",
+                            "learn_dashboard.php",
+                            "mooc/index.php",
+                            "Clogin.aspx",
+                            "egov_login.php",
+                            "/info/",
+                        ]
+                    ):
                         return handle
                 except Exception:
                     pass
-            return handles[-1]
 
-        # 4. 保底：若只有 1 個視窗
+        # 4. 保底：若只有 1 個視窗且非 stat/首頁/登入/介紹頁面
         if len(handles) == 1:
-            return handles[0]
+            try:
+                self.driver.switch_to.window(handles[0])
+                url = self.driver.current_url or ""
+                if not any(
+                    k in url
+                    for k in [
+                        "learn_stat.php",
+                        "learn_dashboard.php",
+                        "mooc/index.php",
+                        "Clogin.aspx",
+                        "egov_login.php",
+                        "/info/",
+                    ]
+                ):
+                    return handles[0]
+            except Exception:
+                pass
 
         return None
 
@@ -3380,18 +3405,27 @@ class AdminEfficiencyPilot:
                 logger.info("🛑 使用者手動停止（進入課程）")
                 return "STOP"
 
-            # 若 gotoCourse 開啟了新分頁，切換過去；若未開啟且仍在 stat_url，主動導航至 /info/{course_id}
+            # 若 gotoCourse 開啟了新分頁，切換過去
             new_handles = list(self.driver.window_handles)
             if len(new_handles) > len(orig_handles):
                 self.driver.switch_to.window(new_handles[-1])
                 self._auto_hide_popups_if_needed(settle=True)
-            elif "learn_stat.php" in self.driver.current_url:
+
+            cur_u = self.driver.current_url or ""
+            # 💡 若未直接進入教室且非介紹頁（例如停留在首頁 mooc/index.php 或統計頁），強制導航至 /info/{course_id}
+            is_classroom_url = any(
+                k in cur_u for k in ["/learn/", "/course/", "/controllers/", "hahow.in"]
+            )
+            if not is_classroom_url and "/info/" not in cur_u:
+                logger.info(
+                    f"   🧭 導航至課程資訊頁：https://elearn.hrd.gov.tw/info/{course['course_id']}"
+                )
                 self.driver.get(f"https://elearn.hrd.gov.tw/info/{course['course_id']}")
                 self._auto_hide_popups_if_needed(settle=True)
                 self.safe_sleep(3)
+                cur_u = self.driver.current_url or ""
 
             # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
-            cur_u = self.driver.current_url or ""
             if "/info/" in cur_u:
                 info_text = ""
                 try:
@@ -3426,7 +3460,7 @@ class AdminEfficiencyPilot:
                     var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                     for (var i = 0; i < btns.length; i++) {
                         var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                        if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                        if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '報名課程', '我要報名', '加入課程', '確認報名'].some(k => t.indexOf(k) !== -1)) {
                             btns[i].click();
                             return t;
                         }
@@ -3472,8 +3506,12 @@ class AdminEfficiencyPilot:
 
             classroom_h = self.find_classroom_window()
             if not classroom_h:
-                logger.warning("   ⚠️ 找不到課程教室視窗，嘗試重新登入後重試。")
-                return "RELOGIN"
+                logger.warning(
+                    f"   ⚠️ 課程「{course.get('caption', '')}」無法載入有效教室介面（停留在介紹頁或首頁），自動略過並標記為待查核。"
+                )
+                self._mark_exam_manual_review(course, "未能成功載入教室或播放器（停留在介紹/首頁）")
+                self._completed_in_session.add(str(course.get("course_id", "")))
+                return "SKIP"
             self.driver.switch_to.window(classroom_h)
             self._auto_hide_popups_if_needed(settle=True)
 
@@ -3626,6 +3664,18 @@ class AdminEfficiencyPilot:
                     if self._is_logout_text(err_text) or self._is_logout_text(current_url):
                         logger.warning("🔄 帳號閒置或被重導至首頁/登入頁，停止當前教室並立即觸發重新登入。")
                         return "RELOGIN"
+
+                    # 💡 若跳轉回平臺首頁或統計頁（非教室），停止本課程並略過
+                    if any(
+                        k in current_url
+                        for k in ["mooc/index.php", "learn_stat.php", "learn_dashboard.php"]
+                    ):
+                        logger.warning(
+                            f"   ⚠️ 「{course.get('caption', '')}」教室已關閉或跳轉回平臺首頁，停止本課程並優先研習其他課程。"
+                        )
+                        self._mark_exam_manual_review(course, "教室未開啟或跳轉回平臺首頁")
+                        self._completed_in_session.add(str(course.get("course_id", "")))
+                        return "SKIP"
 
                     frame_fail_count = 0
 
