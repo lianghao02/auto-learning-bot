@@ -4054,6 +4054,15 @@ class AdminEfficiencyPilot:
                         if all_exam_done and not pending:
                             break
 
+                        # 💡 主動定期 Session 保養：每連續研習/處理滿指定時數，在批次結算後自動刷新 Cookie 與 Session
+                        refresh_hours = float(self.config.get("session_refresh_hours", 5.0))
+                        if (
+                            self.running
+                            and refresh_hours > 0
+                            and (time.time() - self._last_session_refresh_time) >= (refresh_hours * 3600)
+                        ):
+                            self._proactive_session_refresh()
+
                     # ── 第二步：處理時數未達標的課程（上課）──
                     # 若有考試還在重試中（all_exam_done=False），優先重考，不去上課
                     if pending and all_exam_done:
