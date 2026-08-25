@@ -2578,35 +2578,51 @@ class AdminEfficiencyPilot:
 
     def _is_exam_passed(self, c):
         """檢查該課程之測驗是否已達到及格標準。"""
-        # ``status`` 是課程/報名狀態，不是測驗結果；不可用它判定測驗已通過。
-        # 否則問卷已填、但測驗仍為 0 分的課程會被錯誤略過。
+        # 1. 取得通過狀態文字與標記
         pass_status = str(
-            c.get("exam_pass_status", "") or c.get("pass_status", "")
+            c.get("exam_pass_status", "")
+            or c.get("pass_status", "")
+            or c.get("status_text", "")
+            or ""
         ).strip().lower()
 
-        # 1. 取得及格門檻標準（預設 60 分）
-        try:
-            pass_score = float(c.get("criteria_exam_score") or 60)
-        except Exception:
-            pass_score = 60.0
+        # 若平臺明確標註未通過/不及格/未達標，必定為未通過（如臺灣藍碳 60 分未達 75 分門檻）
+        if any(w in pass_status for w in ["未通過", "不及格", "fail"]):
+            return False
 
-        # 2. 已提供測驗分數時，分數是最明確的判定依據（0 分必定未通過）。
+        # 2. 取得及格門檻標準（預設 60 分，支援 criteria_exam_score, criteria_score, pass_score 等欄位）
+        pass_score = 60.0
+        for f in [
+            "criteria_exam_score",
+            "criteria_score",
+            "pass_score",
+            "exam_pass_score",
+            "criteria_test_score",
+        ]:
+            val = c.get(f)
+            if val is not None and str(val).strip() not in ("", "--", "None", "null", "0", "0.0"):
+                try:
+                    pass_score = float(val)
+                    break
+                except Exception:
+                    pass
+
+        # 3. 若有測驗分數，比對是否達到及格門檻
         score_val = c.get("exam_score")
-        if score_val is not None and str(score_val).strip() not in ("", "--", "None", "null"):
+        if score_val is not None and str(score_val).strip() not in ("", "--", "None", "null", "未填", "未測驗"):
             try:
-                return float(score_val) >= pass_score
+                score_num = float(score_val)
+                if score_num < pass_score:
+                    return False
+                return True
             except Exception:
                 pass
 
-        # 3. 僅接受明確的「測驗」通過欄位；不使用泛用 status。
+        # 4. 明確測驗通過標記
         if pass_status in ["1", "pass", "passed", "已通過", "及格"]:
             return True
 
-        # 4. 若狀態明確標註未通過/不及格
-        if any(w in pass_status for w in ["未通過", "不及格", "fail", "0"]):
-            return False
-
-        # 5. 若有測驗要求（criteria_exam_score > 0 或 write_exam == 1 或 exam_exists == 1）但尚未有及格成績
+        # 5. 若無測驗分數且有測驗要求（criteria_exam_score > 0 或 write_exam == 1 或 exam_exists == 1）
         has_exam_req = (
             (c.get("criteria_exam_score") and str(c.get("criteria_exam_score")).strip() not in ("", "0", "0.0", "--"))
             or str(c.get("write_exam", "0")) == "1"
@@ -2627,20 +2643,23 @@ class AdminEfficiencyPilot:
         if crit_sec > 0 and rss_sec < crit_sec:
             return False
 
-        # 2. 若有測驗要求，測驗必須及格（不可只依賴 status=1 報名狀態）
+        # 2. 若平臺明確標註未通過/不及格
+        pass_status = str(
+            c.get("exam_pass_status", "")
+            or c.get("pass_status", "")
+            or c.get("status_text", "")
+            or ""
+        ).strip().lower()
+        if any(w in pass_status for w in ["未通過", "不及格", "fail"]):
+            return False
+
+        # 3. 若有測驗要求，測驗必須及格（不可只依賴 status=1 報名狀態）
         if not self._is_exam_passed(c):
             return False
 
-        # 3. 若有問卷要求，問卷必須已填寫
+        # 4. 若有問卷要求，問卷必須已填寫
         q_req = bool(c.get("write_questionnaire", ""))
         if q_req and str(c.get("fill", "0")) != "1":
-            return False
-
-        # 4. 若平臺明確標註未通過/不及格
-        pass_status = str(
-            c.get("pass_status", "") or c.get("status_text", "") or ""
-        ).strip().lower()
-        if any(w in pass_status for w in ["未通過", "不及格", "fail"]):
             return False
 
         return True
@@ -3399,14 +3418,30 @@ class AdminEfficiencyPilot:
             if not self.safe_sleep(4):
                 return "STOP"
 
-            # ⭐ 進入課程後先攔截 alert（如「您非本門課的學生」、「直播已結束」等）
+            # ⭐ 進入課程後先攔截 alert（如「您非本門課的學生」、「尚未上架且非上課期間」等）
             try:
                 WebDriverWait(self.driver, 3).until(EC.alert_is_present())
                 alert = self.driver.switch_to.alert
                 alert_text = alert.text
                 alert.accept()
                 logger.warning(f"⚠️ gotoCourse 後偵測到 Alert：{alert_text}")
-                if any(kw in alert_text for kw in ["非本門課", "無法上課", "無權限", "不開放", "未選課", "尚未上架", "已下架", "直播已結束", "尚未開始"]):
+                if any(
+                    kw in alert_text
+                    for kw in [
+                        "非本門課",
+                        "無法上課",
+                        "無權限",
+                        "不開放",
+                        "未選課",
+                        "尚未上架",
+                        "已下架",
+                        "直播已結束",
+                        "尚未開始",
+                        "非上課期間",
+                        "非開放期間",
+                        "無法進入教室",
+                    ]
+                ):
                     logger.warning(f"⚠️ 此課程無法進入（{alert_text}），永久跳過。")
                     self._completed_in_session.add(str(course.get("course_id", "")))
                     return "SKIP"
@@ -3438,6 +3473,26 @@ class AdminEfficiencyPilot:
                 self.driver.get(f"https://elearn.hrd.gov.tw/info/{course['course_id']}")
                 self._auto_hide_popups_if_needed(settle=True)
                 self.safe_sleep(3)
+                info_alert = self._accept_alert_if_present()
+                if info_alert:
+                    logger.warning(f"   ⚠️ 課程頁面提示：{info_alert}")
+                    if any(
+                        kw in info_alert
+                        for kw in [
+                            "尚未上架",
+                            "已下架",
+                            "非上課期間",
+                            "非開放期間",
+                            "無法進入",
+                            "不開放",
+                            "無法上課",
+                        ]
+                    ):
+                        logger.warning(
+                            f"   ⏩ 「{course.get('caption', '')}」尚未上架或非上課期間，自動永久略過。"
+                        )
+                        self._completed_in_session.add(str(course.get("course_id", "")))
+                        return "SKIP"
                 cur_u = self.driver.current_url or ""
 
             # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
@@ -4144,8 +4199,22 @@ class AdminEfficiencyPilot:
                                 alert_text = self._accept_alert_if_present()
                                 if alert_text:
                                     logger.warning(f"   ⚠️ 進入教室時偵測到彈窗訊息: {alert_text}")
-                                    if any(word in alert_text for word in ["尚未上架", "無法進入", "已下架", "直播已結束", "未開放"]):
-                                        logger.warning(f"   ⚠️ 課程「{c.get('caption', '')}」尚未上架、已下架或直播已結束，將在本工作階段永久跳過")
+                                    if any(
+                                        word in alert_text
+                                        for word in [
+                                            "尚未上架",
+                                            "無法進入",
+                                            "已下架",
+                                            "直播已結束",
+                                            "未開放",
+                                            "非上課期間",
+                                            "非開放期間",
+                                            "無法上課",
+                                        ]
+                                    ):
+                                        logger.warning(
+                                            f"   ⚠️ 課程「{c.get('caption', '')}」尚未上架、已下架或非上課期間，將在本工作階段永久跳過"
+                                        )
                                         self._completed_in_session.add(c_id)
                                         continue
 
@@ -4163,12 +4232,12 @@ class AdminEfficiencyPilot:
                                         pass
                                     if any(
                                         kw in info_text
-                                        for kw in ["您已完成此課程", "無法重複取得時數", "已完成此課程"]
-                                    ) or (
-                                        "通過狀態" in info_text
-                                        and "已通過" in info_text
-                                        and ("測驗" in info_text and ("100" in info_text or "及格" in info_text))
-                                    ):
+                                        for kw in [
+                                            "您已完成此課程",
+                                            "無法重複取得時數",
+                                            "已完成此課程",
+                                        ]
+                                    ) or ("通過狀態" in info_text and "已通過" in info_text):
                                         logger.info(
                                             f"   🎉 課程「{c.get('caption', '')}」平臺顯示已全數修畢（已通過），免重複執行。"
                                         )
