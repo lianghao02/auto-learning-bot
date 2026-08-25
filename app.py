@@ -1188,14 +1188,41 @@ class AdminEfficiencyPilot:
             self.driver.switch_to.window(main_window)
             self.driver.switch_to.default_content()
 
-            # 💡 若仍在 /info/ 課程介紹頁面，先點擊「上課去」進入教室介面
+            # 💡 若仍在 /info/ 課程介紹頁面，先檢查是否已通過，或點擊「上課去」進入教室介面
             if "/info/" in self.driver.current_url:
                 try:
+                    info_text = (
+                        self.driver.execute_script(
+                            "return document.body ? document.body.innerText : '';"
+                        )
+                        or ""
+                    )
+                    if (
+                        "通過狀態" in info_text
+                        and "已通過" in info_text
+                        and ("測驗" in info_text and ("100" in info_text or "及格" in info_text))
+                    ) or (
+                        "您已完成此課程" in info_text and "無法重複取得時數" in info_text
+                    ):
+                        logger.info(
+                            f"   🎉 課程「{course.get('caption', '')}」平臺顯示測驗已通過／已完成，免再次測驗。"
+                        )
+                        self._completed_in_session.add(str(course.get("course_id", "")))
+                        return True
+
                     clicked_in = self.driver.execute_script("""
+                        var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
+                        for (var m = 0; m < modalBtns.length; m++) {
+                            var mt = (modalBtns[m].innerText || modalBtns[m].textContent || '').trim();
+                            if (mt === '確定' || mt === '確認') {
+                                modalBtns[m].click();
+                                return '確定（彈窗）';
+                            }
+                        }
                         var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                         for (var i = 0; i < btns.length; i++) {
                             var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                            if (['上課去', '進入課程', '開始上課', '前往教室'].some(k => t.indexOf(k) !== -1)) {
+                            if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
                                 btns[i].click();
                                 return t;
                             }
@@ -2575,6 +2602,34 @@ class AdminEfficiencyPilot:
         # 無任何測驗要求之課程視為測驗通過
         return True
 
+    def _is_course_completed(self, c) -> bool:
+        """檢查課程是否已由平臺確認全數修畢（時數達標且通過，或時數/測驗/問卷全數完成）。"""
+        rss_sec = to_sec(c.get("rss", "00:00:00"))
+        crit_sec = to_sec(c.get("criteria_content_hour", "00:00:00"))
+
+        # 1. 若平臺狀態已明確標註已通過
+        pass_status = str(
+            c.get("status_text", "")
+            or c.get("pass_status", "")
+            or c.get("status", "")
+            or ""
+        ).strip().lower()
+        is_pass = str(c.get("is_pass", "") or "").strip()
+        if is_pass == "1" or pass_status in ["1", "pass", "passed", "已通過"]:
+            # 只要基本門檻時數已滿 100% (criteria_content_hour)
+            if crit_sec == 0 or rss_sec >= crit_sec:
+                return True
+
+        # 2. 閱讀時數達 100% 門檻 且 測驗及格 (或免測驗) 且 問卷已填寫 (或免問卷)
+        if crit_sec > 0 and rss_sec >= crit_sec:
+            exam_ok = self._is_exam_passed(c)
+            q_req = bool(c.get("write_questionnaire", ""))
+            q_ok = (str(c.get("fill", "0")) == "1") or not q_req
+            if exam_ok and q_ok:
+                return True
+
+        return False
+
     def _mark_exam_manual_review(self, course, reason):
         """記錄本次無法完成的測驗，避免重複卡住且禁止宣告全部完成。"""
         course_id = str(course.get("course_id", ""))
@@ -3335,11 +3390,39 @@ class AdminEfficiencyPilot:
                 self._auto_hide_popups_if_needed(settle=True)
                 self.safe_sleep(3)
 
-            # 若停留在 /info/ 介紹頁，點擊「上課去」/「進入課程」等按鈕進入真實教室
+            # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
             cur_u = self.driver.current_url or ""
             if "/info/" in cur_u:
+                info_text = ""
+                try:
+                    info_text = (
+                        self.driver.execute_script(
+                            "return document.body ? document.body.innerText : '';"
+                        )
+                        or ""
+                    )
+                except Exception:
+                    pass
+                if any(
+                    kw in info_text
+                    for kw in ["您已完成此課程", "無法重複取得時數", "已完成此課程"]
+                ) or ("通過狀態" in info_text and "已通過" in info_text):
+                    logger.info(
+                        f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（無法重複取得時數），自動標記完成並略過。"
+                    )
+                    self._completed_in_session.add(str(course.get("course_id", "")))
+                    return "SKIP"
+
                 before_handles = list(self.driver.window_handles)
                 clicked = self.driver.execute_script("""
+                    var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
+                    for (var m = 0; m < modalBtns.length; m++) {
+                        var mt = (modalBtns[m].innerText || modalBtns[m].textContent || '').trim();
+                        if (mt === '確定' || mt === '確認') {
+                            modalBtns[m].click();
+                            return '確定（彈窗）';
+                        }
+                    }
                     var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                     for (var i = 0; i < btns.length; i++) {
                         var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
@@ -3526,6 +3609,17 @@ class AdminEfficiencyPilot:
                             f"   ⚠️ 「{course.get('caption', '')}」平臺網頁異常（重新導向次數過多 ERR_TOO_MANY_REDIRECTS），自動跳過並優先研習其他課程。"
                         )
                         self._mark_exam_manual_review(course, "平臺網頁異常（ERR_TOO_MANY_REDIRECTS 重新導向過多）")
+                        self._completed_in_session.add(str(course.get("course_id", "")))
+                        return "SKIP"
+
+                    # 💡 檢查是否為已完成/無法重複取得時數之課程
+                    if any(
+                        kw in page_src
+                        for kw in ["您已完成此課程", "無法重複取得時數", "已完成此課程"]
+                    ) or ("通過狀態" in page_src and "已通過" in page_src):
+                        logger.info(
+                            f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（無法重複取得時數），自動標記完成並略過。"
+                        )
                         self._completed_in_session.add(str(course.get("course_id", "")))
                         return "SKIP"
 
@@ -3909,6 +4003,7 @@ class AdminEfficiencyPilot:
                         for c in courses
                         if self._is_open_course(c)
                         and self._is_playable_course(c)
+                        and not self._is_course_completed(c)
                         and to_sec(c.get("rss", "00:00:00"))
                         < to_sec(c.get("criteria_content_hour", "00:00:00"))
                         * self.config.get("target_percentage", 1.0)
@@ -3927,6 +4022,9 @@ class AdminEfficiencyPilot:
                         c_id = str(c.get("course_id", ""))
                         if not self._is_open_course(c) or not self._is_playable_course(c):
                             return False
+                        # 若平臺或資料已全數修畢，直接略過
+                        if self._is_course_completed(c):
+                            return False
                         # 本次已成功處理過，跳過
                         if c_id in self._completed_in_session:
                             return False
@@ -3935,7 +4033,7 @@ class AdminEfficiencyPilot:
                             return False
                         hours_done = to_sec(c.get("rss", "00:00:00")) >= to_sec(
                             c.get("criteria_content_hour", "00:00:00")
-                        ) * self.config.get("target_percentage", 1.0)
+                        )
                         if not hours_done:
                             return False
                         # 考試未通過（且未達 3 次不及格上限）
@@ -3986,13 +4084,47 @@ class AdminEfficiencyPilot:
                                         self._completed_in_session.add(c_id)
                                         continue
 
+                                # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
+                                if "/info/" in self.driver.current_url:
+                                    info_text = ""
+                                    try:
+                                        info_text = (
+                                            self.driver.execute_script(
+                                                "return document.body ? document.body.innerText : '';"
+                                            )
+                                            or ""
+                                        )
+                                    except Exception:
+                                        pass
+                                    if any(
+                                        kw in info_text
+                                        for kw in ["您已完成此課程", "無法重複取得時數", "已完成此課程"]
+                                    ) or (
+                                        "通過狀態" in info_text
+                                        and "已通過" in info_text
+                                        and ("測驗" in info_text and ("100" in info_text or "及格" in info_text))
+                                    ):
+                                        logger.info(
+                                            f"   🎉 課程「{c.get('caption', '')}」平臺顯示已全數修畢（已通過），免重複執行。"
+                                        )
+                                        self._completed_in_session.add(c_id)
+                                        continue
+
                                 # 點「開始上課」/「進入課程」/「上課去」按鈕（如有）
                                 try:
                                     clicked_entry = self.driver.execute_script("""
+                                        var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
+                                        for (var m = 0; m < modalBtns.length; m++) {
+                                            var mt = (modalBtns[m].innerText || modalBtns[m].textContent || '').trim();
+                                            if (mt === '確定' || mt === '確認') {
+                                                modalBtns[m].click();
+                                                return '確定（彈窗）';
+                                            }
+                                        }
                                         var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                                         for (var i = 0; i < btns.length; i++) {
                                             var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                                            if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片'].some(k => t.indexOf(k) !== -1)) {
+                                            if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
                                                 btns[i].click();
                                                 return t;
                                             }

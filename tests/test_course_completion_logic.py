@@ -1,4 +1,4 @@
-﻿"""課程完成狀態與題庫寫入防護單元測試。"""
+"""課程完成狀態與題庫寫入防護單元測試。"""
 
 import unittest
 from unittest.mock import MagicMock
@@ -66,6 +66,40 @@ class CourseCompletionLogicTests(unittest.TestCase):
         self.assertIn("2002", self.pilot._exam_manual_review)
         self.assertEqual(self.pilot._exam_manual_review["2002"]["reason"], "測驗連續不及格已達 3 次上限")
 
+    def test_completed_course_with_105_percent_target_is_excluded_from_pending(self):
+        """測試已獲平臺核定為已通過（時數 01:01:47 >= 01:00:00 且測驗滿分問卷已填）的課程，即使 target_percentage 為 1.05 亦不排入 pending。"""
+        from app import to_sec
+        self.pilot.config = {"target_percentage": 1.05}
+        course = {
+            "course_id": "10044040",
+            "caption": "安寧緩和醫療條例與相關法律之臨床運用",
+            "rss": "01:01:47",
+            "criteria_content_hour": "01:00:00",
+            "exam_score": 100,
+            "criteria_exam_score": 60,
+            "fill": "1",
+            "status_text": "已通過",
+        }
+        self.pilot._is_open_course = lambda c: True
+        self.pilot._is_playable_course = lambda c: True
+
+        self.assertTrue(self.pilot._is_course_completed(course))
+
+        courses = [course]
+        pending = [
+            c
+            for c in courses
+            if self.pilot._is_open_course(c)
+            and self.pilot._is_playable_course(c)
+            and not self.pilot._is_course_completed(c)
+            and to_sec(c.get("rss", "00:00:00"))
+            < to_sec(c.get("criteria_content_hour", "00:00:00"))
+            * self.pilot.config.get("target_percentage", 1.0)
+            and str(c.get("course_id", "")) not in self.pilot._completed_in_session
+        ]
+        self.assertEqual(len(pending), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
+
