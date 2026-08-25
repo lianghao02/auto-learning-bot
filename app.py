@@ -1086,11 +1086,22 @@ class AdminEfficiencyPilot:
         passed = False
         time.sleep(3)
 
-        # 取得課程專屬及格門檻（例如 75 分、80 分或預設 60 分）
-        try:
-            pass_score = float(course.get("criteria_exam_score") or 60.0)
-        except Exception:
-            pass_score = 60.0
+        # 取得課程專屬及格門檻（動態支援 60、70、75、80、100 分等各平臺門檻）
+        pass_score = 60.0
+        for f in [
+            "criteria_exam_score",
+            "criteria_score",
+            "pass_score",
+            "exam_pass_score",
+            "criteria_test_score",
+        ]:
+            val = course.get(f)
+            if val is not None and str(val).strip() not in ("", "--", "None", "null", "0", "0.0"):
+                try:
+                    pass_score = float(val)
+                    break
+                except Exception:
+                    pass
 
         try:
             body_text = self.driver.execute_script(
