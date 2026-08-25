@@ -315,6 +315,7 @@ class AdminEfficiencyPilot:
             set()
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
         self._exam_manual_review = {}  # course_id → 無法開啟測驗，待下次重新嘗試或人工確認
+        self._course_relogin_counts = {}  # course_id → 重登/重試次數防護
         self._expanded_packages = set()  # 手動修復模式已檢查之組裝/套裝課程 ID
         self._package_preflight_completed = False  # 組裝課程手動修復檢查狀態
         self._last_course_count = 0
@@ -2391,7 +2392,12 @@ class AdminEfficiencyPilot:
     @staticmethod
     def _is_logout_text(text) -> bool:
         text = str(text or "")
-        return any(kw in text for kw in ("閒置", "重新登入", "登出", "登入後再學習", "請先登入", "請登入", "登入會員", "mooc/index.php", "login"))
+        if not text:
+            return False
+        # 排除正常的 MOOCs 課程/首頁路徑
+        if "mooc/index.php" in text and "login" not in text.lower() and "clogin" not in text.lower():
+            return False
+        return any(kw in text for kw in ("帳號閒置", "系統閒置", "重新登入", "請先登入", "請登入", "登入後再學習", "登入會員", "clogin.aspx", "sys_login.php", "/login.php"))
 
     def _accept_alert_if_present(self) -> str:
         try:
@@ -3466,10 +3472,27 @@ class AdminEfficiencyPilot:
                     alert_text = self._accept_alert_if_present()
                     err_text = f"{alert_text}"
                     current_url = ""
+                    page_src = ""
                     try:
-                        current_url = self.driver.current_url
+                        current_url = self.driver.current_url or ""
+                        page_src = self.driver.page_source or ""
                     except Exception:
                         pass
+
+                    # 💡 檢查是否有瀏覽器重新導向過多 (ERR_TOO_MANY_REDIRECTS) 或網路/伺服器錯誤
+                    if (
+                        "ERR_TOO_MANY_REDIRECTS" in page_src
+                        or "重新導向的次數過多" in page_src
+                        or "ERR_TOO_MANY_REDIRECTS" in current_url
+                        or "ERR_NAME_NOT_RESOLVED" in page_src
+                    ):
+                        logger.warning(
+                            f"   ⚠️ 「{course.get('caption', '')}」平臺網頁異常（重新導向次數過多 ERR_TOO_MANY_REDIRECTS），自動跳過並優先研習其他課程。"
+                        )
+                        self._mark_exam_manual_review(course, "平臺網頁異常（ERR_TOO_MANY_REDIRECTS 重新導向過多）")
+                        self._completed_in_session.add(str(course.get("course_id", "")))
+                        return "SKIP"
+
                     if self._is_logout_text(err_text) or self._is_logout_text(current_url):
                         logger.warning("🔄 帳號閒置或被重導至首頁/登入頁，停止當前教室並立即觸發重新登入。")
                         return "RELOGIN"
@@ -4008,6 +4031,15 @@ class AdminEfficiencyPilot:
                             break
 
                         if res == "RELOGIN":
+                            c_id = str(pending[0].get("course_id", ""))
+                            self._course_relogin_counts[c_id] = self._course_relogin_counts.get(c_id, 0) + 1
+                            if self._course_relogin_counts[c_id] >= 2:
+                                logger.warning(
+                                    f"⚠️ 課程「{pending[0].get('caption', c_id)}」連續觸發重新登入異常（平臺跳轉或頁面失效），自動略過以避免無限循環。"
+                                )
+                                self._mark_exam_manual_review(pending[0], "連續觸發重登異常（平臺頁面跳轉失敗）")
+                                self._completed_in_session.add(c_id)
+                                continue
                             # 閒置登出後已重新登入，重試當前課程（退回 index）
                             logger.info("🔄 閒置登出重新登入成功，重試當前課程...")
                             self.sync_session()  # 確保 http_session 用最新 cookie
