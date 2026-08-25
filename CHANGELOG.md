@@ -8,6 +8,23 @@
 
 本專案依循 [Keep a Changelog](https://keepachangelog.com/zh-TW/1.1.0/) 的格式記錄重要異動。
 
+## [V3.1.0] - 2026-08-25
+
+### 🏆 核心特色
+
+- **主動定期 Session 保養與 Cookie 深度清理重登機制**：
+  - 研習主迴圈新增自動定時維護機制，預設每連續研習滿 **5 小時**（可於 `config.json` 的 `session_refresh_hours` 彈性調整），於課程完成結算後自動啟動。
+  - 保養流程主動關閉殘留子分頁，呼叫 `delete_all_cookies()` 與 `http_session.cookies.clear()` 深度清除積累之快取與過期 Session，並重新執行我的 E 政府完整登入與 `sync_session()`，獲取 100% 全新 SSO 憑證。
+  - 機制全面覆蓋「單門逐面上課流程」與「批次問卷/測驗結算流程」，確保長時間掛機（8~24 小時以上）穩定不中斷。
+
+### 修正
+
+- **平臺重新導向異常 (ERR_TOO_MANY_REDIRECTS) 自動跳過**：
+  - 自動偵測 Chrome `ERR_TOO_MANY_REDIRECTS`（重新導向次數過多）與 `ERR_NAME_NOT_RESOLVED` 等平臺端故障，安全跳過（SKIP）該課程並記錄至待人工查核清單，避免程序卡死。
+- **登出狀態精確判定與死循環阻斷**：
+  - 排除 `mooc/index.php` 正常課程路徑之登出誤判，登出偵測改採精準關鍵字。
+  - 新增單一課程重登重試防護鎖（Relogin Loop Guard），連續觸發 2 次異常自動略過，徹底消除無限重新登入死循環。
+
 ## [V3.0.1] - 2026-08-24
 
 ### 修正
