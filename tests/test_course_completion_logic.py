@@ -127,8 +127,25 @@ class CourseCompletionLogicTests(unittest.TestCase):
         self.assertFalse(exam_passed)
         self.assertTrue(needs_exam)
 
+    def test_course_with_fail_status_and_60_score_is_not_passed(self):
+        """測試臺灣藍碳（考 60 分但門檻為 75 分、通過狀態為未通過）絕不可誤判為已通過。"""
+        from app import to_sec
+        course = {
+            "course_id": "PCENTER115100466",
+            "caption": "臺灣藍碳發展機會與策略建議",
+            "rss": "00:35:56",
+            "criteria_content_hour": "00:30:00",
+            "criteria_exam_score": 75,
+            "exam_score": 60,
+            "pass_status": "未通過",
+            "fill": "1",
+        }
+        self.assertFalse(self.pilot._is_exam_passed(course))
+        self.assertFalse(self.pilot._is_course_completed(course))
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 
