@@ -99,7 +99,36 @@ class CourseCompletionLogicTests(unittest.TestCase):
         ]
         self.assertEqual(len(pending), 0)
 
+    def test_course_with_hours_done_but_pending_exam_needs_exam(self):
+        """測試時數已達標 (100%) 但測驗尚未及格之課程（如臺灣藍碳發展機會與策略建議），不可被判定為已修畢，且必須進入考試處理清單。"""
+        from app import to_sec
+        course = {
+            "course_id": "10044099",
+            "caption": "臺灣藍碳發展機會與策略建議",
+            "rss": "01:00:00",
+            "criteria_content_hour": "01:00:00",
+            "criteria_exam_score": 60,
+            "exam_score": None,  # 尚未考試
+            "fill": "1",  # 問卷已填
+            "status": "1",  # 報名中/開課中
+        }
+        self.pilot._is_open_course = lambda c: True
+        self.pilot._is_playable_course = lambda c: True
+
+        # 1. 尚未考試，故不可判定為完成
+        self.assertFalse(self.pilot._is_course_completed(course))
+
+        # 2. 測試 _needs_exam_or_questionnaire 判定為 True
+        c_id = str(course["course_id"])
+        hours_done = to_sec(course.get("rss", "00:00:00")) >= to_sec(course.get("criteria_content_hour", "00:00:00"))
+        exam_passed = self.pilot._is_exam_passed(course)
+        needs_exam = (not exam_passed) and (self.pilot._exam_fail_counts.get(c_id, 0) < 3)
+        self.assertTrue(hours_done)
+        self.assertFalse(exam_passed)
+        self.assertTrue(needs_exam)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

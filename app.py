@@ -1222,7 +1222,7 @@ class AdminEfficiencyPilot:
                         var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                         for (var i = 0; i < btns.length; i++) {
                             var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                            if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                            if (['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗', '上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
                                 btns[i].click();
                                 return t;
                             }
@@ -1230,7 +1230,7 @@ class AdminEfficiencyPilot:
                         return null;
                     """)
                     if clicked_in:
-                        logger.info(f"   📝 已點擊「{clicked_in}」進入教室介面")
+                        logger.info(f"   📝 已點擊「{clicked_in}」進入教室/測驗介面")
                         time.sleep(4)
                         if len(self.driver.window_handles) > 1:
                             main_window = self.driver.window_handles[-1]
@@ -1239,18 +1239,34 @@ class AdminEfficiencyPilot:
                 except Exception:
                     pass
 
+            clicked_exam = False
             try:
                 self.driver.switch_to.frame("mooc_sysbar")
                 exam_link = self.driver.find_element(
-                    By.CSS_SELECTOR, "a[href*='exam/exam_list.php']"
+                    By.CSS_SELECTOR, "a[href*='exam/exam_list.php'], a[href*='exam']"
                 )
                 self.driver.execute_script("arguments[0].click();", exam_link)
                 self._auto_hide_popups_if_needed(settle=True)
                 logger.info("   📝 已點擊「測驗/考試」")
-            except Exception as e:
-                logger.warning(f"   ⚠️ 找不到測驗連結（可能為平台已下架或無測驗介面課程）: {e}")
-                self._mark_exam_manual_review(course, "找不到測驗入口，尚未確認測驗已通過")
-                return False
+                clicked_exam = True
+            except Exception:
+                pass
+
+            if not clicked_exam:
+                self.driver.switch_to.default_content()
+                try:
+                    exam_btn = self.driver.find_element(
+                        By.CSS_SELECTOR,
+                        "a[href*='exam_list'], a[href*='exam'], button[onclick*='exam'], a[onclick*='exam'], .btn-warning, a.btn[href*='quiz'], input[value*='測驗'], input[value*='認證'], a.btn[href*='cert']"
+                    )
+                    self.driver.execute_script("arguments[0].click();", exam_btn)
+                    self._auto_hide_popups_if_needed(settle=True)
+                    logger.info("   📝 已從主頁面點擊「測驗/認證」")
+                    clicked_exam = True
+                except Exception as e:
+                    logger.warning(f"   ⚠️ 找不到測驗連結（可能為平台已下架或無測驗介面課程）: {e}")
+                    self._mark_exam_manual_review(course, "找不到測驗入口，尚未確認測驗已通過")
+                    return False
 
             time.sleep(2)
 
@@ -2607,28 +2623,27 @@ class AdminEfficiencyPilot:
         rss_sec = to_sec(c.get("rss", "00:00:00"))
         crit_sec = to_sec(c.get("criteria_content_hour", "00:00:00"))
 
-        # 1. 若平臺狀態已明確標註已通過
+        # 1. 基礎閱讀時數必須達標 100%
+        if crit_sec > 0 and rss_sec < crit_sec:
+            return False
+
+        # 2. 若有測驗要求，測驗必須及格（不可只依賴 status=1 報名狀態）
+        if not self._is_exam_passed(c):
+            return False
+
+        # 3. 若有問卷要求，問卷必須已填寫
+        q_req = bool(c.get("write_questionnaire", ""))
+        if q_req and str(c.get("fill", "0")) != "1":
+            return False
+
+        # 4. 若平臺明確標註未通過/不及格
         pass_status = str(
-            c.get("status_text", "")
-            or c.get("pass_status", "")
-            or c.get("status", "")
-            or ""
+            c.get("pass_status", "") or c.get("status_text", "") or ""
         ).strip().lower()
-        is_pass = str(c.get("is_pass", "") or "").strip()
-        if is_pass == "1" or pass_status in ["1", "pass", "passed", "已通過"]:
-            # 只要基本門檻時數已滿 100% (criteria_content_hour)
-            if crit_sec == 0 or rss_sec >= crit_sec:
-                return True
+        if any(w in pass_status for w in ["未通過", "不及格", "fail"]):
+            return False
 
-        # 2. 閱讀時數達 100% 門檻 且 測驗及格 (或免測驗) 且 問卷已填寫 (或免問卷)
-        if crit_sec > 0 and rss_sec >= crit_sec:
-            exam_ok = self._is_exam_passed(c)
-            q_req = bool(c.get("write_questionnaire", ""))
-            q_ok = (str(c.get("fill", "0")) == "1") or not q_req
-            if exam_ok and q_ok:
-                return True
-
-        return False
+        return True
 
     def _mark_exam_manual_review(self, course, reason):
         """記錄本次無法完成的測驗，避免重複卡住且禁止宣告全部完成。"""
@@ -4174,7 +4189,7 @@ class AdminEfficiencyPilot:
                                         var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                                         for (var i = 0; i < btns.length; i++) {
                                             var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                                            if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                                            if (['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗', '上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
                                                 btns[i].click();
                                                 return t;
                                             }
@@ -4182,7 +4197,7 @@ class AdminEfficiencyPilot:
                                         return null;
                                     """)
                                     if clicked_entry:
-                                        logger.info(f"   📝 已點擊「{clicked_entry}」進入教室")
+                                        logger.info(f"   📝 已點擊「{clicked_entry}」進入教室/測驗介面")
                                     if not self.safe_sleep(5):
                                         break
                                     if len(self.driver.window_handles) > 1:
