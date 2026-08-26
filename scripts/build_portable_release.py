@@ -86,20 +86,66 @@ pause
 exit /b 1
 """
 
+SHORTCUT_BAT = r"""@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\行政效能領航員.lnk'); if (Test-Path '%~dp0行政效能領航員.exe') { $Shortcut.TargetPath = '%~dp0行政效能領航員.exe'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; } else { $Shortcut.TargetPath = '%~dp0啟動程式.bat'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; }; $Shortcut.Description = '行政效能領航員 - 公務數位研習輔助系統'; $Shortcut.Save(); Write-Host '已成功於桌面建立「行政效能領航員」捷徑！' -ForegroundColor Green"
+echo.
+echo 已完成！請至桌面查看捷徑圖示。
+pause
+"""
+
 RELEASE_INFO = f"""行政效能領航員 {VERSION} 可攜式版本
 
 使用方式：
-1. 將整個資料夾解壓縮至本機可寫入的位置。
-2. 雙擊「啟動程式.bat」。
-3. 第一次啟動後，在「帳號與系統設定」輸入自己的帳密。
+1. 將整個壓縮檔解壓縮至本機可寫入的位置（建議非系統槽或桌面）。
+2. 雙擊「行政效能領航員.exe」（自帶專屬圖示，無黑窗啟動）或「啟動程式.bat」。
+3. 亦可雙擊「建立桌面捷徑.bat」一鍵在桌面建立專屬圖示捷徑。
+4. 第一次啟動後，在「帳號與系統設定」輸入自己的帳密並儲存。
 
 安全說明：
-- 本版本不使用 PyInstaller 單檔自解壓 EXE。
+- 專屬啟動器「行政效能領航員.exe」僅負責環境安全引導與背景喚起，不使用 PyInstaller 單檔自解壓。
 - 不需要系統管理員權限，不修改登錄檔，不安裝 Windows 服務。
 - 使用者端不執行 pip，也不會下載 Python 套件。
 - config.json 含有使用者自行輸入的帳密，請勿轉寄或上傳。
 - SHA256SUMS.txt 可供資訊人員核對檔案完整性。
 """
+
+
+def _build_launcher_exe() -> None:
+    """編譯內嵌專屬圖示的輕量 WinExe 啟動器。"""
+    launcher_src = PROJECT_ROOT / "scripts" / "launcher" / "Launcher.cs"
+    icon_path = PROJECT_ROOT / "icons" / "app.ico"
+    output_exe = RELEASE_DIR / "行政效能領航員.exe"
+
+    csc_candidates = [
+        Path(os.environ.get("WINDIR", r"C:\Windows"))
+        / r"Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+        Path(os.environ.get("WINDIR", r"C:\Windows"))
+        / r"Microsoft.NET\Framework\v4.0.30319\csc.exe",
+    ]
+    csc_path = next((p for p in csc_candidates if p.is_file()), shutil.which("csc.exe"))
+    if not csc_path:
+        # 若無法動態編譯，使用預編譯好的 binary
+        cached_exe = PROJECT_ROOT / "scripts" / "launcher" / "行政效能領航員.exe"
+        if cached_exe.is_file():
+            shutil.copy2(cached_exe, output_exe)
+            return
+        raise FileNotFoundError("找不到 C# 編譯器 csc.exe 且無預編譯啟動器")
+
+    cmd = [
+        str(csc_path),
+        "/target:winexe",
+        f"/win32icon:{icon_path}",
+        f"/out:{output_exe}",
+        "/optimize+",
+        "/platform:anycpu",
+        "/reference:System.Windows.Forms.dll,System.dll",
+        str(launcher_src),
+    ]
+    subprocess.run(cmd, cwd=PROJECT_ROOT, check=True, capture_output=True)
+    # 同步快取一份在 scripts/launcher/ 備用
+    shutil.copy2(output_exe, PROJECT_ROOT / "scripts" / "launcher" / "行政效能領航員.exe")
 
 
 def _assert_safe_release_path() -> None:
@@ -275,6 +321,10 @@ def main() -> int:
         _prepare_runtime()
         # 使用純 ASCII 且不含 BOM，確保 Windows cmd 能正確辨識 @echo off。
         (RELEASE_DIR / "啟動程式.bat").write_text(LAUNCHER, encoding="ascii")
+        # 建立專屬圖示之輕量 WinExe 啟動器
+        _build_launcher_exe()
+        # 建立桌面捷徑腳本
+        (RELEASE_DIR / "建立桌面捷徑.bat").write_text(SHORTCUT_BAT, encoding="utf-8")
         # Windows PowerShell 5.1 需 BOM 才能可靠辨識中文路徑與訊息。
         updater_source = (PROJECT_ROOT / "scripts" / "auto_update.ps1").read_text(
             encoding="utf-8-sig"
