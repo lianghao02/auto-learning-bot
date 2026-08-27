@@ -289,17 +289,36 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                     if options:
                         selected_labels.append(options[0].get("label", "A").upper())
 
-            # 2. 搜尋 A-D / 1-4 英數選項代號
+            # 2. 搜尋 A-Z / 1-9 英數選項代號（支援 5 選項 E、6 選項 F 等）
             if not selected_labels:
-                # 支援 "A, B, C" / "A、B、C" / "A B C" / "(A)" / "[A]" / "ABC"
-                letters = re.findall(r"\b([A-Da-d])\b", ans_body)
+                valid_labels = [
+                    opt.get("label", "").upper()
+                    for opt in options
+                    if opt.get("label")
+                ]
+                if not valid_labels:
+                    valid_labels = [chr(65 + i) for i in range(max(len(options), 8))]
+
+                # 支援 "A, B, C" / "A、B、C" / "A B C" / "(A)" / "[A]" / "ABC" / "E"
+                letters = re.findall(r"\b([A-Za-z])\b", ans_body)
                 if not letters:
                     # 連寫如 "ABC" 或有括號 "(A)"
-                    letters = [ch.upper() for ch in ans_body if ch.upper() in ["A", "B", "C", "D"]]
-                if letters:
-                    selected_labels.extend([l.upper() for l in letters])
+                    letters = [ch.upper() for ch in ans_body if ch.upper() in valid_labels]
+                matched_letters = [l.upper() for l in letters if l.upper() in valid_labels]
+                if matched_letters:
+                    selected_labels.extend(matched_letters)
 
-            # 3. 模糊文字比對：若回貼的是選項內容文字（如「巴黎協定」）
+            # 2b. 數字選項代號轉換：例如回覆 "5" 或 "(5)" 對應至第 5 個選項 "E"
+            if not selected_labels and options:
+                num_matches = re.findall(r"(?<!\d)([1-9])(?!\d)", ans_body)
+                for num_str in num_matches:
+                    num_idx = int(num_str) - 1
+                    if 0 <= num_idx < len(options):
+                        selected_labels.append(
+                            options[num_idx].get("label", chr(65 + num_idx)).upper()
+                        )
+
+            # 3. 模糊文字比對：若回貼的是選項內容文字（如「以上皆是」、「巴黎協定」）
             if not selected_labels:
                 for opt in options:
                     opt_t = opt.get("text", "").strip()
@@ -345,11 +364,37 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                             if options:
                                 selected.append(options[0].get("label", "A").upper())
                     if not selected:
-                        letters = re.findall(r"\b([A-Da-d])\b", line_body)
+                        valid_labels = [
+                            opt.get("label", "").upper()
+                            for opt in options
+                            if opt.get("label")
+                        ]
+                        if not valid_labels:
+                            valid_labels = [
+                                chr(65 + k) for k in range(max(len(options), 8))
+                            ]
+                        letters = re.findall(r"\b([A-Za-z])\b", line_body)
                         if not letters:
-                            letters = [ch.upper() for ch in line_body if ch.upper() in ["A", "B", "C", "D"]]
-                        if letters:
-                            selected.extend([l.upper() for l in letters])
+                            letters = [
+                                ch.upper()
+                                for ch in line_body
+                                if ch.upper() in valid_labels
+                            ]
+                        matched_letters = [
+                            l.upper() for l in letters if l.upper() in valid_labels
+                        ]
+                        if matched_letters:
+                            selected.extend(matched_letters)
+                    if not selected and options:
+                        num_matches = re.findall(r"(?<!\d)([1-9])(?!\d)", line_body)
+                        for num_str in num_matches:
+                            num_idx = int(num_str) - 1
+                            if 0 <= num_idx < len(options):
+                                selected.append(
+                                    options[num_idx]
+                                    .get("label", chr(65 + num_idx))
+                                    .upper()
+                                )
                     if not selected:
                         for opt in options:
                             opt_t = opt.get("text", "").strip()
