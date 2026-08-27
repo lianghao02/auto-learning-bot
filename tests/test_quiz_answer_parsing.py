@@ -1,4 +1,4 @@
-﻿"""人機協同與 AI 作答答案解析單元測試。"""
+"""人機協同與 AI 作答答案解析單元測試。"""
 
 import unittest
 from utils.helpers import parse_ai_quiz_answers
@@ -83,5 +83,33 @@ class QuizAnswerParsingTests(unittest.TestCase):
         self.assertEqual(result[4], ["B"])
 
 
+    def test_e_and_f_options_parsing(self):
+        """測試包含 E、F 等多選項題型（如英業達實務案例題 8, 9, 10 為 E）可 100% 完整解析。"""
+        questions_10 = [
+            {"index": i, "type": "單選", "q_text": f"第 {i} 題", "options": [{"label": l, "text": f"選項 {l}"} for l in ("A", "B", "C", "D", "E")]}
+            for i in range(1, 11)
+        ]
+        raw_text = """
+1. C
+2. C
+3. C
+4. B
+5. D
+6. C
+7. A
+8. E
+9. E
+10. E
+"""
+        result = parse_ai_quiz_answers(raw_text, questions_10)
+        self.assertEqual(len(result), 10)
+        self.assertEqual(result[1], ["C"])
+        self.assertEqual(result[7], ["A"])
+        self.assertEqual(result[8], ["E"])
+        self.assertEqual(result[9], ["E"])
+        self.assertEqual(result[10], ["E"])
+
+
 if __name__ == "__main__":
     unittest.main()
+
