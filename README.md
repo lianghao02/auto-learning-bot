@@ -1,6 +1,6 @@
 # 行政效能領航員（auto-learning-bot）
 
-[![Version](https://img.shields.io/badge/version-V3.1.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V3.1.0)
+[![Version](https://img.shields.io/badge/version-V3.1.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V3.1.1)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-blue.svg)](https://www.microsoft.com/windows)
@@ -15,7 +15,7 @@
 
 1. 前往 **[GitHub Releases 最新發行頁面](https://github.com/lianghao02/auto-learning-bot/releases/latest)**。
 2. 在 **Assets** 區塊點擊下載：
-   👉 **`AdminEfficiencyPilot_V3.1.0_Portable.zip`**
+   👉 **`AdminEfficiencyPilot_V3.1.1_Portable.zip`**
 3. **解壓縮**：將下載的 ZIP 壓縮檔完整解壓縮至本機任意資料夾（建議放置於桌面或非系統槽）。
 4. **啟動**：進入解壓縮後的資料夾，直接雙擊 **`行政效能領航員.exe`**（自帶專屬圖示，點擊直接啟動，無 CMD 黑窗）；亦可雙擊 **`啟動程式.bat`**。
    - 💡 可雙擊 **`建立桌面捷徑.bat`** 一鍵在桌面建立專屬圖示捷徑。
@@ -37,6 +37,21 @@
    遇到測驗時自動彈出輔助對話框，提供「一鍵複製 Prompt」與「秒開 ChatGPT / Gemini」快捷按鈕，將 AI 回答貼回視窗即可即時解析並自動作答。
 3. ⏭️ **跳過測驗，先做問卷**：
    研習時數達標後自動跳過測驗步驟，優先嘗試填寫問卷以獲取進度。
+
+---
+
+## 🌟 V3.1.1 重要功能與更新亮點
+
+- 🎯 **動態及格門檻多重判定機制**：
+  - 支援 60、70、75、80、100 分等多種平臺及格標準，精準對齊各類專題與開放式課程（如「臺灣藍碳發展機會與策略建議」之 75 分門檻）。
+  - 將平臺 `pass_status`（未通過/不及格/fail）納入最高優先排外過濾，即使考取 60 分亦絕不誤判為修畢，確保自動進入考試流程補測達標。
+- 🤖 **AI 測驗助理多選項（E、F...）與數字代號解析升級**：
+  - 答案解析引擎全面放寬正則限制，完整支援 5 選項題型（如「英業達實務案例」等題型包含 `E. 以上皆是`）。
+  - 支援 1～9 數字代號自動對應至第 N 個選項代碼（如 `5` 自動對應為 `E`），提升人機協同回貼之容錯率。
+- 🛡️ **非上課期間與尚未上架課程彈窗攔截**：
+  - 自動捕捉並確認「目前課程尚未上架且非上課期間，無法進入教室介面」等 Alert 彈窗，主動標記並永久跳過，阻斷重登重試無限循環。
+- 🏢 **加盟機關課程導航與開放式「認證」按鈕識別**：
+  - 排除加盟平臺首頁（`mooc/index.php`）與學員統計頁（`learn_stat.php`），並擴充支援【認證】、【進行測驗】直接作答。
 
 ---
 
