@@ -3283,6 +3283,7 @@ class ImmersivePage(QWidget):
         self.on_stop_platform = None
         self.on_toggle_browser = None
         self.on_start_all = None
+        self.on_check_update = None
 
         # 莫蘭迪暖灰主背景
         self.setStyleSheet("background-color: #F2F0EC;")
@@ -3293,8 +3294,16 @@ class ImmersivePage(QWidget):
 
         # 頂部控制列
         top_bar = QHBoxLayout()
+        top_bar.setSpacing(8)
         title_lbl = QLabel("行政效能領航員 - 控制中心")
         title_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 18px; background: transparent; border: none;")
+
+        from app import AdminEfficiencyPilot as _AEP
+        self.ver_badge = QLabel(_AEP.VERSION)
+        self.ver_badge.setStyleSheet("""
+            background-color: #E4E0DA; color: #4F6B75; font-size: 12px; font-weight: bold;
+            padding: 3px 8px; border-radius: 6px; border: 1px solid #C9C5BE;
+        """)
 
         self.start_all_btn = QPushButton("🚀 同時執行兩平台")
         self.start_all_btn.setStyleSheet("""
@@ -3326,11 +3335,23 @@ class ImmersivePage(QWidget):
         """)
         self.account_mgr_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
 
+        self.check_update_btn = QPushButton("🔄 檢查更新")
+        self.check_update_btn.setStyleSheet("""
+            QPushButton {
+                background: #FAF9F6; color: #2F3B43; border-radius: 8px;
+                padding: 9px 16px; font-weight: bold; font-size: 14px; border: 1px solid #C9C5BE;
+            }
+            QPushButton:hover { background: #E9E5DF; }
+        """)
+        self.check_update_btn.clicked.connect(self._on_check_update_clicked)
+
         top_bar.addWidget(title_lbl)
+        top_bar.addWidget(self.ver_badge)
         top_bar.addStretch()
         top_bar.addWidget(self.start_all_btn)
         top_bar.addWidget(self.stop_all_btn)
         top_bar.addWidget(self.account_mgr_btn)
+        top_bar.addWidget(self.check_update_btn)
         root.addLayout(top_bar)
 
         # 多頁籤面板 (QTabWidget - Win11 經典風格)
@@ -3416,6 +3437,10 @@ class ImmersivePage(QWidget):
         if self.on_toggle_browser:
             self.on_toggle_browser(key, visible)
 
+    def _on_check_update_clicked(self):
+        if hasattr(self, "on_check_update") and callable(self.on_check_update):
+            self.on_check_update()
+
     def start(self, account_name: str):
         self.load_accounts_into_tabs()
 
@@ -3429,7 +3454,8 @@ class ImmersivePage(QWidget):
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("行政效能領航員")
+        from app import AdminEfficiencyPilot as _AEP
+        self.setWindowTitle(f"行政效能領航員 {_AEP.VERSION}")
         self.setStyleSheet("background-color: #F2F0EC;")
 
         self.stack = QStackedLayout(self)
@@ -3442,6 +3468,7 @@ class MainWindow(QWidget):
         self.immersive.on_stop_platform = self._stop_single_platform
         self.immersive.on_toggle_browser = self._toggle_platform_browser
         self.immersive.on_start_all = self._start_all_platforms
+        self.immersive.on_check_update = self._handle_manual_check_update
 
         self.resize(1000, 650)
         self.setMinimumSize(950, 620)
@@ -3492,6 +3519,9 @@ class MainWindow(QWidget):
 
         stop_all_action = tray_menu.addAction("🛑 停止所有平台")
         stop_all_action.triggered.connect(self._stop_all_platforms)
+
+        check_update_action = tray_menu.addAction("🔄 檢查更新")
+        check_update_action.triggered.connect(self._handle_manual_check_update)
 
         tray_menu.addSeparator()
 
@@ -3816,6 +3846,69 @@ class MainWindow(QWidget):
         self.setFixedSize(self.size())
         self.immersive._init_position()
 
+    def _handle_manual_check_update(self):
+        """手動點擊「檢查更新」：即時連線 GitHub API 檢查並給予明確回饋"""
+        from app import AdminEfficiencyPilot as _AEP
+        import threading, requests as _req
+
+        RELEASE_API = "https://api.github.com/repos/lianghao02/auto-learning-bot/releases/latest"
+        current_version = _AEP.VERSION
+
+        btn = getattr(self.immersive, "check_update_btn", None)
+        if btn:
+            btn.setText("⏳ 檢查中...")
+            btn.setEnabled(False)
+
+        def _reset_btn():
+            if btn:
+                btn.setText("🔄 檢查更新")
+                btn.setEnabled(True)
+
+        def _worker():
+            try:
+                headers = {
+                    "Accept": "application/vnd.github+json",
+                    "X-GitHub-Api-Version": "2022-11-28",
+                }
+                resp = _req.get(RELEASE_API, timeout=8, headers=headers)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    update_info = parse_release_update(data, current_version)
+                    if update_info:
+                        latest, changelog, download_url, file_size, digest = update_info
+                        self.entry._has_update = True
+                        self.entry._latest_update_info = (latest, changelog, download_url, file_size, digest)
+                        QTimer.singleShot(
+                            0,
+                            lambda: UpdateDialog(
+                                self, latest, changelog, download_url, file_size, digest
+                            ).exec(),
+                        )
+                    else:
+                        self.entry._has_update = False
+                        self.entry._latest_update_info = None
+                        QTimer.singleShot(0, lambda: self._show_version_dialog())
+                else:
+                    QTimer.singleShot(
+                        0,
+                        lambda: QMessageBox.warning(
+                            self,
+                            "檢查更新",
+                            f"無法取得最新版本資訊（HTTP {resp.status_code}），請稍後再試。",
+                        ),
+                    )
+            except Exception as e:
+                QTimer.singleShot(
+                    0,
+                    lambda: QMessageBox.warning(
+                        self, "檢查更新", f"連線至 GitHub 失敗：{e}\n請檢查網路連線。"
+                    ),
+                )
+            finally:
+                QTimer.singleShot(0, _reset_btn)
+
+        threading.Thread(target=_worker, daemon=True).start()
+
     def _handle_update_btn(self):
         """手動點更新圖示：一定跳視窗顯示版本資訊"""
         entry = self.entry
@@ -3865,15 +3958,16 @@ class MainWindow(QWidget):
         body.addWidget(title)
 
         cur_label = QLabel(f"目前版本：{cur_ver}")
-        cur_label.setStyleSheet("font-size: 13px;")
+        cur_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;")
         body.addWidget(cur_label)
 
         entry = self.entry
         if entry._has_update and entry._latest_update_info:
-            latest_label = QLabel(f"最新版本：{entry._latest_update_info[0]}")
+            latest_label = QLabel(f"線上最新版本：{entry._latest_update_info[0]}")
+            latest_label.setStyleSheet("font-size: 13px; color: #d35400; font-weight: bold;")
         else:
-            latest_label = QLabel("最新版本：目前已是最新版")
-        latest_label.setStyleSheet("font-size: 13px; color: #27ae60;")
+            latest_label = QLabel("更新狀態：✅ 目前已是最新版本！")
+            latest_label.setStyleSheet("font-size: 13px; color: #27ae60; font-weight: bold;")
         body.addWidget(latest_label)
 
         sep = QFrame()
