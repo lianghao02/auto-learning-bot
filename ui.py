@@ -1720,6 +1720,7 @@ class UpdateSignal(QObject):
     # (latest_version, changelog, download_url, file_size_bytes, sha256_digest)
     notify = Signal(str, str, str, int, str)
     up_to_date = Signal()           # 已是最新版
+    failed = Signal(str)            # 檢查失敗或網路異常
 
     def emit(self, version, changelog, url, size=0, digest=""):
         self.notify.emit(version, changelog, url, size, digest)
@@ -3493,6 +3494,12 @@ class MainWindow(QWidget):
         # 啟動時背景檢查更新
         self._run_startup_update_check()
 
+        # 手動檢查更新訊號綁定
+        self._manual_update_signal = UpdateSignal()
+        self._manual_update_signal.notify.connect(self._on_manual_update_available)
+        self._manual_update_signal.up_to_date.connect(self._on_manual_up_to_date)
+        self._manual_update_signal.failed.connect(self._on_manual_update_failed)
+
         # 📌 初始化 Windows 右下角系統列 (System Tray) 常駐圖示
         self._setup_tray_icon()
 
@@ -3846,8 +3853,30 @@ class MainWindow(QWidget):
         self.setFixedSize(self.size())
         self.immersive._init_position()
 
+    def _reset_check_update_btn(self):
+        btn = getattr(self.immersive, "check_update_btn", None)
+        if btn:
+            btn.setText("🔄 檢查更新")
+            btn.setEnabled(True)
+
+    def _on_manual_update_available(self, latest, changelog, url, size, digest):
+        self._reset_check_update_btn()
+        self.entry._has_update = True
+        self.entry._latest_update_info = (latest, changelog, url, size, digest)
+        UpdateDialog(self, latest, changelog, url, size, digest).exec()
+
+    def _on_manual_up_to_date(self):
+        self._reset_check_update_btn()
+        self.entry._has_update = False
+        self.entry._latest_update_info = None
+        self._show_version_dialog()
+
+    def _on_manual_update_failed(self, err_msg):
+        self._reset_check_update_btn()
+        QMessageBox.warning(self, "檢查更新", f"連線至 GitHub 檢查更新失敗：\n{err_msg}")
+
     def _handle_manual_check_update(self):
-        """手動點擊「檢查更新」：即時連線 GitHub API 檢查並給予明確回饋"""
+        """手動點擊「檢查更新」：即時連線 GitHub API 檢查並透過 Qt Signal 安全回傳主線程"""
         from app import AdminEfficiencyPilot as _AEP
         import threading, requests as _req
 
@@ -3859,53 +3888,43 @@ class MainWindow(QWidget):
             btn.setText("⏳ 檢查中...")
             btn.setEnabled(False)
 
-        def _reset_btn():
-            if btn:
-                btn.setText("🔄 檢查更新")
-                btn.setEnabled(True)
-
         def _worker():
             try:
+                cache_file = update_cache_path()
+                cache = {}
+                try:
+                    if cache_file.is_file():
+                        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+                except Exception:
+                    cache = {}
                 headers = {
                     "Accept": "application/vnd.github+json",
                     "X-GitHub-Api-Version": "2022-11-28",
+                    "User-Agent": "AdminEfficiencyPilot-UpdateChecker",
                 }
-                resp = _req.get(RELEASE_API, timeout=8, headers=headers)
-                if resp.status_code == 200:
+                if cache.get("etag"):
+                    headers["If-None-Match"] = str(cache["etag"])
+                resp = _req.get(RELEASE_API, timeout=6, headers=headers)
+                if resp.status_code == 304:
+                    data = cache.get("release") or {}
+                elif resp.status_code == 200:
                     data = resp.json()
-                    update_info = parse_release_update(data, current_version)
-                    if update_info:
-                        latest, changelog, download_url, file_size, digest = update_info
-                        self.entry._has_update = True
-                        self.entry._latest_update_info = (latest, changelog, download_url, file_size, digest)
-                        QTimer.singleShot(
-                            0,
-                            lambda: UpdateDialog(
-                                self, latest, changelog, download_url, file_size, digest
-                            ).exec(),
-                        )
-                    else:
-                        self.entry._has_update = False
-                        self.entry._latest_update_info = None
-                        QTimer.singleShot(0, lambda: self._show_version_dialog())
-                else:
-                    QTimer.singleShot(
-                        0,
-                        lambda: QMessageBox.warning(
-                            self,
-                            "檢查更新",
-                            f"無法取得最新版本資訊（HTTP {resp.status_code}），請稍後再試。",
-                        ),
+                    write_json_atomically(
+                        cache_file,
+                        {"etag": resp.headers.get("ETag", ""), "release": data},
                     )
+                else:
+                    self._manual_update_signal.failed.emit(f"HTTP {resp.status_code}")
+                    return
+
+                update_info = parse_release_update(data, current_version)
+                if update_info:
+                    latest, changelog, download_url, file_size, digest = update_info
+                    self._manual_update_signal.notify.emit(latest, changelog, download_url, file_size, digest)
+                else:
+                    self._manual_update_signal.up_to_date.emit()
             except Exception as e:
-                QTimer.singleShot(
-                    0,
-                    lambda: QMessageBox.warning(
-                        self, "檢查更新", f"連線至 GitHub 失敗：{e}\n請檢查網路連線。"
-                    ),
-                )
-            finally:
-                QTimer.singleShot(0, _reset_btn)
+                self._manual_update_signal.failed.emit(str(e))
 
         threading.Thread(target=_worker, daemon=True).start()
 
