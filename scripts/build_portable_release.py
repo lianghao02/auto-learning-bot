@@ -312,8 +312,8 @@ def main() -> int:
     _assert_safe_release_path()
     DIST_ROOT.mkdir(parents=True, exist_ok=True)
     if RELEASE_DIR.exists():
-        shutil.rmtree(RELEASE_DIR)
-    CURRENT_DIR.mkdir(parents=True)
+        shutil.rmtree(RELEASE_DIR, ignore_errors=True)
+    CURRENT_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
         _copy_application_files()
