@@ -227,7 +227,7 @@ def _prepare_runtime() -> None:
     compact_version = CONFIG["python_version"].replace(".", "")
     pth_path = runtime_target / f"python{compact_version}._pth"
     pth_path.write_text(
-        f"python{compact_version}.zip\n.\n..\nLib\\site-packages\nimport site\n",
+        f"python{compact_version}.zip\n.\nLib\\site-packages\nimport site\n",
         encoding="utf-8",
     )
 
@@ -308,11 +308,29 @@ def _create_archive(archive_path: Path) -> None:
             archive.write(path, f"{CONFIG['release_name']}/{relative}")
 
 
+
+def safe_rmtree(path: Path) -> None:
+    if not path.exists():
+        return
+    import stat
+    def on_error(func, p, _):
+        try:
+            os.chmod(p, stat.S_IWRITE)
+            func(p)
+        except Exception:
+            pass
+    try:
+        subprocess.run(f'cmd /c "rmdir /s /q \"{path}\""', shell=True, check=False)
+    except Exception:
+        pass
+    if path.exists():
+        shutil.rmtree(path, onerror=on_error)
+
 def main() -> int:
     _assert_safe_release_path()
     DIST_ROOT.mkdir(parents=True, exist_ok=True)
     if RELEASE_DIR.exists():
-        shutil.rmtree(RELEASE_DIR, ignore_errors=True)
+        safe_rmtree(RELEASE_DIR)
     CURRENT_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
