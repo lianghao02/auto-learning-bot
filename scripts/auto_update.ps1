@@ -105,10 +105,11 @@ try {
 
     New-Item -ItemType Directory -Path $backupRoot | Out-Null
     New-Item -ItemType Directory -Path $backupBootstrap | Out-Null
-    foreach ($bootstrapName in @('啟動程式.bat', 'auto_update.ps1')) {
+    $rootFiles = @('啟動程式.bat', '建立桌面捷徑.bat', '發行說明.txt', 'SHA256SUMS.txt', 'auto_update.ps1')
+    foreach ($bootstrapName in $rootFiles) {
         $installedBootstrap = Join-Path $install $bootstrapName
         if (Test-Path -LiteralPath $installedBootstrap) {
-            Copy-Item -LiteralPath $installedBootstrap -Destination $backupBootstrap
+            Copy-Item -LiteralPath $installedBootstrap -Destination $backupBootstrap -Force -ErrorAction SilentlyContinue
         }
     }
     if (Test-Path -LiteralPath $current) {
@@ -125,12 +126,14 @@ try {
         throw "新版啟動後提前結束，exit=$($newProcess.ExitCode)。"
     }
 
-    foreach ($bootstrapName in @('啟動程式.bat', 'auto_update.ps1')) {
+    foreach ($bootstrapName in $rootFiles) {
         $bootstrapSource = Join-Path $packageRoot $bootstrapName
-        $bootstrapTarget = Join-Path $install $bootstrapName
-        $bootstrapTemp = $bootstrapTarget + '.new'
-        Copy-Item -LiteralPath $bootstrapSource -Destination $bootstrapTemp -Force
-        Move-Item -LiteralPath $bootstrapTemp -Destination $bootstrapTarget -Force
+        if (Test-Path -LiteralPath $bootstrapSource) {
+            $bootstrapTarget = Join-Path $install $bootstrapName
+            $bootstrapTemp = $bootstrapTarget + '.new'
+            Copy-Item -LiteralPath $bootstrapSource -Destination $bootstrapTemp -Force
+            Move-Item -LiteralPath $bootstrapTemp -Destination $bootstrapTarget -Force
+        }
     }
     Write-UpdateLog '新版健康檢查通過。'
     if (Test-Path -LiteralPath $backupRoot) {

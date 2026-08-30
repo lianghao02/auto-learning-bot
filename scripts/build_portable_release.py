@@ -89,7 +89,7 @@ exit /b 1
 SHORTCUT_BAT = r"""@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\行政效能領航員.lnk'); if (Test-Path '%~dp0行政效能領航員.exe') { $Shortcut.TargetPath = '%~dp0行政效能領航員.exe'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; } else { $Shortcut.TargetPath = '%~dp0啟動程式.bat'; $Shortcut.WorkingDirectory = '%~dp0'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; }; $Shortcut.Description = '行政效能領航員 - 公務數位研習輔助系統'; $Shortcut.Save(); Write-Host '已成功於桌面建立「行政效能領航員」捷徑！' -ForegroundColor Green"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\行政效能領航員.lnk'); $Shortcut.TargetPath = '%~dp0current\runtime\pythonw.exe'; $Shortcut.Arguments = '-B \"ui.py\"'; $Shortcut.WorkingDirectory = '%~dp0current'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; $Shortcut.Description = '行政效能領航員 - 公務數位研習輔助系統'; $Shortcut.Save(); Write-Host '已成功於桌面建立「行政效能領航員」捷徑！' -ForegroundColor Green"
 echo.
 echo 已完成！請至桌面查看捷徑圖示。
 pause
