@@ -21,12 +21,14 @@
         "session_refresh_hours": 5.0,
         "ai_provider": "Gemini",
         "ai_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "ai_model": "gemini-2.0-flash-lite",
+        "ai_model": "gemini-2.0-flash",
         "ai_api_key": "",
         "ai_keys": {
             "Gemini": ""
-        }
+        },
+        "ai_auto_solve": false
     },
+
     "blacklist": [
         "課程環境",
         "勘誤說明",

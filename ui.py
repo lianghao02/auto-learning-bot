@@ -1427,8 +1427,8 @@ class DeleteAccountPanel(QFrame):
 class SettingsPanel(QFrame):
     # 各服務預設值：(base_url, default_model, 申請連結)
     AI_PRESETS = {
+        "Gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash",        "https://aistudio.google.com/app/apikey"),
         "OpenAI": ("https://api.openai.com/v1",                               "gpt-4o-mini",             "https://platform.openai.com/api-keys"),
-        "Gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash-lite",   "https://aistudio.google.com/app/apikey"),
         "Claude": ("https://api.anthropic.com/v1",                            "claude-haiku-4-5",        "https://console.anthropic.com/settings/keys"),
         "Groq":   ("https://api.groq.com/openai/v1",                          "llama-3.1-8b-instant",    "https://console.groq.com/keys"),
         "自訂":   ("", "", ""),
@@ -1438,7 +1438,8 @@ class SettingsPanel(QFrame):
         super().__init__(parent)
 
         # ===== 基本尺寸 =====
-        self.setFixedSize(320, 480)
+        self.setFixedSize(340, 560)
+
 
         # ===== 外觀（卡片）=====
         self.setStyleSheet("""
@@ -1596,6 +1597,27 @@ class SettingsPanel(QFrame):
         eye_btn.clicked.connect(_toggle_key_visibility)
         _row("API Key", self.ai_key, eye_btn)
 
+        self.ai_auto_solve = QCheckBox("✨ 遇測驗啟用 AI 背景極速作答（不彈窗）")
+        self.ai_auto_solve.setStyleSheet("font-size:12px; color:#1F2937; font-weight:600; margin-top:2px; background:transparent;")
+        layout.addWidget(self.ai_auto_solve)
+
+        self.ai_tip_box = QLabel()
+        self.ai_tip_box.setWordWrap(True)
+        self.ai_tip_box.setOpenExternalLinks(True)
+        self.ai_tip_box.setStyleSheet("""
+            QLabel {
+                background-color: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 8px;
+                padding: 8px; font-size: 11px; color: #166534; margin-top: 6px;
+            }
+        """)
+        self.ai_tip_box.setText(
+            "💡 <b>Gemini 免費額度說明：</b><br>"
+            "• 每日 1,500 次 / 每分 15 次（免填信用卡）。<br>"
+            "• 0 元防扣款：未綁卡專案超額僅暫停，絕無扣款風險。<br>"
+            "🔗 <a href='https://ai.google.dev/gemini-api/docs/rate-limits' style='color:#15803D; font-weight:bold;'>查看 Google 官方最新費率公告</a>"
+        )
+        layout.addWidget(self.ai_tip_box)
+
         # ===== AI 驗證狀態 =====
         self.ai_status = QLabel("")
         self.ai_status.setAlignment(Qt.AlignCenter)
@@ -1603,6 +1625,7 @@ class SettingsPanel(QFrame):
         self.ai_status.setStyleSheet("font-size:12px; color:#555; background:transparent;")
         self.ai_status.hide()
         layout.addWidget(self.ai_status)
+
 
         layout.addSpacing(12)
         btn_row = QHBoxLayout()
@@ -1657,15 +1680,16 @@ class SettingsPanel(QFrame):
 
             self.residence.setText(str(settings.get("residence_time", 75)))
             self.target.setText(str(settings.get("target_percentage", 1.05)))
+            self.ai_auto_solve.setChecked(bool(settings.get("ai_auto_solve", False)))
 
             # 還原各服務 key（相容舊格式）
             self._ai_keys = settings.get("ai_keys", {})
             if not self._ai_keys and settings.get("ai_api_key"):
-                saved_p = settings.get("ai_provider", "OpenAI")
+                saved_p = settings.get("ai_provider", "Gemini")
                 self._ai_keys = {saved_p: settings["ai_api_key"]}
 
             self._loading_settings = True
-            saved_provider = settings.get("ai_provider", "OpenAI")
+            saved_provider = settings.get("ai_provider", "Gemini")
             idx = self.ai_provider.findText(saved_provider)
             if idx >= 0:
                 self.ai_provider.setCurrentIndex(idx)
@@ -1695,7 +1719,9 @@ class SettingsPanel(QFrame):
             "ai_model":           actual_model,
             "ai_api_key":         current_key,   # 相容舊格式
             "ai_keys":            dict(self._ai_keys),  # 各服務 key
+            "ai_auto_solve":      self.ai_auto_solve.isChecked(),
         }
+
 
     def show_ai_verifying(self):
         self.btn_ok.setEnabled(False)
@@ -2330,9 +2356,9 @@ GLOBAL_QUIZ_DIALOG_LOCK = threading.Lock()
 # 人機協同測驗助理彈窗
 # =========================
 class InteractiveQuizDialog(QDialog):
-    """遇到測驗時彈出的人機協同作答助理（支援一鍵複製 Prompt、答案貼上解析與逾時自動跳過）"""
+    """遇到測驗時彈出的人機協同作答助理（支援一鍵複製 Prompt、Gemini 批次極速作答、答案貼上解析與跳過自動補填問卷）"""
 
-    def __init__(self, course_name: str, questions_data: list, timeout_sec: int = 180, parent=None):
+    def __init__(self, course_name: str, questions_data: list, timeout_sec: int = 180, parent=None, config: dict = None):
         super().__init__(parent)
         self.course_name = course_name
         self.questions_data = questions_data
@@ -2340,6 +2366,17 @@ class InteractiveQuizDialog(QDialog):
         self.remaining_sec = timeout_sec
         self.is_paused = False
         self.parsed_result = None
+        self.config = config or {}
+
+        if not self.config:
+            try:
+                from utils.app_paths import user_data_path
+                import json
+                cfg_path = user_data_path("config.json")
+                if cfg_path.exists():
+                    self.config = json.loads(cfg_path.read_text(encoding="utf-8"))
+            except Exception:
+                self.config = {}
 
         self.setWindowTitle(f"📝 測驗作答助理 - {course_name}")
         self.resize(880, 620)
@@ -2348,10 +2385,18 @@ class InteractiveQuizDialog(QDialog):
         self.prompt_text = format_quiz_prompt(course_name, questions_data)
         self._init_ui()
 
+        # 自動將 Prompt 複製至剪貼簿，省去點擊複製步驟
+        try:
+            clipboard = QApplication.clipboard()
+            clipboard.setText(self.prompt_text)
+        except Exception:
+            pass
+
         # 啟動倒數計時器
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.start(1000)
+
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
@@ -2484,11 +2529,23 @@ class InteractiveQuizDialog(QDialog):
 
         # 底部操作列
         bottom_bar = QHBoxLayout()
+        self.gemini_batch_btn = QPushButton("✨ Gemini 1 秒智慧作答", self)
+        self.gemini_batch_btn.setToolTip("使用 Google Gemini API 批次解析整份考卷並自動填入")
+        self.gemini_batch_btn.setStyleSheet("""
+            QPushButton {
+                background: #4F46E5; color: #FFFFFF; font-weight: bold; font-size: 13px;
+                padding: 10px 18px; border-radius: 8px; border: none;
+            }
+            QPushButton:hover { background: #4338CA; }
+            QPushButton:disabled { background: #9CA3AF; color: #E5E7EB; }
+        """)
+        self.gemini_batch_btn.clicked.connect(self._run_gemini_batch_solve)
+
         self.submit_btn = QPushButton("🚀 解析並自動填入考卷")
         self.submit_btn.setStyleSheet("""
             QPushButton {
                 background: #10B981; color: #FFFFFF; font-weight: bold; font-size: 14px;
-                padding: 10px 24px; border-radius: 8px; border: none;
+                padding: 10px 20px; border-radius: 8px; border: none;
             }
             QPushButton:hover { background: #059669; }
             QPushButton:disabled { background: #A7F3D0; color: #065F46; }
@@ -2499,27 +2556,79 @@ class InteractiveQuizDialog(QDialog):
         self.pause_btn.setStyleSheet("""
             QPushButton {
                 background: #F59E0B; color: #FFFFFF; font-weight: bold; font-size: 13px;
-                padding: 10px 16px; border-radius: 8px; border: none;
+                padding: 10px 14px; border-radius: 8px; border: none;
             }
             QPushButton:hover { background: #D97706; }
         """)
         self.pause_btn.clicked.connect(self._toggle_pause)
 
         self.skip_btn = QPushButton("⏭️ 立即跳過測驗")
+        self.skip_btn.setToolTip("跳過測驗並自動為您檢查與填寫課程問卷")
         self.skip_btn.setStyleSheet("""
             QPushButton {
                 background: #6B7280; color: #FFFFFF; font-weight: bold; font-size: 13px;
-                padding: 10px 16px; border-radius: 8px; border: none;
+                padding: 10px 14px; border-radius: 8px; border: none;
             }
             QPushButton:hover { background: #4B5563; }
         """)
         self.skip_btn.clicked.connect(self._skip)
 
+        bottom_bar.addWidget(self.gemini_batch_btn)
         bottom_bar.addWidget(self.submit_btn)
         bottom_bar.addWidget(self.pause_btn)
         bottom_bar.addStretch()
         bottom_bar.addWidget(self.skip_btn)
         layout.addLayout(bottom_bar)
+
+    def _run_gemini_batch_solve(self):
+        settings = self.config.get("settings", {}) if self.config else {}
+        provider = settings.get("ai_provider", "Gemini")
+        ai_keys = settings.get("ai_keys", {}) or {}
+        api_key = (ai_keys.get(provider) or settings.get("ai_api_key", "")).strip()
+
+        if not api_key:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("🔑 尚未設定 API Key")
+            msg_box.setText("您尚未在系統設定中填入 Gemini API Key。\n\n• Google AI Studio 提供免費 Key（每日 1,500 次免費額度，免綁信用卡）。\n• 是否前往 Google AI Studio 網站免費申請？")
+            msg_box.setIcon(QMessageBox.Information)
+            open_btn = msg_box.addButton("🔗 前往申請 (Google AI Studio)", QMessageBox.ActionRole)
+            cancel_btn = msg_box.addButton("稍後設定", QMessageBox.RejectRole)
+            msg_box.exec()
+            if msg_box.clickedButton() == open_btn:
+                self._open_url_native("https://aistudio.google.com/app/apikey")
+            return
+
+        self.is_paused = True
+        self.gemini_batch_btn.setEnabled(False)
+        self.gemini_batch_btn.setText("⚡ 正在請求 Gemini 批次作答...")
+        self.parse_status_lbl.setText("⚡ 正在連線 Gemini 2.0 Flash 批次分析考卷，請稍候約 1 秒...")
+        self.parse_status_lbl.setStyleSheet("color: #4F46E5; font-size: 12px; font-weight: bold; padding: 2px;")
+
+        import threading
+        def _worker():
+            from quiz_bank import ai_batch_solve_quiz
+            res = ai_batch_solve_quiz(self.course_name, self.questions_data, settings)
+            QTimer.singleShot(0, lambda: self._on_gemini_batch_completed(res))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _on_gemini_batch_completed(self, res: dict):
+        self.gemini_batch_btn.setEnabled(True)
+        self.gemini_batch_btn.setText("✨ Gemini 1 秒智慧作答")
+        self.is_paused = False
+
+        if res.get("success") and res.get("answers"):
+            answers_dict = res["answers"]
+            lines = [f"{k}. {v}" for k, v in sorted(answers_dict.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else 999)]
+            formatted_text = "\n".join(lines)
+            self.answer_input.setPlainText(formatted_text)
+            self.parse_status_lbl.setText(f"✅ Gemini 批次智慧作答完成！成功辨識 {len(answers_dict)} 題，正在自動送出...")
+            self.parse_status_lbl.setStyleSheet("color: #059669; font-size: 12px; font-weight: bold; padding: 2px;")
+            QTimer.singleShot(500, self._submit)
+        else:
+            err = res.get("error", "未知錯誤")
+            self.parse_status_lbl.setText(f"❌ {err}（可改用手動複製貼上）")
+            self.parse_status_lbl.setStyleSheet("color: #DC2626; font-size: 12px; font-weight: bold; padding: 2px;")
 
     def _tick(self):
         if self.is_paused:
@@ -2539,7 +2648,7 @@ class InteractiveQuizDialog(QDialog):
             msg_box.setIcon(QMessageBox.Question)
 
             retry_btn = msg_box.addButton("🔄 重新計時 180 秒", QMessageBox.ActionRole)
-            skip_btn = msg_box.addButton("⏩ 跳過此測驗並繼續", QMessageBox.ActionRole)
+            skip_btn = msg_box.addButton("⏩ 跳過此測驗並填寫問卷", QMessageBox.ActionRole)
             stop_btn = msg_box.addButton("🛑 結束本次執行", QMessageBox.DestructiveRole)
 
             msg_box.exec()
@@ -2556,7 +2665,7 @@ class InteractiveQuizDialog(QDialog):
                 self.parsed_result = "STOP_ALL"
                 self.reject()
             else:
-                self.parsed_result = None
+                self.parsed_result = "SKIP"
                 self.reject()
 
     def _copy_prompt(self):
@@ -2637,9 +2746,10 @@ class InteractiveQuizDialog(QDialog):
         self.accept()
 
     def _skip(self):
-        self.parsed_result = None
+        self.parsed_result = "SKIP"
         self.timer.stop()
         self.reject()
+
 
 
 # =========================
@@ -2848,9 +2958,11 @@ class PlatformTabPanel(QWidget):
         try:
             # 🔒 全域排隊互斥鎖：確保雙開時同一時間僅有一個測驗助理彈窗，徹底防範 Qt 巢狀事件循環閃退
             with GLOBAL_QUIZ_DIALOG_LOCK:
-                dlg = InteractiveQuizDialog(course_name, questions_data, timeout_sec, parent=self)
+                cfg = self.config if hasattr(self, 'config') and self.config else None
+                dlg = InteractiveQuizDialog(course_name, questions_data, timeout_sec, parent=self, config=cfg)
                 dlg.exec()
                 res_holder["result"] = dlg.parsed_result
+
         except Exception as e:
             logger.error(f"人機協同彈窗發生異常: {e}")
             # 與使用者主動點選「跳過」區隔，避免背景流程把 UI 異常誤判為跳過指令。

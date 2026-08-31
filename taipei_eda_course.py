@@ -1319,7 +1319,11 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     quiz_interactive_callback=quiz_interactive_callback or config.get('quiz_interactive_callback'),
                     min_pass_score=req_score,
                 )
-                print(f'  測驗結果: {score_text} | 達標: {is_100 or is_quiz_passed(course, req_score=req_score)}')
+                if score_text == 'SKIPPED':
+                    print('  ⏩ 測驗已跳過，繼續檢查並自動填寫課程問卷...')
+                else:
+                    print(f'  測驗結果: {score_text} | 達標: {is_100 or is_quiz_passed(course, req_score=req_score)}')
+
             elif quiz_url and course_id:
                 print('  ✅ 測驗已完成/通過，跳過')
             elif quiz_url and not course_id:

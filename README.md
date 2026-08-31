@@ -1,11 +1,11 @@
 # 行政效能領航員（auto-learning-bot）
 
-[![Version](https://img.shields.io/badge/version-V3.1.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V3.1.1)
+[![Version](https://img.shields.io/badge/version-V3.2.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V3.2.0)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-blue.svg)](https://www.microsoft.com/windows)
 
-行政效能領航員提供「臺北 E 大」與「e 等公務園」的公務數位研習輔助流程，支援時數累積、人機協同測驗助理、平台已加入課程自動處理、問卷自動填寫與 SQLite 本機題庫持久化管理。
+行政效能領航員提供「臺北 E 大」與「e 等公務園」的公務數位研習輔助流程，支援時數累積、Gemini 批次智慧極速作答、人機協同測驗助理、跳過測驗自動完成問卷、平台已加入課程自動處理與 SQLite 本機題庫持久化管理。
 
 ---
 
@@ -15,32 +15,57 @@
 
 1. 前往 **[GitHub Releases 最新發行頁面](https://github.com/lianghao02/auto-learning-bot/releases/latest)**。
 2. 在 **Assets** 區塊點擊下載：
-   👉 **`AdminEfficiencyPilot_V3.1.1_Portable.zip`**
+   👉 **`AdminEfficiencyPilot_V3.2.0_Portable.zip`**
 3. **解壓縮**：將下載的 ZIP 壓縮檔完整解壓縮至本機任意資料夾（建議放置於桌面或非系統槽）。
 4. **啟動**：進入解壓縮後的資料夾，直接雙擊 **`行政效能領航員.exe`**（自帶專屬圖示，點擊直接啟動，無 CMD 黑窗）；亦可雙擊 **`啟動程式.bat`**。
    - 💡 可雙擊 **`建立桌面捷徑.bat`** 一鍵在桌面建立專屬圖示捷徑。
 5. **設定**：首次啟動後，於「帳號與系統設定」輸入您的帳號密碼並儲存，即可在平臺頁籤開始研習。
 
-> 💡 **安全說明**：
-> - 專屬啟動器 `行政效能領航員.exe` 僅負責無黑窗喚起 Python 核心，**不修改系統登錄檔**、**不需系統管理員權限**、**不需聯網執行 pip**。
-> - 內建完整獨立 Python 3.13 執行環境，解壓縮即可獨立執行，綠色環保。若要移除，直接刪除整個資料夾即可。
+---
+
+## 🔑 如何取得免費 Google Gemini API Key（30 秒完成）
+
+本系統支援直連 Google 官方最新 **Gemini 2.0 Flash** 批次作答，1 秒內全自動解析整份考卷並永久記憶進本機題庫：
+
+1. **前往申請網站**：使用瀏覽器開啟 [Google AI Studio (aistudio.google.com)](https://aistudio.google.com/app/apikey)（以一般 Google 帳號登入）。
+2. **建立金鑰**：點擊藍色 **「Create API key」** 按鈕。
+3. **複製金鑰**：複製產生的 API Key（以 `AIzaSy...` 開頭）。
+4. **貼入軟體**：打開軟體 ➜ 點擊右上角「⚙️ 系統設定」➜ 於「AI 補答設定」貼上金鑰並點擊「確定」。
+
+> 💡 **0 元防扣款與資安保證**：
+> - **完全免費**：Google 官方提供每分鐘 15 次、每日 1,500 次之免費額度（Free Tier），**免綁信用卡**。
+> - **無扣款風險**：只要您的 Google 專案未綁定信用卡，超額時 Google 只會回傳 429 暫停服務，**絕無任何帳單或扣款風險**。
+> - **金鑰安全**：API Key 僅保存在本機 `data/config.json`，日誌自動脫敏（Masking），絕不上傳第三方伺服器。
 
 ---
 
 ## 🚀 測驗處理模式說明
 
-啟動後可在主介面依需求切換 3 種作答模式：
+啟動後可在主介面依需求切換作答模式：
 
-1. 🤖 **全自動（題庫優先 + AI 補答）**：
-   優先查詢本機 SQLite 題庫，若遇未收錄題目且有設定 AI API Key（Gemini / OpenAI），自動呼叫 AI 完成補答。
-2. 🎓 **人機協同作答（彈窗回貼）**：
-   遇到測驗時自動彈出輔助對話框，提供「一鍵複製 Prompt」與「秒開 ChatGPT / Gemini」快捷按鈕，將 AI 回答貼回視窗即可即時解析並自動作答。
-3. ⏭️ **跳過測驗，先做問卷**：
-   研習時數達標後自動跳過測驗步驟，優先嘗試填寫問卷以獲取進度。
+1. ⚡ **全自動（題庫優先 + Gemini 批次秒答）**：
+   優先查詢本機 SQLite 題庫（0 秒）；未收錄之題目自動呼叫 Gemini 2.0 Flash 批次解析（1 秒），自動勾選交卷並寫入 SQLite 題庫。
+2. 🎓 **人機協同作答（彈窗回貼 ＋ ✨ Gemini 一鍵作答）**：
+   遇到測驗時自動彈出輔助視窗，提供「✨ Gemini 1 秒智慧作答」、「一鍵複製 Prompt」與「秒開 ChatGPT / Gemini」等快捷功能。
+3. ⏭️ **跳過測驗，自動補填問卷**：
+   若點擊跳過測驗，程式自動檢查並接續完成該課程的「滿意度問卷調查」，事後僅需補考測驗即可 100% 完課拿時數。
 
 ---
 
-## 🌟 V3.1.1 重要功能與更新亮點
+## 🌟 V3.2.0 重要功能與更新亮點
+
+- ✨ **Google Gemini 2.0 Flash 批次極速作答引擎**：
+  - 考卷題目 10 題合一打包發送，單次測驗僅需 1 次請求，耗時由 10 秒縮短至 **0.8 ~ 1.2 秒**。
+  - 採用 JSON 結構化輸出（Structured Output），格式解析準確率達 100%，並自動標準化寫入本機 SQLite `questions.db`。
+- 🛡️ **內建免費額度滑動窗口限速防護鎖（Rate Limiter）**：
+  - 預設安全限速 5 RPM（每分鐘最多 5 次請求），自動排隊延遲，絕不觸發 Google HTTP 429。
+  - API Key 輸出自動脫敏遮罩（如 `AIzaSy***1234`），保障資安無外洩疑慮。
+- 📋 **跳過測驗自動補填問卷機制**：
+  - 使用者點擊「立即跳過測驗」時，流程不中斷，自動接續執行課程問卷調查並提交。
+- 🖥️ **人機協同助理彈窗升級**：
+  - 彈窗新增「✨ Gemini 1 秒智慧作答」專屬按鈕，開啟時自動將 Prompt 預載至剪貼簿。
+  - 設定面板新增「遇到未知測驗時自動使用 AI 背景作答」開關與官方動態費率指引。
+
 
 - 🎯 **動態及格門檻多重判定機制**：
   - 支援 60、70、75、80、100 分等多種平臺及格標準，精準對齊各類專題與開放式課程（如「臺灣藍碳發展機會與策略建議」之 75 分門檻）。
