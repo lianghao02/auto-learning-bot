@@ -602,12 +602,12 @@ class AdminEfficiencyPilot:
         # 各服務的 fallback 鏈（便宜 → 貴）
         _FALLBACK = {
             "OpenAI": ["gpt-4o-mini", "gpt-4o"],
-            "Gemini": ["gemini-3.1-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"],
+            "Gemini": ["gemini-3.1-flash-lite", "gemini-3.5-flash"],
             "Claude": ["claude-haiku-4-5", "claude-sonnet-4-6"],
             "Groq":   ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
         }
 
-        provider = self.config.get("ai_provider", "OpenAI")
+        provider = self.config.get("ai_provider", "Gemini")
         ai_keys  = self.config.get("ai_keys", {})
         api_key  = ai_keys.get(provider) or self.config.get("ai_api_key", "")
         if not api_key or not option_texts:
@@ -615,20 +615,24 @@ class AdminEfficiencyPilot:
         try:
             base_url = validate_ai_base_url(
                 provider,
-                self.config.get("ai_base_url", "https://api.openai.com/v1"),
+                self.config.get("ai_base_url", "https://generativelanguage.googleapis.com/v1beta/openai"),
             )
         except ValueError as exc:
             self.logger.error(f"❌ AI API 網址遭安全規則拒絕：{exc}")
             return None
 
-        # 使用者設定的模型優先；若不在 fallback 鏈裡則以此為起點
-        configured_model = self.config.get("ai_model", "gpt-4o-mini")
+        # 使用者設定的模型優先；若為已廢棄之舊版模型自動無痛升級
+        configured_model = self.config.get("ai_model", "gemini-3.1-flash-lite")
+        if provider == "Gemini" and ("gemini-2.0" in configured_model or "gemini-1.5" in configured_model or "gemini-2.5" in configured_model):
+            configured_model = "gemini-3.1-flash-lite"
+
         chain = _FALLBACK.get(provider, [configured_model])
         # 從使用者設定的模型開始，忽略前面更便宜的（尊重使用者選擇）
         if configured_model in chain:
             chain = chain[chain.index(configured_model):]
         else:
             chain = [configured_model] + chain
+
 
         cleaned_options = [
             str(opt).strip() if str(opt).strip() else f"選項{i + 1}"
