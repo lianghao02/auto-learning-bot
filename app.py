@@ -1656,17 +1656,14 @@ class AdminEfficiencyPilot:
                             pass
                         return False
 
+            parsed_items = []
             for q_idx, row in enumerate(rows):
                 try:
                     # ── 題目文字擷取 ──
-                    # 頁面結構：<td align="left"> 純文字節點（題目）<ol>選項</ol></td>
-                    # 用 JS 取 td 內、ol/ul 之前的文字節點，排除選項污染
                     try:
                         q_text = (
                             self.driver.execute_script(
                                 """
-                            // 優先找含有 ol/input 的 td（真正的題目+選項 td）
-                            // 避免選到第一欄的「單選/是非/多選」標籤 td（含 nowrap 屬性）
                             var tds = arguments[0].querySelectorAll('td');
                             var td = null;
                             for (var j = 0; j < tds.length; j++) {
@@ -1675,7 +1672,6 @@ class AdminEfficiencyPilot:
                                     break;
                                 }
                             }
-                            // fallback: 找不含 nowrap 的 td[align="left"]
                             if (!td) {
                                 var candidates = arguments[0].querySelectorAll('td[align="left"]');
                                 for (var k = 0; k < candidates.length; k++) {
@@ -1717,19 +1713,15 @@ class AdminEfficiencyPilot:
                             q_text = row.text.strip().split("\n")[0]
 
                     ans = self._find_answer(q_text)
-
                     radios = row.find_elements(By.CSS_SELECTOR, "input[type='radio']")
                     checkboxes = row.find_elements(
                         By.CSS_SELECTOR, "input[type='checkbox']"
                     )
 
-                    # ── 取得本題所有選項文字（用於文字比對）──
-                    # 選項在 <ol>/<ul> 內的 <li> 裡
                     try:
                         option_texts = (
                             self.driver.execute_script(
                                 """
-                            // 同樣優先找含有 ol/input 的 td
                             var tds = arguments[0].querySelectorAll('td');
                             var td = null;
                             for (var j = 0; j < tds.length; j++) {
@@ -1752,7 +1744,6 @@ class AdminEfficiencyPilot:
                             var items = td.querySelectorAll('ol li, ul li');
                             var texts = [];
                             for (var i = 0; i < items.length; i++) {
-                                // 取 li 的文字，排除內部 input 元素的 value
                                 var li = items[i];
                                 var text = '';
                                 for (var k = 0; k < li.childNodes.length; k++) {
@@ -1762,7 +1753,6 @@ class AdminEfficiencyPilot:
                                     } else if (cn.nodeName !== 'INPUT' && cn.nodeName !== 'SPAN') {
                                         text += cn.innerText || cn.textContent || '';
                                     } else if (cn.nodeName === 'SPAN') {
-                                        // SPAN 內可能有 input，只取文字節點
                                         for (var m = 0; m < cn.childNodes.length; m++) {
                                             if (cn.childNodes[m].nodeType === 3) {
                                                 text += cn.childNodes[m].textContent;
@@ -1781,22 +1771,102 @@ class AdminEfficiencyPilot:
                     except Exception:
                         option_texts = []
 
-                    # 僅在已設定 API Key 時，題庫未命中或重測才呼叫 AI。
-                    if ai_enabled and (ans is None or force_ai):
-                        radios_count = len(row.find_elements(By.CSS_SELECTOR, "input[type='radio']"))
-                        ai_options = option_texts if any(option_texts) else (
-                            ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
-                        )
-                        if ai_options:
-                            ai_ans = self._ai_find_answer(q_text, ai_options)
-                            if ai_ans:
-                                ans = ai_ans
-                                _ai_answered[q_text] = ai_ans
+                    parsed_items.append({
+                        "idx": q_idx,
+                        "row": row,
+                        "q_text": q_text,
+                        "option_texts": option_texts,
+                        "radios": radios,
+                        "checkboxes": checkboxes,
+                        "ans": ans,
+                    })
+                except Exception as e:
+                    logger.warning(f"   ⚠️ 解析第 {q_idx + 1} 題失敗：{e}")
 
+            # ⚡ 10 題合一整卷 AI 批次作答（僅發送 1 次 API 請求，節省 90% 額度）
+            items_needing_ai = [item for item in parsed_items if item["ans"] is None or force_ai]
+            if ai_enabled and items_needing_ai:
+                batch_questions = []
+                opt_labels = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
+                for item in items_needing_ai:
+                    opts_list = []
+                    radios_count = len(item["radios"])
+                    ai_options = item["option_texts"] if any(item["option_texts"]) else (
+                        ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
+                    )
+                    for o_idx, o_txt in enumerate(ai_options):
+                        label = opt_labels[o_idx] if o_idx < len(opt_labels) else str(o_idx + 1)
+                        opts_list.append({"label": label, "text": o_txt, "val": str(o_idx + 1)})
+
+                    is_tf = len(opts_list) == 2 and any(k in item["q_text"] or k in "".join(o["text"] for o in opts_list) for k in ["是非", "是否", "對錯", "○", "╳", "⭕", "❌"])
+                    q_type = "是非" if is_tf else ("多選" if item["checkboxes"] else "單選")
+                    batch_questions.append({
+                        "index": item["idx"] + 1,
+                        "name": f"q_{item['idx'] + 1}",
+                        "type": q_type,
+                        "is_multiple": bool(item["checkboxes"]),
+                        "q_text": item["q_text"],
+                        "options": opts_list,
+                        "raw_item": item,
+                    })
+
+                try:
+                    from quiz_bank import ai_batch_solve_quiz
+                    batch_res = ai_batch_solve_quiz(course.get('caption', 'e等公務員測驗'), batch_questions, self.config)
+                    if batch_res.get("success") and batch_res.get("answers"):
+                        for b_q in batch_questions:
+                            q_num = str(b_q["index"])
+                            ans_choice = batch_res["answers"].get(q_num) or batch_res["answers"].get(int(q_num))
+                            if ans_choice:
+                                item = b_q["raw_item"]
+                                matched_opt = next((o for o in b_q["options"] if o["label"].upper() == str(ans_choice).upper() or o["val"] == str(ans_choice)), None)
+                                if matched_opt:
+                                    item["ans"] = matched_opt["val"]
+                                    _ai_answered[item["q_text"]] = matched_opt["val"]
+                                else:
+                                    item["ans"] = str(ans_choice)
+                                    _ai_answered[item["q_text"]] = str(ans_choice)
+                                logger.info(f"   🤖 AI 批次解答 [{q_num}/{len(rows)} 題]：{item['ans']!r}")
+                    else:
+                        # 降級備援：個別呼叫 _ai_find_answer
+                        for item in items_needing_ai:
+                            if item["ans"] is None:
+                                radios_count = len(item["radios"])
+                                ai_options = item["option_texts"] if any(item["option_texts"]) else (
+                                    ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
+                                )
+                                if ai_options:
+                                    item["ans"] = self._ai_find_answer(item["q_text"], ai_options)
+                                    if item["ans"]:
+                                        _ai_answered[item["q_text"]] = item["ans"]
+                except Exception as batch_err:
+                    logger.warning(f"   ⚠️ AI 批次作答失敗，切換為逐題備援：{batch_err}")
+                    for item in items_needing_ai:
+                        if item["ans"] is None:
+                            radios_count = len(item["radios"])
+                            ai_options = item["option_texts"] if any(item["option_texts"]) else (
+                                ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
+                            )
+                            if ai_options:
+                                item["ans"] = self._ai_find_answer(item["q_text"], ai_options)
+                                if item["ans"]:
+                                    _ai_answered[item["q_text"]] = item["ans"]
+
+            for item in parsed_items:
+                q_idx = item["idx"]
+                row = item["row"]
+                q_text = item["q_text"]
+                option_texts = item["option_texts"]
+                radios = item["radios"]
+                checkboxes = item["checkboxes"]
+                ans = item["ans"]
+
+                try:
                     logger.debug(f"   題目: {q_text[:50]!r}")
                     logger.debug(f"   選項: {[t[:20] for t in option_texts]!r}")
                     logger.debug(f"   答案: {ans!r}")
                     logger.info(f"   📝 作答進度：[{q_idx + 1}/{len(rows)} 題] 已填答")
+
                     if checkboxes:
                         if ans is not None:
                             ans_text = (
