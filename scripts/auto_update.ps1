@@ -103,6 +103,20 @@ try {
     }
     Remove-Item -LiteralPath $smokeOut, $smokeErr -Force -ErrorAction SilentlyContinue
 
+    function Move-ItemWithRetry([string]$SourcePath, [string]$DestPath, [int]$MaxAttempts = 15) {
+        for ($i = 1; $i -le $MaxAttempts; $i++) {
+            try {
+                Move-Item -LiteralPath $SourcePath -Destination $DestPath -Force
+                return
+            }
+            catch {
+                if ($i -eq $MaxAttempts) { throw $_ }
+                Write-UpdateLog "移動目錄暫時受阻 ($($_.Exception.Message))，等待釋放檔案鎖定，第 $i 次重試中..."
+                Start-Sleep -Seconds 1
+            }
+        }
+    }
+
     New-Item -ItemType Directory -Path $backupRoot | Out-Null
     New-Item -ItemType Directory -Path $backupBootstrap | Out-Null
     $rootFiles = @('啟動程式.bat', '建立桌面捷徑.bat', '發行說明.txt', 'SHA256SUMS.txt', 'auto_update.ps1')
@@ -113,9 +127,9 @@ try {
         }
     }
     if (Test-Path -LiteralPath $current) {
-        Move-Item -LiteralPath $current -Destination $backupCurrent
+        Move-ItemWithRetry $current $backupCurrent
     }
-    Move-Item -LiteralPath $staged -Destination $current
+    Move-ItemWithRetry $staged $current
     $switched = $true
     Write-UpdateLog '程式目錄切換完成，啟動新版健康檢查。'
 
@@ -135,6 +149,25 @@ try {
             Move-Item -LiteralPath $bootstrapTemp -Destination $bootstrapTarget -Force
         }
     }
+
+    # 自動同步刷新桌面捷徑（若使用者有建立）
+    try {
+        $desktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) '行政效能領航員.lnk'
+        if (Test-Path -LiteralPath $desktopShortcut) {
+            $wsh = New-Object -ComObject WScript.Shell
+            $sc = $wsh.CreateShortcut($desktopShortcut)
+            $sc.TargetPath = Join-Path $current 'runtime\pythonw.exe'
+            $sc.Arguments = '-B "ui.py"'
+            $sc.WorkingDirectory = $current
+            $sc.IconLocation = (Join-Path $current 'icons\app.ico') + ',0'
+            $sc.Description = '行政效能領航員 - 公務數位研習輔助系統'
+            $sc.Save()
+            Write-UpdateLog '已自動同步更新桌面捷徑。'
+        }
+    } catch {
+        Write-UpdateLog "更新桌面捷徑時忽略異常：$($_.Exception.Message)"
+    }
+
     Write-UpdateLog '新版健康檢查通過。'
     if (Test-Path -LiteralPath $backupRoot) {
         if (-not (Test-IsChildPath $install $backupRoot)) { throw '備份路徑安全檢查失敗。' }
@@ -147,6 +180,7 @@ try {
     Remove-TemporaryArchive
     Write-UpdateLog '更新完成。'
     exit 0
+
 }
 catch {
     Write-UpdateLog ("更新失敗：" + $_.Exception.Message)
