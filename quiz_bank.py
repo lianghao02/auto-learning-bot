@@ -5,7 +5,7 @@
 - AI 失敗 fallback：猜 val=0 送出 → review 讀正解 → 存 GAS → 再考一次
 """
 
-import re, json, time, requests, difflib, threading
+import re, json, time, requests, difflib, threading, sys
 from utils.security import validate_ai_base_url
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -17,7 +17,20 @@ GAS_URL = 'https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1
 
 # ── 工具 ─────────────────────────────────────────────
 
+def _safe_print(text):
+    """安全輸出字串，防範 Windows CP950/Big5 控制台拋出 UnicodeEncodeError。"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        encoding = getattr(sys.stdout, "encoding", None) or "cp950"
+        try:
+            safe_text = str(text).encode(encoding, errors="replace").decode(encoding)
+            print(safe_text)
+        except Exception:
+            pass
+
 def _normalize(text):
+
     """去除空白標點，只留中英數，用於模糊比對 key"""
     return re.sub(r'[^\w\u4e00-\u9fff]', '', text or '').strip()
 
@@ -169,15 +182,207 @@ def lookup_bank(bank, q_text, threshold=0.75):
 
 # ── AI 分析答案 ──────────────────────────────────────
 
+def save_ai_answers_to_sqlite(questions_data: list, answers_by_idx: dict):
+    """將 AI 作答結果標準化儲存至本機 SQLite questions.db，達成問過一次永久記住。"""
+    try:
+        from utils.app_paths import user_data_path
+        from utils.config_io import get_db_connection
+        db_path = user_data_path("questions.db")
+        conn = get_db_connection(db_path)
+        try:
+            for q in questions_data:
+                idx_str = str(q.get("index", ""))
+                ans_code = answers_by_idx.get(idx_str) or answers_by_idx.get(q.get("name", ""))
+                if not ans_code:
+                    continue
+                q_text = q.get("q_text", "").strip()
+                opts = q.get("options", [])
+                opt_map = {opt["label"].upper(): opt["text"].strip() for opt in opts if "label" in opt and "text" in opt}
+
+                ans_code_str = str(ans_code).strip().upper()
+                resolved_ans = opt_map.get(ans_code_str, str(ans_code).strip())
+
+                opt_a = opt_map.get("A", "")
+                opt_b = opt_map.get("B", "")
+                opt_c = opt_map.get("C", "")
+                opt_d = opt_map.get("D", "")
+
+                conn.execute(
+                    "INSERT OR REPLACE INTO questions (question, option_a, option_b, option_c, option_d, answer) VALUES (?, ?, ?, ?, ?, ?)",
+                    (q_text, opt_a, opt_b, opt_c, opt_d, resolved_ans)
+                )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:
+        print(f"  [題庫] 存入本機 SQLite 異常: {e}")
+
+
+def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) -> dict:
+    """
+    呼叫 AI API 批次解析整份考卷題目（支援單選、多選、是非題），回傳結構化答案與對應之內部 val。
+    """
+    if not questions_data:
+        return {"success": False, "error": "無題目資料", "answers": {}, "parsed_answers": {}}
+
+    provider = config.get('ai_provider', 'Gemini')
+    ai_keys  = config.get('ai_keys', {}) or {}
+    api_key  = (ai_keys.get(provider) or config.get('ai_api_key', '')).strip()
+    if not api_key:
+        return {"success": False, "error": "尚未設定 API Key，請至系統設定填入", "answers": {}, "parsed_answers": {}}
+
+    try:
+        base_url = validate_ai_base_url(
+            provider,
+            config.get('ai_base_url', 'https://generativelanguage.googleapis.com/v1beta/openai'),
+        )
+    except ValueError as exc:
+        return {"success": False, "error": f"API 網址遭安全規則拒絕：{exc}", "answers": {}, "parsed_answers": {}}
+
+    model = config.get('ai_model', 'gemini-2.0-flash')
+
+    from utils.security import global_ai_rate_limiter, mask_api_key
+    if not global_ai_rate_limiter.acquire(timeout=15.0):
+        return {"success": False, "error": "超出每分鐘請求速率上限（5 RPM），請稍候重試", "answers": {}, "parsed_answers": {}}
+
+    masked_key = mask_api_key(api_key)
+    _safe_print(f"  [AI批次] 正在呼叫 {provider} ({model}) 端點: {base_url} (Key: {masked_key})")
+
+
+    prompt_lines = [
+        f"請針對以下《{course_name}》測驗題目進行回答。",
+        "請務必遵守以下作答規範：",
+        "1. 一律以嚴格標準的 JSON 格式回傳，最外層為包含 'answers' 物件的字典。",
+        "2. 'answers' 字典的 key 為題號字串（如 \"1\", \"2\", \"3\"...），value 為正確選項之代號字串（如 \"A\", \"B\", \"C\", \"D\"；是非題若是/對回傳 \"A\" 或對應代號；若為多選題請以逗號分隔如 \"A,C\"）。",
+        '3. 回傳範例: {"answers": {"1": "C", "2": "C", "3": "D", "4": "A,C"}}',
+        "4. 絕對不要輸出任何 Markdown 代碼塊（如 ```json）、不要輸出解釋說明，只輸出純 JSON。\n",
+        "【測驗題目清單】"
+    ]
+    for q in questions_data:
+        idx = q.get("index", 1)
+        q_type = q.get("type", "單選")
+        q_text = q.get("q_text", "").strip()
+        opts = q.get("options", [])
+        opts_str = "\n".join(f"   {opt.get('label', '')}. {opt.get('text', '')}" for opt in opts)
+        prompt_lines.append(f"{idx}. [{q_type}] {q_text}\n{opts_str}\n")
+
+    prompt = "\n".join(prompt_lines)
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    if provider == "Claude":
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json"
+        }
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a professional Taiwan government civil service examination and compliance expert. You output answers in strict JSON without any surrounding text."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ],
+        "response_format": {"type": "json_object"},
+        "temperature": 0.0
+    }
+
+    try:
+        if provider == "Claude":
+            url = f"{base_url}/messages"
+            claude_payload = {
+                "model": model,
+                "max_tokens": 1000,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            resp = requests.post(url, headers=headers, json=claude_payload, timeout=25)
+            resp.raise_for_status()
+            raw_text = resp.json()["content"][0]["text"].strip()
+        else:
+            url = f"{base_url}/chat/completions"
+            resp = requests.post(url, headers=headers, json=payload, timeout=25)
+            resp.raise_for_status()
+            raw_text = resp.json()["choices"][0]["message"]["content"].strip()
+
+        # 解析 JSON
+        clean_json_str = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE)
+        clean_json_str = re.sub(r"\s*```$", "", clean_json_str).strip()
+        parsed_obj = json.loads(clean_json_str)
+
+        if "answers" in parsed_obj and isinstance(parsed_obj["answers"], dict):
+            raw_answers = parsed_obj["answers"]
+        elif isinstance(parsed_obj, dict):
+            raw_answers = parsed_obj
+        else:
+            raw_answers = {}
+
+        parsed_answers = {}
+        answers_by_idx = {}
+        for q in questions_data:
+            idx_str = str(q.get("index", ""))
+            ans_code = raw_answers.get(idx_str) or (raw_answers.get(str(int(idx_str))) if idx_str.isdigit() else None)
+            if not ans_code:
+                continue
+
+            ans_code_str = str(ans_code).strip()
+            answers_by_idx[idx_str] = ans_code_str
+
+            opts = q.get("options", [])
+            label_to_val = {opt["label"].upper(): str(opt["val"]) for opt in opts if "label" in opt and "val" in opt}
+
+            codes = [c.strip().upper() for c in ans_code_str.replace("，", ",").replace("、", ",").replace(" ", ",").split(",") if c.strip()]
+            matched_vals = [label_to_val[c] for c in codes if c in label_to_val]
+
+            if matched_vals:
+                parsed_answers[q["name"]] = matched_vals if len(matched_vals) > 1 else matched_vals[0]
+
+        # 儲存進 SQLite
+        save_ai_answers_to_sqlite(questions_data, answers_by_idx)
+
+        _safe_print(f"  ✓ [AI批次] 成功解析 {len(answers_by_idx)}/{len(questions_data)} 題解答並同步至題庫")
+        return {
+            "success": True,
+            "answers": answers_by_idx,
+            "parsed_answers": parsed_answers,
+            "raw_text": raw_text,
+            "error": None
+        }
+
+    except requests.exceptions.HTTPError as e:
+        status_code = getattr(e.response, "status_code", None)
+        if status_code == 429:
+            err_msg = "Google API 速率受限 (429 Resource Exhausted)，已自動防護"
+        elif status_code == 401:
+            err_msg = "API Key 無效或授權失敗 (401 Unauthorized)"
+        else:
+            err_msg = f"API 呼叫失敗 (HTTP {status_code})"
+        _safe_print(f"  ❌ [AI批次] {err_msg}")
+        return {"success": False, "error": err_msg, "answers": {}, "parsed_answers": {}}
+    except Exception as e:
+        err_msg = f"AI 解析過程異常: {e}"
+        _safe_print(f"  ❌ [AI批次] {err_msg}")
+        return {"success": False, "error": err_msg, "answers": {}, "parsed_answers": {}}
+
+
+
 def ai_guess_answer(q_text, options, config):
     """
     呼叫 AI API（OpenAI-compatible 或 Claude）分析題目，回傳正確選項的 val str。
     config: {ai_provider, ai_keys:{Provider:key}, ai_base_url, ai_model}
     回傳 val str（'0'~'3'）或 None（失敗）
     """
-    provider = config.get('ai_provider', 'OpenAI')
+    provider = config.get('ai_provider', 'Gemini')
     ai_keys  = config.get('ai_keys', {})
     api_key  = ai_keys.get(provider) or config.get('ai_api_key', '')
+
     if not api_key:
         print('  [AI] 無 API key，跳過')
         return None
@@ -629,8 +834,7 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
         is_interactive = bool(config.get('interactive_quiz_for_session')) and callable(cb)
         unanswered_qs = [q for q in questions if q['name'] not in answers]
 
-        if is_interactive and unanswered_qs:
-            print('  🤖 啟用人機協同作答助理（彈窗回貼）...')
+        if unanswered_qs:
             questions_data = []
             opt_labels = ["A", "B", "C", "D", "E", "F", "G", "H"]
             for idx, q in enumerate(questions, 1):
@@ -651,20 +855,37 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                     "raw_q": q
                 })
 
-            parsed = cb(course_name or f"課程 {course_id}", questions_data)
-            if parsed == "STOP_ALL":
-                print('  🛑 使用者選擇結束本次執行')
-                return '', False, {}, {}
-            elif isinstance(parsed, dict) and parsed:
-                for q_item in questions_data:
-                    idx = q_item["index"]
-                    if idx in parsed:
-                        chosen_labels = [l.upper() for l in parsed[idx]]
-                        for opt in q_item["options"]:
-                            if opt["label"].upper() in chosen_labels:
-                                answers[q_item["name"]] = opt["val"]
-                                print(f'  ✓ [人機] {q_item["q_text"][:28]}... → 選 {opt["label"]} (val={opt["val"]})')
-                                break
+            # 若使用者開啟「AI 全自動背景作答」且具備 API Key，直接背景秒答
+            ai_auto_solve = bool(config.get("ai_auto_solve", False))
+            if ai_auto_solve and has_local_ai:
+                print('  ⚡ 啟用 AI 全自動背景極速作答（Gemini 批次模式）...')
+                batch_res = ai_batch_solve_quiz(course_name or f"課程 {course_id}", questions_data, config)
+                if batch_res.get("success") and batch_res.get("parsed_answers"):
+                    for q_name, q_val in batch_res["parsed_answers"].items():
+                        answers[q_name] = q_val if not isinstance(q_val, list) else q_val[0]
+                        print(f'  ✓ [AI全自動] {q_name} → val={answers[q_name]}')
+
+            # 否則若啟用人機協同助理彈窗
+            elif is_interactive and unanswered_qs:
+                print('  🤖 啟用人機協同作答助理（彈窗回貼 / Gemini 批次）...')
+                parsed = cb(course_name or f"課程 {course_id}", questions_data)
+                if parsed == "STOP_ALL":
+                    print('  🛑 使用者選擇結束本次執行')
+                    return '', False, {}, {}
+                elif parsed == "SKIP":
+                    print('  ⏩ 使用者選擇跳過測驗，將自動檢查並完成問卷')
+                    return 'SKIPPED', False, {}, {}
+                elif isinstance(parsed, dict) and parsed:
+                    for q_item in questions_data:
+                        idx = q_item["index"]
+                        if idx in parsed:
+                            chosen_labels = [l.upper() for l in parsed[idx]]
+                            for opt in q_item["options"]:
+                                if opt["label"].upper() in chosen_labels:
+                                    answers[q_item["name"]] = opt["val"]
+                                    print(f'  ✓ [人機/Gemini] {q_item["q_text"][:28]}... → 選 {opt["label"]} (val={opt["val"]})')
+                                    break
+
 
         # 3. 仍未作答者，由本機 AI 或猜題保底
         for q in questions:
