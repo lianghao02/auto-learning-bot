@@ -29,8 +29,9 @@ class InteractiveQuizDialogTests(unittest.TestCase):
         panel = PlatformTabPanel("ecpa", "e等公務員", lambda *_: None, lambda *_: None, lambda *_: None)
 
         modes = [panel.exam_mode_combo.itemData(i) for i in range(panel.exam_mode_combo.count())]
-        self.assertEqual(modes, ["auto", "interactive", "skip"])
-        self.assertEqual(panel.exam_mode_combo.currentData(), "auto")
+        self.assertEqual(modes, ["sqlite", "interactive", "skip", "gemini_direct"])
+        self.assertEqual(panel.exam_mode_combo.currentData(), "sqlite")
         self.assertFalse(hasattr(panel, "skip_exam_checkbox"))
         self.assertFalse(hasattr(panel, "interactive_quiz_checkbox"))
         panel.close()
+
