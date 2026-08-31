@@ -55,7 +55,8 @@ class AiBatchSolverTests(unittest.TestCase):
         self.config = {
             'ai_provider': 'Gemini',
             'ai_base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
-            'ai_model': 'gemini-2.0-flash',
+            'ai_model': 'gemini-3.1-flash-lite',
+
             'ai_api_key': 'AIzaSyTestMockKey12345678',
         }
 

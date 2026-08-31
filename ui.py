@@ -1427,7 +1427,8 @@ class DeleteAccountPanel(QFrame):
 class SettingsPanel(QFrame):
     # 各服務預設值：(base_url, default_model, 申請連結)
     AI_PRESETS = {
-        "Gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-2.0-flash",        "https://aistudio.google.com/app/apikey"),
+        "Gemini": ("https://generativelanguage.googleapis.com/v1beta/openai", "gemini-3.1-flash-lite",        "https://aistudio.google.com/app/apikey"),
+
         "OpenAI": ("https://api.openai.com/v1",                               "gpt-4o-mini",             "https://platform.openai.com/api-keys"),
         "Claude": ("https://api.anthropic.com/v1",                            "claude-haiku-4-5",        "https://console.anthropic.com/settings/keys"),
         "Groq":   ("https://api.groq.com/openai/v1",                          "llama-3.1-8b-instant",    "https://console.groq.com/keys"),

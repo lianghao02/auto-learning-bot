@@ -239,7 +239,10 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
     except ValueError as exc:
         return {"success": False, "error": f"API 網址遭安全規則拒絕：{exc}", "answers": {}, "parsed_answers": {}}
 
-    model = config.get('ai_model', 'gemini-2.0-flash')
+    model = config.get('ai_model', 'gemini-3.1-flash-lite')
+    if provider == "Gemini" and ("gemini-2.0" in model or "gemini-1.5" in model or "gemini-2.5" in model):
+        model = "gemini-3.1-flash-lite"
+
 
     from utils.security import global_ai_rate_limiter, mask_api_key
     if not global_ai_rate_limiter.acquire(timeout=15.0):
