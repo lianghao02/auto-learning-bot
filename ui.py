@@ -2834,13 +2834,15 @@ class PlatformTabPanel(QWidget):
         self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 15px; background: transparent; border: none;")
 
         self.exam_mode_combo = QComboBox()
-        self.exam_mode_combo.addItem("自動作答（題庫優先）", "auto")
-        self.exam_mode_combo.addItem("人機協同作答（彈窗回貼）", "interactive")
-        self.exam_mode_combo.addItem("跳過測驗，先填問卷", "skip")
+        self.exam_mode_combo.addItem("1. SQLite 題庫秒殺模式（本機題庫優先）", "sqlite")
+        self.exam_mode_combo.addItem("2. 人機協同助理彈窗模式（彈窗回貼／一鍵作答）", "interactive")
+        self.exam_mode_combo.addItem("3. 跳過測驗模式（先填問卷）", "skip")
+        self.exam_mode_combo.addItem("4. Gemini API 批次直連 ⭐（1 秒秒殺）", "gemini_direct")
         self.exam_mode_combo.setToolTip(
-            "僅套用於本次執行。自動作答會優先使用題庫；人機協同會開啟題目複製與答案回貼視窗；跳過測驗不會把課程視為完成。"
+            "1. SQLite 題庫秒殺：本機題庫優先作答（0 秒）\n2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n3. 跳過測驗：跳過測驗並自動為您完成滿意度問卷調查\n4. Gemini 批次直連：遇未收錄考卷直接背景呼叫 Gemini 2.0 Flash 批次解析（不彈窗）"
         )
-        self.exam_mode_combo.setMinimumWidth(250)
+        self.exam_mode_combo.setMinimumWidth(320)
+
         self.exam_mode_combo.setStyleSheet("""
             QComboBox {
                 background: #FAF9F6; color: #2F3B43;
@@ -3271,7 +3273,65 @@ class AccountSettingsTabPanel(QWidget):
         form_layout.addRow(QLabel("執行模式:"), self.headless_cb)
         form_layout.addRow(QLabel("Gemini API Key（選填）:"), self.ai_key_input)
 
+        # 💡 Google Gemini API 免費申請與 0 元防扣款指南卡片
+        ai_tip_box = QFrame()
+        ai_tip_box.setStyleSheet("""
+            QFrame {
+                background: #F0FDF4;
+                border: 1px solid #86EFAC;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
+        ai_tip_layout = QVBoxLayout(ai_tip_box)
+        ai_tip_layout.setContentsMargins(10, 8, 10, 8)
+        ai_tip_layout.setSpacing(6)
+
+        ai_tip_title = QLabel("💡 <b>Google Gemini API 免費申請與 0 元防扣款指南</b>")
+        ai_tip_title.setStyleSheet("color: #166534; font-size: 13px; font-weight: bold; background: transparent; border: none;")
+
+        ai_tip_text = QLabel(
+            "• <b>30 秒快速取得</b>：前往 Google AI Studio 點擊「Create API key」即可取得免費 Key。<br>"
+            "• <b>永久免費額度</b>：Google 提供每日 1,500 次 / 每分 15 次免費額度（Free Tier），<b>免綁信用卡</b>。<br>"
+            "• <b>0 元扣款保證</b>：只要未在 Google Cloud 綁定信用卡帳單，超額時僅會返回 429 暫停，<b>絕無任何帳單或扣款風險</b>。<br>"
+            "• <b>金鑰安全</b>：API Key 僅保存在本機 <code>data/config.json</code>，日誌自動遮罩脫敏，絕不上傳第三方伺服器。"
+        )
+        ai_tip_text.setStyleSheet("color: #15803D; font-size: 12px; line-height: 1.5; background: transparent; border: none;")
+        ai_tip_text.setWordWrap(True)
+
+        ai_btn_row = QHBoxLayout()
+        open_ai_studio_btn = QPushButton("🔗 前往申請 Google Gemini API Key (Google AI Studio)")
+        open_ai_studio_btn.setStyleSheet("""
+            QPushButton {
+                background: #16A34A; color: #FFFFFF; font-weight: bold; font-size: 12px;
+                padding: 6px 14px; border-radius: 6px; border: none;
+            }
+            QPushButton:hover { background: #15803D; }
+        """)
+        open_ai_studio_btn.clicked.connect(lambda: self._open_url_native("https://aistudio.google.com/app/apikey"))
+
+        open_pricing_btn = QPushButton("📊 查看 Google 官方費率公告")
+        open_pricing_btn.setStyleSheet("""
+            QPushButton {
+                background: #E2E8F0; color: #334155; font-size: 12px;
+                padding: 6px 12px; border-radius: 6px; border: 1px solid #CBD5E1;
+            }
+            QPushButton:hover { background: #CBD5E1; }
+        """)
+        open_pricing_btn.clicked.connect(lambda: self._open_url_native("https://ai.google.dev/pricing"))
+
+        ai_btn_row.addWidget(open_ai_studio_btn)
+        ai_btn_row.addWidget(open_pricing_btn)
+        ai_btn_row.addStretch()
+
+        ai_tip_layout.addWidget(ai_tip_title)
+        ai_tip_layout.addWidget(ai_tip_text)
+        ai_tip_layout.addLayout(ai_btn_row)
+
+        form_layout.addRow("", ai_tip_box)
+
         layout.addWidget(form_card)
+
 
         btn_bar = QHBoxLayout()
         self.save_btn = QPushButton("💾 儲存並套用設定")
@@ -3387,8 +3447,24 @@ class AccountSettingsTabPanel(QWidget):
         except Exception as e:
             QMessageBox.critical(self, "錯誤", f"❌ 儲存失敗：{e}")
 
+    def _open_url_native(self, url: str):
+        """使用系統原生機制開啟網頁"""
+        try:
+            import webbrowser
+            webbrowser.open_new_tab(url)
+        except Exception:
+            try:
+                import os
+                os.startfile(url)
+            except Exception:
+                try:
+                    QDesktopServices.openUrl(QUrl(url))
+                except Exception:
+                    pass
+
 
 class ImmersivePage(QWidget):
+
     def __init__(self, on_stop):
         super().__init__()
         self.on_stop = on_stop
@@ -3723,15 +3799,20 @@ class MainWindow(QWidget):
         # 🔒 實時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
         full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
         panel = self.immersive.taipei_panel if key == "taipei_eda" else self.immersive.egov_panel
-        exam_mode = panel.exam_mode_combo.currentData() or "auto"
-        full_config["skip_exam_for_session"] = exam_mode == "skip"
-        full_config["interactive_quiz_for_session"] = exam_mode == "interactive"
-        if full_config["skip_exam_for_session"]:
-            logger.info("本次執行已啟用「跳過測驗，先做問卷」模式。")
-        elif full_config["interactive_quiz_for_session"]:
-            logger.info("本次執行已啟用「人機協同作答（彈窗回貼）」模式。")
+        exam_mode = panel.exam_mode_combo.currentData() or "sqlite"
+        full_config["skip_exam_for_session"] = (exam_mode == "skip")
+        full_config["interactive_quiz_for_session"] = (exam_mode == "interactive")
+        if exam_mode == "gemini_direct":
+            full_config["ai_auto_solve"] = True
+            logger.info("本次執行已啟用「4. Gemini API 批次直連 ⭐」模式（自動背景極速作答）。")
+        elif exam_mode == "skip":
+            logger.info("本次執行已啟用「3. 跳過測驗模式（先填問卷）」模式。")
+        elif exam_mode == "interactive":
+            logger.info("本次執行已啟用「2. 人機協同助理彈窗模式（彈窗回貼／一鍵作答）」模式。")
         else:
-            logger.info("本次執行採用「自動作答（題庫優先）」模式。")
+            full_config["ai_auto_solve"] = False
+            logger.info("本次執行採用「1. SQLite 題庫秒殺模式（本機題庫優先）」模式。")
+
 
         if key == "taipei_eda":
             # 檢查並自動清理已死掉的舊 Thread
