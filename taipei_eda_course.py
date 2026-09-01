@@ -1273,7 +1273,10 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         print(f'\n共 {len(incomplete)} 門待處理課程，開始依序處理...')
 
         stopped = False
+        session_completed_taipei = 0
+        session_passed_taipei = 0
         for course in incomplete:
+
             if not should_continue():
                 print('使用者已停止臺北E大流程')
                 stopped = True
@@ -1348,7 +1351,31 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 print('  ✅ 問卷已完成，跳過')
             else:
                 print('  無問卷')
+
+            # 📊 每完成一門課輸出即時成效儀表板卡片
+            session_completed_taipei += 1
+            is_c_passed = is_quiz_passed(course, req_score=req_score)
+            if is_c_passed:
+                session_passed_taipei += 1
+            try:
+                from utils.security import format_course_dashboard_card
+                c_card = format_course_dashboard_card(
+                    course_name=course.get("name", ""),
+                    score_text="達標及格" if is_c_passed else ("測驗跳過（待後續處理）" if skip_exam_for_session else "未達門檻"),
+                    is_passed=is_c_passed,
+                    solve_mode_desc="🤖 Gemini 批次秒答" if config.get("ai_auto_solve") else ("⏩ 跳過測驗模式" if skip_exam_for_session else "📚 共用題庫秒殺"),
+                    feedback_status="✅ 已完成" if (quest == '已完成' or fb_url) else "無問卷",
+                    session_completed=session_completed_taipei,
+                    session_passed=session_passed_taipei,
+                )
+                print("\n" + c_card)
+            except Exception:
+                pass
+
+
+
             time.sleep(3)
+
 
         print('\n=== 最終課程狀態 ===')
         courses_final = get_course_list(driver, wait)

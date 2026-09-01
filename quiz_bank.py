@@ -251,6 +251,14 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
     masked_key = mask_api_key(api_key)
     _safe_print(f"  [AI批次] 正在呼叫 {provider} ({model}) 端點: {base_url} (Key: {masked_key})")
 
+    # 記錄一次 API 發送嘗試（無論成功、逾時或 429 皆精確計數）
+    try:
+        from utils.security import global_quota_tracker
+        global_quota_tracker.record_usage(1)
+    except Exception:
+        pass
+
+
 
     prompt_lines = [
         f"請針對以下《{course_name}》測驗題目進行回答。",
@@ -347,17 +355,17 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
             if matched_vals:
                 parsed_answers[q["name"]] = matched_vals if len(matched_vals) > 1 else matched_vals[0]
 
-        # 儲存進 SQLite
-        save_ai_answers_to_sqlite(questions_data, answers_by_idx)
+        _safe_print(f"  ✓ [AI批次] 成功解析 {len(answers_by_idx)}/{len(questions_data)} 題候選解答")
 
-        _safe_print(f"  ✓ [AI批次] 成功解析 {len(answers_by_idx)}/{len(questions_data)} 題解答並同步至題庫")
         return {
             "success": True,
             "answers": answers_by_idx,
             "parsed_answers": parsed_answers,
+            "questions_data": questions_data,
             "raw_text": raw_text,
             "error": None
         }
+
 
     except requests.exceptions.HTTPError as e:
         status_code = getattr(e.response, "status_code", None)
@@ -564,47 +572,49 @@ def _read_questions(driver):
 
 def _fill_answers(driver, answers):
     """
-    填答：answers = {name: val}
+    填答：answers = {name: val} 或 {name: [val1, val2]} (多選)
     """
     for name, val in answers.items():
-        try:
-            # 優先使用原有的 value 屬性精確匹配
-            r = driver.find_element(By.CSS_SELECTOR,
-                f'input[type=radio][name="{name}"][value="{val}"]')
-            driver.execute_script("arguments[0].click();", r)
-            driver.execute_script(
-                "arguments[0].checked=true;"
-                "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
-        except Exception as e:
-            # 💡 防禦性填答：當 value 對不上時（例如題庫 1-based 與網頁 0-based 不一致）
+        vals = val if isinstance(val, list) else [val]
+        for v in vals:
+            v_str = str(v).strip()
             try:
-                # 尋找該題名下所有的 radio 按鈕
-                radios = driver.find_elements(By.CSS_SELECTOR, f'input[type=radio][name="{name}"]')
-                if radios:
-                    # 嘗試將 val 轉為整數
-                    val_int = int(val)
-                    target_idx = -1
+                # 優先使用原有的 value 屬性精確匹配（radio 或 checkbox）
+                r = driver.find_element(By.CSS_SELECTOR,
+                    f'input[name="{name}"][value="{v_str}"]')
+                driver.execute_script("arguments[0].click();", r)
+                driver.execute_script(
+                    "arguments[0].checked=true;"
+                    "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
+            except Exception as e:
+                # 💡 防禦性填答：當 value 對不上時（例如題庫 1-based 與網頁 0-based 不一致）
+                try:
+                    inputs = driver.find_elements(By.CSS_SELECTOR, f'input[name="{name}"]')
+                    if inputs:
+                        val_int = int(v_str)
+                        target_idx = -1
 
-                    # 情況一：題庫存的是 1-based (1~4)，網頁是 0-based。當 val=4 且 radios 有 4 個時，目標 index 為 3
-                    if 1 <= val_int <= len(radios):
-                        target_idx = val_int - 1
-                    # 情況二：如果 val 剛好是 0-based 的 index (0~3)
-                    elif 0 <= val_int < len(radios):
-                        target_idx = val_int
+                        # 情況一：題庫存的是 1-based (1~4)，網頁是 0-based。當 val=4 且 inputs 有 4 個時，目標 index 為 3
+                        if 1 <= val_int <= len(inputs):
+                            target_idx = val_int - 1
+                        # 情況二：如果 val 剛好是 0-based 的 index (0~3)
+                        elif 0 <= val_int < len(inputs):
+                            target_idx = val_int
 
-                    if target_idx != -1:
-                        r = radios[target_idx]
-                        driver.execute_script("arguments[0].click();", r)
-                        driver.execute_script(
-                            "arguments[0].checked=true;"
-                            "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
-                        print(f'  [填答] 💡 透過索引重新填答成功：{name} 第 {target_idx + 1} 個選項 (val={val})')
-                        continue
-            except Exception:
-                pass
-            print(f'  [填答] ✗ {name}={val}: {e}')
+                        if target_idx != -1:
+                            r = inputs[target_idx]
+                            driver.execute_script("arguments[0].click();", r)
+                            driver.execute_script(
+                                "arguments[0].checked=true;"
+                                "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
+                            print(f'  [填答] 💡 透過索引重新填答成功：{name} 第 {target_idx + 1} 個選項 (val={v_str})')
+                            continue
+                except Exception:
+                    pass
+                print(f'  [填答] ✗ {name}={v_str}: {e}')
 
 def _submit_quiz(driver, wait):
+
     """點完成作答 → summary → 全部送出並結束 → modal confirm → review URL"""
     # 完成作答
     finish = driver.execute_script("""
@@ -714,21 +724,39 @@ def _get_score_from_review(driver):
     except: pass
     return ''
 
-def _is_100(score_text):
-    """判斷成績是否為 100 分（抓「得X.XX分」的分子）"""
-    m = re.search(r'得\s*([\d.]+)\s*分', score_text)
+def _extract_score_num(score_text):
+    """解析分數數值（支援 80分、80.0分、80/100 等格式）"""
+    m = re.search(r'得\s*([\d.]+)\s*分', str(score_text or ''))
     if m:
-        try: return float(m.group(1)) >= 100
-        except: pass
-    # fallback: 找 X/Y 格式
-    m2 = re.search(r'(\d+)\s*/\s*\d+', score_text)
+        try:
+            return float(m.group(1))
+        except:
+            pass
+    m2 = re.search(r'(\d+)\s*/\s*(\d+)', str(score_text or ''))
     if m2:
-        try: return int(m2.group(1)) >= 100
-        except: pass
-    return False
+        try:
+            got = float(m2.group(1))
+            total = float(m2.group(2))
+            return (got / max(1.0, total)) * 100.0
+        except:
+            pass
+    m3 = re.search(r'([\d.]+)\s*分', str(score_text or ''))
+    if m3:
+        try:
+            return float(m3.group(1))
+        except:
+            pass
+    return None
+
+
+def _is_100(score_text):
+    """判斷成績是否為 100 分（滿分）"""
+    val = _extract_score_num(score_text)
+    return val is not None and val >= 100.0
 
 
 # ── 主函式 ──────────────────────────────────────────
+
 
 def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, course_name='', username='', quiz_interactive_callback=None, min_pass_score=60.0):
     """
@@ -752,6 +780,8 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
     best_score_text = ''
     best_is_100 = False
     reported_missing_keys = set()
+    pending_ai_batch = None
+
 
     def _question_record(q, val):
         return {
@@ -858,15 +888,19 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                     "raw_q": q
                 })
 
-            # 若使用者開啟「AI 全自動背景作答」且具備 API Key，直接背景秒答
+            # 若使用者開啟「AI 全自動背景作答」且具備 API Key，僅在第 1 次嘗試發送批次請求（保證 1 卷最多 1 次 API）
             ai_auto_solve = bool(config.get("ai_auto_solve", False))
-            if ai_auto_solve and has_local_ai:
-                print('  ⚡ 啟用 AI 全自動背景極速作答（Gemini 批次模式）...')
+            if ai_auto_solve and has_local_ai and attempt_no == 1:
+                print('  ⚡ 啟用 AI 全自動背景極速作答（Gemini 批次模式，每卷限 1 次）...')
                 batch_res = ai_batch_solve_quiz(course_name or f"課程 {course_id}", questions_data, config)
                 if batch_res.get("success") and batch_res.get("parsed_answers"):
+                    pending_ai_batch = (batch_res.get("questions_data", []), batch_res.get("answers", {}))
                     for q_name, q_val in batch_res["parsed_answers"].items():
-                        answers[q_name] = q_val if not isinstance(q_val, list) else q_val[0]
+                        answers[q_name] = q_val
                         print(f'  ✓ [AI全自動] {q_name} → val={answers[q_name]}')
+            elif ai_auto_solve and has_local_ai and attempt_no > 1:
+                print(f'  ℹ️ 第 {attempt_no} 次嘗試：直接使用前次審閱正解與題庫補答（不重複消耗 AI 額度）')
+
 
             # 否則若啟用人機協同助理彈窗
             elif is_interactive and unanswered_qs:
@@ -876,7 +910,7 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                     print('  🛑 使用者選擇結束本次執行')
                     return '', False, {}, {}
                 elif parsed == "SKIP":
-                    print('  ⏩ 使用者選擇跳過測驗，將自動檢查並完成問卷')
+                    print('  ⏩ 使用者選擇跳過測驗，將嘗試檢查並完成問卷')
                     return 'SKIPPED', False, {}, {}
                 elif isinstance(parsed, dict) and parsed:
                     for q_item in questions_data:
@@ -890,18 +924,10 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                                     break
 
 
-        # 3. 仍未作答者，由本機 AI 或猜題保底
+        # 3. 仍未作答者，由猜題保底（不發送單題 AI 請求，保證 1 卷最多 1 次 API）
         for q in questions:
             if q['name'] in answers:
                 continue
-
-            if use_local_ai and has_local_ai:
-                val = ai_guess_answer(q['qtext'], q['options'], config)
-                if val is not None:
-                    answers[q['name']] = str(val)
-                    ai_answered.append((q, str(val)))
-                    print(f'  ✓ [AI] {q["qtext"][:28]}... → val={val}')
-                    continue
 
             answers[q['name']] = '0'
             missing_qs.append(q)
@@ -916,12 +942,23 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
         correct_by_name = _read_correct_from_review(driver)
         score_text = _get_score_from_review(driver)
         is_100 = _is_100(score_text)
-        print(f'  [成績{attempt_no}] {score_text}  (100分: {is_100})')
+        score_num = _extract_score_num(score_text)
+        is_passed = is_100 or (score_num is not None and score_num >= min_pass_score)
+        print(f'  [成績{attempt_no}] {score_text}  (及格: {is_passed} / 滿分: {is_100})')
+
+        # 🛡️ 只有「第 1 次嘗試」且確認為 100 分滿分時，才將該輪 AI 批次作答結果寫入本機題庫
+        # 若非滿分或進入後續重試輪次，立即清空 pending_ai_batch，徹底杜絕跨輪次題目置換污染
+        if attempt_no == 1 and is_100 and pending_ai_batch and pending_ai_batch[0] and pending_ai_batch[1]:
+            save_ai_answers_to_sqlite(pending_ai_batch[0], pending_ai_batch[1])
+            _safe_print(f'  💾 測驗第 1 輪已獲 100 分滿分（{score_text}），已將 {len(pending_ai_batch[1])} 題 AI 驗證解答正式同步至題庫')
+        pending_ai_batch = None
+
 
         name_to_q = {q['name']: q for q in questions}
         correct_by_text = {}
         to_save = []
 
+        # 🛡️ 只有平臺 Review 頁面有公布正解時才存入共用題庫，未經驗證之 AI 猜答絕不上傳
         for name, val in correct_by_name.items():
             q = name_to_q.get(name)
             if not q:
@@ -929,23 +966,11 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
             correct_by_text[q['qtext']] = val
             to_save.append(_question_record(q, val))
 
-        for q, ai_val in ai_answered:
-            real_val = correct_by_name.get(q['name'])
-            if real_val and real_val != ai_val:
-                print(f'  [AI誤] {q["qtext"][:28]}... AI={ai_val} 正解={real_val}')
-            if not real_val:
-                to_save.append(_question_record(q, ai_val))
-
         _save_known_answers(to_save)
         return score_text, is_100, correct_by_text, answers
 
-    attempt_plan = [False]
-    if has_local_ai:
-        attempt_plan.append(True)
-    else:
-        print('  [AI] 本機未設定 AI key，將用題庫/猜答最多跑 3 次，缺題交給 GAS 端 AI 補庫')
-        attempt_plan.append(False)
-    attempt_plan.append(False)
+    attempt_plan = [False, False, False]
+
 
     for idx, use_ai in enumerate(attempt_plan, start=1):
         score_text, is_100, _, _ = _run_attempt(idx, use_ai)

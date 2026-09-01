@@ -156,8 +156,15 @@ class AdminEfficiencyPilot:
     ):
         self.progress_callback = progress_callback
         self.quiz_interactive_callback = quiz_interactive_callback
+        self.log_callback = log_callback
+        self.ui_handler = UILogHandler(log_callback) if log_callback else None
+        if self.ui_handler:
+            self.ui_handler.setFormatter(
+                logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+            )
         self._auto_healing_count = 0
         self.config = self.load_config(config_path)
+
 
         # ⭐ 重要：config_override 要完整覆蓋
         if config_override:
@@ -201,7 +208,10 @@ class AdminEfficiencyPilot:
         # ⚡ In-Memory 快取 token 索引（預先建立，避免 AttributeError）
         self._answer_token_map = {}
         self.answers = []  # 向後相容
+        self._session_completed_count = 0
+        self._session_passed_count = 0
         loaded = self.config.get("login_type") == "taipei_eda"
+
 
         # 優先：questions.db（SQLite，含選項結構）
         db_path = str(ensure_seeded_database())
@@ -1135,8 +1145,10 @@ class AdminEfficiencyPilot:
                     logger.info(f"   🎉 測驗結果：達標及格 {score_str}！")
                     passed = True
                     self._exam_fail_counts.pop(course_id, None)
-                    if _ai_answered:
+                    # 🛡️ 只有獲得 100 分滿分時，才將整卷 AI 答案同步至題庫；部分及格不存庫，防止未滿分之錯誤答案污染
+                    if _ai_answered and score_val >= 100.0:
                         self._save_answers_to_db(_ai_answered, source="AI")
+                        logger.info(f"   💾 測驗獲得 100 分滿分，已將 {len(_ai_answered)} 題 AI 驗證解答正式同步至題庫")
                 else:
                     self._exam_fail_counts[course_id] = self._exam_fail_counts.get(course_id, 0) + 1
                     fail_now = self._exam_fail_counts[course_id]
@@ -1151,10 +1163,9 @@ class AdminEfficiencyPilot:
                 logger.info(f"   🎉 測驗結果：及格 / 通過 {score_str}！")
                 passed = True
                 self._exam_fail_counts.pop(course_id, None)
-                if _ai_answered:
-                    self._save_answers_to_db(_ai_answered, source="AI")
             else:
                 logger.info(f"   📝 測驗已送出 {score_str}（請至學習紀錄查核狀態）")
+
                 passed = False
         except Exception as e:
             logger.debug(f"讀取測驗成績失敗: {e}")
@@ -1166,8 +1177,10 @@ class AdminEfficiencyPilot:
         """時數達標後，自動進入測驗並作答。回傳 True=通過, False=未通過/失敗"""
         ai_keys = self.config.get("ai_keys", {})
         ai_keys = ai_keys if isinstance(ai_keys, dict) else {}
-        ai_provider = self.config.get("ai_provider", "OpenAI")
-        ai_enabled = bool(ai_keys.get(ai_provider) or self.config.get("ai_api_key", ""))
+        ai_provider = self.config.get("ai_provider", "Gemini")
+        has_api_key = bool(ai_keys.get(ai_provider) or self.config.get("ai_api_key", ""))
+        ai_auto_solve = bool(self.config.get("ai_auto_solve", False))
+        ai_enabled = has_api_key and ai_auto_solve
 
         if (
             not self.config.get("interactive_quiz_for_session")
@@ -1191,10 +1204,14 @@ class AdminEfficiencyPilot:
         logger.info("   📝 開始自動作答流程...")
         # 收集本場 AI 補答的題目，考試通過後寫入 db
         _ai_answered = {}
-        # 僅在已設定有效 Key 時，重測才以 AI 覆核；否則維持純題庫模式。
+        # 僅在已啟用 AI 且重測時才以 AI 覆核；否則維持純題庫模式。
         force_ai = fail_count >= 1 and ai_enabled
         if not ai_enabled:
-            logger.info("   📚 未設定 API Key，啟用純題庫模式，不呼叫 AI 補答。")
+            if not has_api_key:
+                logger.info("   📚 未設定 API Key，啟用純題庫模式，不呼叫 AI。")
+            else:
+                logger.info("   📚 本次採用 SQLite 題庫秒殺模式，不呼叫 AI（0 耗額）。")
+
         # 以「目前所在視窗」為課程教室主視窗（不論從哪條路徑進入）
         main_window = self.driver.current_window_handle
 
@@ -1828,29 +1845,10 @@ class AdminEfficiencyPilot:
                                     _ai_answered[item["q_text"]] = str(ans_choice)
                                 logger.info(f"   🤖 AI 批次解答 [{q_num}/{len(rows)} 題]：{item['ans']!r}")
                     else:
-                        # 降級備援：個別呼叫 _ai_find_answer
-                        for item in items_needing_ai:
-                            if item["ans"] is None:
-                                radios_count = len(item["radios"])
-                                ai_options = item["option_texts"] if any(item["option_texts"]) else (
-                                    ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
-                                )
-                                if ai_options:
-                                    item["ans"] = self._ai_find_answer(item["q_text"], ai_options)
-                                    if item["ans"]:
-                                        _ai_answered[item["q_text"]] = item["ans"]
+                        logger.warning(f"   ⚠️ AI 批次作答未取得有效答案：{batch_res.get('error')}，其餘題目以本地安全猜答處理（不重試 API，保證 1 卷 1 次）")
                 except Exception as batch_err:
-                    logger.warning(f"   ⚠️ AI 批次作答失敗，切換為逐題備援：{batch_err}")
-                    for item in items_needing_ai:
-                        if item["ans"] is None:
-                            radios_count = len(item["radios"])
-                            ai_options = item["option_texts"] if any(item["option_texts"]) else (
-                                ["正確（是）", "錯誤（否）"] if radios_count == 2 else []
-                            )
-                            if ai_options:
-                                item["ans"] = self._ai_find_answer(item["q_text"], ai_options)
-                                if item["ans"]:
-                                    _ai_answered[item["q_text"]] = item["ans"]
+                    logger.warning(f"   ⚠️ AI 批次作答異常：{batch_err}，其餘題目以本地安全猜答處理（不重試 API，保證 1 卷 1 次）")
+
 
             for item in parsed_items:
                 q_idx = item["idx"]
@@ -3976,23 +3974,66 @@ class AdminEfficiencyPilot:
 
             # 時數達標，嘗試自動作答測驗，通過後填寫問卷（若問卷未完成）
             if self.running:
-                if self.config.get("skip_exam_for_session", False):
+                is_skip = self.config.get("skip_exam_for_session", False)
+                if is_skip:
                     logger.warning("本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。")
+                    q_ok = True
                     if str(course.get("fill", "0")) != "1":
                         q_ok = self.auto_questionnaire(course)
                         if not q_ok:
                             self._mark_exam_manual_review(course, "問卷填寫失敗，尚未確認完成")
                     else:
                         logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，跳過填寫。")
+
+                    if q_ok:
+                        c_id = str(course.get("course_id", course.get("id", "")))
+                        self._completed_in_session.add(c_id)
+                        self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                        try:
+                            from utils.security import format_course_dashboard_card
+                            card = format_course_dashboard_card(
+                                course_name=course.get('caption', ''),
+                                score_text="測驗跳過（待後續處理）",
+                                is_passed=False,
+                                solve_mode_desc="⏩ 跳過測驗模式",
+                                feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                session_completed=self._session_completed_count,
+                                session_passed=getattr(self, "_session_passed_count", 0)
+                            )
+                            logger.info("\n" + card)
+                        except Exception:
+                            pass
                 else:
                     exam_passed = self.auto_exam(course)
                     if self.running and exam_passed:
+                        q_ok = True
                         if str(course.get("fill", "0")) != "1":
                             q_ok = self.auto_questionnaire(course)
                             if not q_ok:
                                 self._mark_exam_manual_review(course, "問卷填寫失敗，尚未確認完成")
                         else:
                             logger.info(f"   ✅ 「{course.get('caption', '')}」問卷先前已完成，跳過填寫。")
+
+                        if q_ok:
+                            c_id = str(course.get("course_id", course.get("id", "")))
+                            self._completed_in_session.add(c_id)
+                            self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                            self._session_passed_count = getattr(self, "_session_passed_count", 0) + 1
+                            try:
+                                from utils.security import format_course_dashboard_card
+                                card = format_course_dashboard_card(
+                                    course_name=course.get('caption', ''),
+                                    score_text="達標及格",
+                                    is_passed=True,
+                                    solve_mode_desc="🤖 Gemini 批次秒答" if self.config.get("ai_auto_solve") else "📚 SQLite 題庫秒殺",
+                                    feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                    session_completed=self._session_completed_count,
+                                    session_passed=self._session_passed_count
+                                )
+                                logger.info("\n" + card)
+                            except Exception:
+                                pass
+
 
             logger.info("   🔄 返回學習概況清單...")
             self.driver.get(self.stat_url)
@@ -4375,6 +4416,21 @@ class AdminEfficiencyPilot:
                                     logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
                                 if q_ok:
                                     self._completed_in_session.add(c_id)
+                                    self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                                    try:
+                                        from utils.security import format_course_dashboard_card
+                                        card = format_course_dashboard_card(
+                                            course_name=c.get('caption', ''),
+                                            score_text="測驗跳過（待後續處理）",
+                                            is_passed=False,
+                                            solve_mode_desc="⏩ 跳過測驗模式",
+                                            feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                            session_completed=self._session_completed_count,
+                                            session_passed=getattr(self, "_session_passed_count", 0)
+                                        )
+                                        logger.info("\n" + card)
+                                    except Exception:
+                                        pass
                                 else:
                                     self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
                                 continue
@@ -4388,6 +4444,23 @@ class AdminEfficiencyPilot:
                                     logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
                                 if q_ok:
                                     self._completed_in_session.add(c_id)
+                                    self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                                    self._session_passed_count = getattr(self, "_session_passed_count", 0) + 1
+                                    try:
+                                        from utils.security import format_course_dashboard_card
+                                        card = format_course_dashboard_card(
+                                            course_name=c.get('caption', ''),
+                                            score_text="達標及格",
+                                            is_passed=True,
+                                            solve_mode_desc="🤖 Gemini 批次秒答" if self.config.get("ai_auto_solve") else "📚 SQLite 題庫秒殺",
+                                            feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                            session_completed=self._session_completed_count,
+                                            session_passed=self._session_passed_count
+                                        )
+                                        logger.info("\n" + card)
+                                    except Exception:
+                                        pass
+
                                 else:
                                     self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
                             elif not passed:
@@ -4399,6 +4472,23 @@ class AdminEfficiencyPilot:
                                     # 已達 3 次不及格上限，列為待人工處理清單，本次不再重試
                                     self._mark_exam_manual_review(c, "測驗連續不及格已達 3 次上限")
                                     self._completed_in_session.add(c_id)
+                                    self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                                    try:
+                                        from utils.security import format_course_dashboard_card
+                                        card = format_course_dashboard_card(
+                                            course_name=c.get('caption', ''),
+                                            score_text="未達門檻（已達3次上限）",
+                                            is_passed=False,
+                                            solve_mode_desc="📚 本地作答",
+                                            feedback_status="未填寫",
+                                            session_completed=self._session_completed_count,
+                                            session_passed=getattr(self, "_session_passed_count", 0)
+                                        )
+                                        logger.info("\n" + card)
+                                    except Exception:
+                                        pass
+
+
 
                         if not self.running:
                             break

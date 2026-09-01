@@ -1612,11 +1612,13 @@ class SettingsPanel(QFrame):
             }
         """)
         self.ai_tip_box.setText(
-            "💡 <b>Gemini 免費額度說明：</b><br>"
-            "• 每日 1,500 次 / 每分 15 次（免填信用卡）。<br>"
-            "• 0 元防扣款：未綁卡專案超額僅暫停，絕無扣款風險。<br>"
+            "💡 <b>Gemini 免費層配額說明：</b><br>"
+            "• 支援 Free Tier 免費配額（免填信用卡，請以 Google 官方即時公告為準）。<br>"
+            "• 配額與計費機制請以 Google 帳戶及官方公告為準。<br>"
             "🔗 <a href='https://ai.google.dev/gemini-api/docs/rate-limits' style='color:#15803D; font-weight:bold;'>查看 Google 官方最新費率公告</a>"
         )
+
+
         layout.addWidget(self.ai_tip_box)
 
         # ===== AI 驗證狀態 =====
@@ -2590,7 +2592,7 @@ class InteractiveQuizDialog(QDialog):
         if not api_key:
             msg_box = QMessageBox(self)
             msg_box.setWindowTitle("🔑 尚未設定 API Key")
-            msg_box.setText("您尚未在系統設定中填入 Gemini API Key。\n\n• Google AI Studio 提供免費 Key（每日 1,500 次免費額度，免綁信用卡）。\n• 是否前往 Google AI Studio 網站免費申請？")
+            msg_box.setText("您尚未在系統設定中填入 Gemini API Key。\n\n• Google AI Studio 提供免費 Key（Free Tier 免費層配額，免綁信用卡）。\n• 是否前往 Google AI Studio 網站免費申請？\n\n※ 實際免費配額以 Google 官方公告為準。")
             msg_box.setIcon(QMessageBox.Information)
             open_btn = msg_box.addButton("🔗 前往申請 (Google AI Studio)", QMessageBox.ActionRole)
             cancel_btn = msg_box.addButton("稍後設定", QMessageBox.RejectRole)
@@ -2602,8 +2604,9 @@ class InteractiveQuizDialog(QDialog):
         self.is_paused = True
         self.gemini_batch_btn.setEnabled(False)
         self.gemini_batch_btn.setText("⚡ 正在請求 Gemini 批次作答...")
-        self.parse_status_lbl.setText("⚡ 正在連線 Gemini 2.0 Flash 批次分析考卷，請稍候約 1 秒...")
+        self.parse_status_lbl.setText("⚡ 正在連線 Gemini 批次分析考卷，請稍候約 1~2 秒...")
         self.parse_status_lbl.setStyleSheet("color: #4F46E5; font-size: 12px; font-weight: bold; padding: 2px;")
+
 
         import threading
         def _worker():
@@ -2837,12 +2840,13 @@ class PlatformTabPanel(QWidget):
         self.exam_mode_combo = QComboBox()
         self.exam_mode_combo.addItem("1. SQLite 題庫秒殺模式（本機題庫優先）", "sqlite")
         self.exam_mode_combo.addItem("2. 人機協同助理彈窗模式（彈窗回貼／一鍵作答）", "interactive")
-        self.exam_mode_combo.addItem("3. 跳過測驗模式（先填問卷）", "skip")
-        self.exam_mode_combo.addItem("4. Gemini API 批次直連 ⭐（1 秒秒殺）", "gemini_direct")
+        self.exam_mode_combo.addItem("3. 跳過測驗模式（嘗試填問卷）", "skip")
+        self.exam_mode_combo.addItem("4. Gemini API 批次直連 ⭐（整卷秒答）", "gemini_direct")
         self.exam_mode_combo.setToolTip(
-            "1. SQLite 題庫秒殺：本機題庫優先作答（0 秒）\n2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n3. 跳過測驗：跳過測驗並自動為您完成滿意度問卷調查\n4. Gemini 批次直連：遇未收錄考卷直接背景呼叫 Gemini 2.0 Flash 批次解析（不彈窗）"
+            "1. SQLite 題庫秒殺：本機題庫優先作答（0 耗額）\n2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n3. 跳過測驗：跳過測驗並嘗試完成滿意度問卷調查\n4. Gemini 批次直連：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
         )
         self.exam_mode_combo.setMinimumWidth(320)
+
 
         self.exam_mode_combo.setStyleSheet("""
             QComboBox {
@@ -3288,15 +3292,17 @@ class AccountSettingsTabPanel(QWidget):
         ai_tip_layout.setContentsMargins(10, 8, 10, 8)
         ai_tip_layout.setSpacing(6)
 
-        ai_tip_title = QLabel("💡 <b>Google Gemini API 免費申請與 0 元防扣款指南</b>")
+        ai_tip_title = QLabel("💡 <b>Google Gemini API 申請與配額說明</b>")
         ai_tip_title.setStyleSheet("color: #166534; font-size: 13px; font-weight: bold; background: transparent; border: none;")
 
         ai_tip_text = QLabel(
-            "• <b>30 秒快速取得</b>：前往 Google AI Studio 點擊「Create API key」即可取得免費 Key。<br>"
-            "• <b>永久免費額度</b>：Google 提供每日 1,500 次 / 每分 15 次免費額度（Free Tier），<b>免綁信用卡</b>。<br>"
-            "• <b>0 元扣款保證</b>：只要未在 Google Cloud 綁定信用卡帳單，超額時僅會返回 429 暫停，<b>絕無任何帳單或扣款風險</b>。<br>"
+            "• <b>快速取得</b>：前往 Google AI Studio 點擊「Create API key」即可取得 Key。<br>"
+            "• <b>免費層配額（Free Tier）</b>：Google 提供 Free Tier 配額（※ 配額與費用請以 Google 帳戶及官方公告為準）。<br>"
+            "• <b>費用與防護</b>：未在 Google Cloud 啟用付費帳單之專案，超額時僅會返回 429 暫停。<br>"
             "• <b>金鑰安全</b>：API Key 僅保存在本機 <code>data/config.json</code>，日誌自動遮罩脫敏，絕不上傳第三方伺服器。"
         )
+
+
         ai_tip_text.setStyleSheet("color: #15803D; font-size: 12px; line-height: 1.5; background: transparent; border: none;")
         ai_tip_text.setWordWrap(True)
 

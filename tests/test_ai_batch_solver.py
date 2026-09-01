@@ -2,6 +2,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 from tempfile import TemporaryDirectory
 import sqlite3
 
@@ -26,6 +27,12 @@ class RateLimiterTests(unittest.TestCase):
 
 class AiBatchSolverTests(unittest.TestCase):
     def setUp(self):
+        self._temp_dir = TemporaryDirectory()
+        self.temp_quota_path = Path(self._temp_dir.name) / "daily_quota.json"
+        from utils.security import global_quota_tracker
+        self._orig_storage = global_quota_tracker._storage_path
+        global_quota_tracker._storage_path = self.temp_quota_path
+
         self.sample_questions = [
             {
                 'index': 1,
@@ -56,9 +63,14 @@ class AiBatchSolverTests(unittest.TestCase):
             'ai_provider': 'Gemini',
             'ai_base_url': 'https://generativelanguage.googleapis.com/v1beta/openai',
             'ai_model': 'gemini-3.1-flash-lite',
-
             'ai_api_key': 'AIzaSyTestMockKey12345678',
         }
+
+    def tearDown(self):
+        from utils.security import global_quota_tracker
+        global_quota_tracker._storage_path = self._orig_storage
+        self._temp_dir.cleanup()
+
 
     @patch('requests.post')
     def test_ai_batch_solve_success(self, mock_post):
@@ -87,6 +99,17 @@ class AiBatchSolverTests(unittest.TestCase):
         self.assertFalse(res['success'])
         self.assertIn('尚未設定 API Key', res['error'])
         mock_post.assert_not_called()
+
+    def test_score_extraction_and_is_100(self):
+        from quiz_bank import _extract_score_num, _is_100
+        self.assertEqual(_extract_score_num("得分：100.0 分"), 100.0)
+        self.assertTrue(_is_100("得 100 分"))
+        self.assertTrue(_is_100("得分：100 分"))
+        self.assertEqual(_extract_score_num("得分：80.0 分"), 80.0)
+        self.assertFalse(_is_100("得 80.0 分"))
+        self.assertEqual(_extract_score_num("8/10"), 80.0)
+        self.assertTrue(_is_100("10/10"))
+        self.assertFalse(_is_100("6/10"))
 
 
 if __name__ == '__main__':

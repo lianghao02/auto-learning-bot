@@ -80,8 +80,10 @@ class RateLimiter:
         return False
 
 
+
 # 全域 AI API 速率限制器（預設每分鐘最多 5 次請求）
 global_ai_rate_limiter = RateLimiter(max_requests=5, window_seconds=60.0)
+
 
 
 def mask_api_key(key: str | None) -> str:
@@ -93,3 +95,135 @@ def mask_api_key(key: str | None) -> str:
         return "***"
     return f"{raw[:6]}***{raw[-4:]}"
 
+
+class DailyQuotaTracker:
+    """本機每日 AI API 配額追蹤器（跨重啟持久化保存）。"""
+
+    def __init__(self, daily_limit: int = 1500, storage_path: Path | str | None = None):
+        self.daily_limit = daily_limit
+        self._storage_path = Path(storage_path) if storage_path else None
+        self._lock = threading.Lock()
+
+    def _get_file_path(self) -> Path:
+        if self._storage_path:
+            return self._storage_path
+        from utils.app_paths import user_data_path
+        return user_data_path("data/daily_quota.json")
+
+    def record_usage(self, count: int = 1) -> dict:
+        """記錄 API 消耗並回傳今日統計。"""
+        with self._lock:
+            path = self._get_file_path()
+            today_str = time.strftime("%Y-%m-%d")
+            data = {"date": today_str, "used": 0}
+            if path.exists():
+                try:
+                    import json
+                    with path.open("r", encoding="utf-8") as f:
+                        saved = json.load(f)
+                    if saved.get("date") == today_str:
+                        data["used"] = int(saved.get("used", 0))
+                except Exception:
+                    pass
+            data["used"] += count
+            try:
+                from utils.config_io import write_json_atomically
+                write_json_atomically(path, data)
+            except Exception:
+                pass
+
+            used = data["used"]
+            remaining = max(0, self.daily_limit - used)
+            pct = round((remaining / self.daily_limit) * 100, 1)
+            return {
+                "date": today_str,
+                "used": used,
+                "daily_limit": self.daily_limit,
+                "remaining": remaining,
+                "percentage": pct,
+            }
+
+    def get_stats(self) -> dict:
+        """取得今日配額統計。"""
+        with self._lock:
+            path = self._get_file_path()
+            today_str = time.strftime("%Y-%m-%d")
+            used = 0
+            if path.exists():
+                try:
+                    import json
+                    with path.open("r", encoding="utf-8") as f:
+                        saved = json.load(f)
+                    if saved.get("date") == today_str:
+                        used = int(saved.get("used", 0))
+                except Exception:
+                    pass
+            remaining = max(0, self.daily_limit - used)
+            pct = round((remaining / self.daily_limit) * 100, 1)
+            return {
+                "date": today_str,
+                "used": used,
+                "daily_limit": self.daily_limit,
+                "remaining": remaining,
+                "percentage": pct,
+            }
+
+
+# 全域每日配額追蹤實例
+global_quota_tracker = DailyQuotaTracker(daily_limit=1500)
+
+
+def format_batch_summary_card(
+    session_courses: int,
+    pass_count: int,
+    bank_solved: int,
+    ai_solved: int,
+    ai_requests: int,
+) -> str:
+    """格式化階段性成果與每日額度摘要卡片。"""
+    stats = global_quota_tracker.get_stats()
+    pass_rate = round((pass_count / max(1, session_courses)) * 100, 1)
+    status_icon = "🟢" if stats["remaining"] > 300 else ("🟡" if stats["remaining"] > 50 else "🔴")
+    card = f"""
+┌────────────────────────────────────────────────────────────┐
+│ 📊 階段成效彙整（已累積完成 {session_courses} 門課程測驗）                   │
+│                                                            │
+│ • 測驗通過率：{pass_count} / {session_courses} 門（及格率 {pass_rate}%）                      │
+│ • 本機題庫秒殺：{bank_solved} 題（0 耗額）                            │
+│ • AI 批次解答：{ai_solved} 題（共發送 {ai_requests} 次請求）                │
+│ ────────────────────────────────────────────────────────── │
+│ 💳 Google Gemini API 呼叫統計（今日）：                     │
+│ • 本日累計呼叫：{stats['used']} 次 ｜ 預估剩餘配額：{stats['remaining']} 次 / {stats['daily_limit']} 次    │
+│ • 配額健康度：{status_icon} 充足（剩餘 {stats['percentage']}%，實際以官方為準）     │
+└────────────────────────────────────────────────────────────┘"""
+    return card.strip()
+
+
+def format_course_dashboard_card(
+    course_name: str,
+    score_text: str,
+    is_passed: bool,
+    solve_mode_desc: str,
+    feedback_status: str,
+    session_completed: int,
+    session_passed: int,
+) -> str:
+    """格式化每門課即時動態成果卡片。"""
+    stats = global_quota_tracker.get_stats()
+    pass_icon = "🎉" if is_passed else "⚠️"
+    status_icon = "🟢" if stats["remaining"] > 300 else ("🟡" if stats["remaining"] > 50 else "🔴")
+    pass_rate = round((session_passed / max(1, session_completed)) * 100, 1)
+
+    card = f"""
+┌────────────────────────────────────────────────────────────┐
+│ 🎯 行政效能領航員 - 即時研習成效儀表板                        │
+│ ────────────────────────────────────────────────────────── │
+│ 📚 最新完成課程：【{course_name}】
+│ 🏆 測驗通過成果：{pass_icon} {score_text} ｜ 問卷：{feedback_status}
+│ ⚡ 本門作答方式：{solve_mode_desc}
+│                                                            │
+│ 📊 本次執行累計：已連續通過 {session_passed}/{session_completed} 門課程（及格率 {pass_rate}%）
+│ 💳 今日 API 呼叫：已用 {stats['used']} 次 ｜ 預估剩餘 {stats['remaining']} 次 / {stats['daily_limit']} 次
+│ {status_icon} 配額健康狀態：充足（剩餘 {stats['percentage']}%，實際以官方為準）
+└────────────────────────────────────────────────────────────┘"""
+    return card.strip()

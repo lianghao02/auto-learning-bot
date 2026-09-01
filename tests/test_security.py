@@ -52,6 +52,37 @@ class ValidateAiBaseUrlTests(unittest.TestCase):
                 '{"version": 1}',
             )
 
+    def test_daily_quota_tracker_and_dashboard_cards(self):
+        from utils.security import DailyQuotaTracker, format_course_dashboard_card, format_batch_summary_card
+        with TemporaryDirectory() as temp_dir:
+            temp_quota_file = Path(temp_dir) / "daily_quota.json"
+            tracker = DailyQuotaTracker(daily_limit=1500, storage_path=temp_quota_file)
+            res = tracker.record_usage(2)
+            self.assertEqual(res["used"], 2)
+            self.assertEqual(res["remaining"], 1498)
+
+            card = format_course_dashboard_card(
+                course_name="數位轉型實戰",
+                score_text="85.0 分及格",
+                is_passed=True,
+                solve_mode_desc="🤖 Gemini 批次秒答",
+                feedback_status="✅ 已完成",
+                session_completed=1,
+                session_passed=1
+            )
+            self.assertIn("行政效能領航員 - 即時研習成效儀表板", card)
+            self.assertIn("數位轉型實戰", card)
+            self.assertIn("85.0 分及格", card)
+
+            batch_card = format_batch_summary_card(
+                session_courses=5,
+                pass_count=5,
+                bank_solved=20,
+                ai_solved=30,
+                ai_requests=3
+            )
+            self.assertIn("階段成效彙整", batch_card)
+
 
 if __name__ == "__main__":
     unittest.main()
