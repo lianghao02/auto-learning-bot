@@ -1165,7 +1165,7 @@ def _release_taipei_run_lock(lock_path):
 
 
 
-def run_taipei_eda(config_override=None, should_continue=None, log_callback=None, quiz_interactive_callback=None):
+def run_taipei_eda(config_override=None, should_continue=None, log_callback=None, quiz_interactive_callback=None, course_state_callback=None):
     """Run the Taipei E-learning workflow from the GUI/back-end dispatcher."""
     should_continue = should_continue or (lambda: True)
     config = load_config()
@@ -1295,11 +1295,37 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             req_minutes = modules.get('req_minutes')
             req_score = modules.get('req_score', 60.0)
 
+            def _report_state(st, rsn="", nxt="", is_comp=False, needs_man=False, score=None):
+                if course_state_callback:
+                    try:
+                        from models.course_state import CourseState, CourseStatus
+                        c_state = CourseState(
+                            course_id=str(course_id or ""),
+                            course_name=course.get("name", ""),
+                            platform="taipei_eda",
+                            status=st,
+                            progress_pct=100.0 if is_comp else (50.0 if not study_needed else 20.0),
+                            current_time_str=course.get("study", "00:00:00"),
+                            required_time_str=f"{req_minutes or 0}:00",
+                            exam_score=score,
+                            pass_score=req_score,
+                            reason=rsn,
+                            next_step=nxt,
+                            is_completed=is_comp,
+                            needs_manual=needs_man,
+                        )
+                        course_state_callback(c_state)
+                    except Exception:
+                        pass
+
             study_needed = is_study_incomplete(course, req_minutes=req_minutes)
             if study_needed:
+                from models.course_state import CourseStatus
+                _report_state(CourseStatus.LEARNING, "時數尚未達標，正在進行 SCORM 閱讀累積", "累積足夠時數後自動進入測驗與問卷")
                 scorm_ok = do_scorm_course(driver, wait, course, config=config, should_continue=should_continue, modules=modules)
                 if not scorm_ok:
                     print('  ⚠️ SCORM 上課失敗，跳過測驗/問卷')
+                    _report_state(CourseStatus.ERROR, "SCORM 上課執行失敗", "請檢查課程教材格式或網路連線", needs_man=True)
                     continue
             else:
                 print('  ✅ 上課時數已達標，跳過上課，檢查測驗/問卷')
@@ -1309,9 +1335,13 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             quiz_passed = is_quiz_passed(course, req_score=req_score)
 
             if quiz_url and course_id and not quiz_passed and skip_exam_for_session:
+                from models.course_state import CourseStatus
                 print('  ⚠️ 本次已選擇跳過測驗；時數已達標，改為嘗試填寫問卷。')
+                _report_state(CourseStatus.SKIPPED, "使用者選擇本次跳過測驗", "轉為嘗試自動填寫滿意度問卷")
             elif quiz_url and course_id and not quiz_passed:
+                from models.course_state import CourseStatus
                 print(f'\n  📝 測驗 (course_id={course_id}，及格標準: {int(req_score)} 分)')
+                _report_state(CourseStatus.QUIZ, f"時數已達標，進入總結測驗（及格標準 {int(req_score)} 分）", "查詢本機題庫或使用 Gemini 智慧解答")
                 score_text, is_100 = do_quiz_with_bank(
                     driver, wait,
                     course_id=course_id,
@@ -1324,6 +1354,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 )
                 if score_text == 'SKIPPED':
                     print('  ⏩ 測驗已跳過，繼續檢查並自動填寫課程問卷...')
+                    _report_state(CourseStatus.SKIPPED, "測驗已手動或自動跳過", "檢查課程滿意度問卷")
                 else:
                     print(f'  測驗結果: {score_text} | 達標: {is_100 or is_quiz_passed(course, req_score=req_score)}')
 
@@ -1337,6 +1368,8 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             fb_url = modules.get('fb_url')
             quest = _clean_status(course.get('quest'))
             if is_questionnaire_pending(course):
+                from models.course_state import CourseStatus
+                _report_state(CourseStatus.SURVEY, "測驗流程完成，進行課程滿意度問卷", "自動選取滿意選項並送出")
                 if not fb_url:
                     print('  重新掃描 feedback URL...')
                     modules2 = get_course_modules(driver, course['href'])
@@ -1371,6 +1404,14 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 print("\n" + c_card)
             except Exception:
                 pass
+
+            from models.course_state import CourseStatus
+            if is_c_passed:
+                _report_state(CourseStatus.COMPLETED, "時數達標且測驗及格", "已完課，接續下一門", is_comp=True)
+            elif skip_exam_for_session:
+                _report_state(CourseStatus.SKIPPED, "時數達標但已跳過測驗（問卷已處理）", "後續請手動補考即可認證完課", is_comp=False)
+            else:
+                _report_state(CourseStatus.MANUAL_REVIEW, "測驗成績未達門檻", "請檢查題庫或手動補測", is_comp=False, needs_man=True)
 
 
 
