@@ -153,7 +153,9 @@ class AdminEfficiencyPilot:
         config_override=None,
         progress_callback=None,
         quiz_interactive_callback=None,
+        course_state_callback=None,
     ):
+        self.course_state_callback = course_state_callback
         self.progress_callback = progress_callback
         self.quiz_interactive_callback = quiz_interactive_callback
         self.log_callback = log_callback
@@ -4123,6 +4125,7 @@ class AdminEfficiencyPilot:
                     should_continue=lambda: self.running,
                     log_callback=self.log_callback,
                     quiz_interactive_callback=self.quiz_interactive_callback,
+                    course_state_callback=self.course_state_callback,
                 )
                 if ok:
                     logger.info("🏆 臺北E大所有任務完成！")
@@ -4299,6 +4302,36 @@ class AdminEfficiencyPilot:
                     if not pending and not completed_hours:
                         break
 
+                    def _emit_course_state(c, st, rsn="", nxt="", is_comp=False, needs_man=False, score=None):
+                        if getattr(self, "course_state_callback", None):
+                            try:
+                                from models.course_state import CourseState
+                                cur_s = c.get("rss", "00:00:00")
+                                req_s = c.get("criteria_content_hour", "00:00:00")
+                                cur_sec = to_sec(cur_s)
+                                req_sec = max(1, to_sec(req_s))
+                                pct = min(100.0, round((cur_sec / req_sec) * 100, 1))
+                                if is_comp:
+                                    pct = 100.0
+                                c_state = CourseState(
+                                    course_id=str(c.get("course_id", "")),
+                                    course_name=c.get("caption", ""),
+                                    platform="egov",
+                                    status=st,
+                                    progress_pct=pct,
+                                    current_time_str=cur_s,
+                                    required_time_str=req_s,
+                                    exam_score=score or c.get("exam_score"),
+                                    pass_score=c.get("criteria_exam_score", 60),
+                                    reason=rsn,
+                                    next_step=nxt,
+                                    is_completed=is_comp,
+                                    needs_manual=needs_man,
+                                )
+                                self.course_state_callback(c_state)
+                            except Exception:
+                                pass
+
                     # ── 第一步：先對時數已達標但考試/問卷未完成的課程執行 ──
                     # （初始使用者全部 pending 時，completed_hours 為空，此段直接跳過）
                     all_exam_done = True
@@ -4307,6 +4340,8 @@ class AdminEfficiencyPilot:
                         for c in completed_hours:
                             if not self.running:
                                 break
+                            from models.course_state import CourseStatus
+                            _emit_course_state(c, CourseStatus.QUIZ, "時數已達標，正在執行測驗或問卷確認", "準備進入教室開始測驗或填寫問卷")
                             logger.info(
                                 f"📝 對已達標課程執行考試/問卷：{c.get('caption', '')}"
                             )
@@ -4417,6 +4452,8 @@ class AdminEfficiencyPilot:
                                 if q_ok:
                                     self._completed_in_session.add(c_id)
                                     self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                                    from models.course_state import CourseStatus
+                                    _emit_course_state(c, CourseStatus.SKIPPED, "使用者選擇本次跳過測驗（問卷已完成）", "課程已完成時數與問卷，後續補測即可完課", is_comp=False)
                                     try:
                                         from utils.security import format_course_dashboard_card
                                         card = format_course_dashboard_card(
@@ -4433,6 +4470,8 @@ class AdminEfficiencyPilot:
                                         pass
                                 else:
                                     self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
+                                    from models.course_state import CourseStatus
+                                    _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "問卷填寫失敗，尚未確認完成", "請手動前往網站填寫問卷", needs_man=True)
                                 continue
 
                             passed = self.auto_exam(c)
@@ -4446,6 +4485,8 @@ class AdminEfficiencyPilot:
                                     self._completed_in_session.add(c_id)
                                     self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
                                     self._session_passed_count = getattr(self, "_session_passed_count", 0) + 1
+                                    from models.course_state import CourseStatus
+                                    _emit_course_state(c, CourseStatus.COMPLETED, "時數達標且測驗及格，問卷已送出", "已完課，接續下一門", is_comp=True)
                                     try:
                                         from utils.security import format_course_dashboard_card
                                         card = format_course_dashboard_card(
@@ -4463,16 +4504,23 @@ class AdminEfficiencyPilot:
 
                                 else:
                                     self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
+                                    from models.course_state import CourseStatus
+                                    _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "問卷填寫失敗，尚未確認完成", "請手動前往網站填寫問卷", needs_man=True)
                             elif not passed:
                                 # 若不及格次數未達上限，跳回迴圈頂部繼續重考
                                 if self._exam_fail_counts.get(c_id, 0) < 3:
                                     all_exam_done = False
+                                    from models.course_state import CourseStatus
+                                    fail_cnt = self._exam_fail_counts.get(c_id, 0)
+                                    _emit_course_state(c, CourseStatus.QUIZ, f"測驗未達及格標準（已嘗試 {fail_cnt}/3 次）", "準備重新進入測驗補考")
                                     break
                                 else:
                                     # 已達 3 次不及格上限，列為待人工處理清單，本次不再重試
                                     self._mark_exam_manual_review(c, "測驗連續不及格已達 3 次上限")
                                     self._completed_in_session.add(c_id)
                                     self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                                    from models.course_state import CourseStatus
+                                    _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "測驗連續不及格已達 3 次上限", "請至平台手動查看題目或題庫解析", needs_man=True)
                                     try:
                                         from utils.security import format_course_dashboard_card
                                         card = format_course_dashboard_card(
@@ -4511,6 +4559,8 @@ class AdminEfficiencyPilot:
                     if pending and all_exam_done:
                         self.total_courses = len(pending) + (self.current_idx)
                         self.current_idx += 1
+                        from models.course_state import CourseStatus
+                        _emit_course_state(pending[0], CourseStatus.LEARNING, "時數尚未達標，正在進入教室累積時數", "觀看教材並保持連線直到時數達標")
                         res = self.study_process(pending[0])
 
                         if res == "STOP":
@@ -4526,6 +4576,8 @@ class AdminEfficiencyPilot:
                                 )
                                 self._mark_exam_manual_review(pending[0], "連續觸發重登異常（平臺頁面跳轉失敗）")
                                 self._completed_in_session.add(c_id)
+                                from models.course_state import CourseStatus
+                                _emit_course_state(pending[0], CourseStatus.MANUAL_REVIEW, "連續觸發重登異常（平臺頁面跳轉失敗）", "請檢查登入狀態與課程頁面權限", needs_man=True)
                                 continue
                             # 閒置登出後已重新登入，重試當前課程（退回 index）
                             logger.info("🔄 閒置登出重新登入成功，重試當前課程...")
@@ -4547,9 +4599,13 @@ class AdminEfficiencyPilot:
                             c_id = str(pending[0].get("course_id", ""))
                             if c_id:
                                 self._completed_in_session.add(c_id)
+                            from models.course_state import CourseStatus
+                            _emit_course_state(pending[0], CourseStatus.SKIPPED, "無法上課或非本門課學生", "本輪永久略過", is_comp=False)
                             logger.info("⏭️ 已永久跳過課程，繼續下一門...")
                         elif res == "ERROR":
                             logger.info("⏳ 發生研習異常，稍後嘗試下一門課程...")
+                            from models.course_state import CourseStatus
+                            _emit_course_state(pending[0], CourseStatus.ERROR, "研習過程中遭遇例外", "將在下一輪或稍後重試", is_comp=False)
                             time.sleep(5)
 
                         # 💡 主動定期 Session 保養：每連續研習滿指定時數（預設 5 小時），在課程結算後自動刷新 Cookie 與 Session
