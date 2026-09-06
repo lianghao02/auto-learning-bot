@@ -1094,7 +1094,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
                     break
                 if elapsed_sec - last_report >= 30:
                     last_report = elapsed_sec
-                    print(f'  研習進度：{sec_to_hms(already_sec + elapsed_sec)} / {sec_to_hms(target_sec)} {draw_bar(already_sec + elapsed_sec, target_sec)}')
+                    print(f'  📊 研習進度：{sec_to_hms(already_sec + elapsed_sec)} / {sec_to_hms(target_sec)} {draw_bar(already_sec + elapsed_sec, target_sec)}')
                 pause_and_mute_media(driver)
                 deep_commit(driver)
                 time.sleep(2)
@@ -1145,13 +1145,13 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
 
             elapsed_sec = time.time() - start_time
             if remain_sec > 0 and elapsed_sec >= remain_sec:
-                print(f'  ✅ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，跳出學習！')
+                print(f'  ✨ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，跳出學習！')
                 break
 
             elapsed_sec = time.time() - start_time
-            print(f'  研習進度：{sec_to_hms(already_sec + elapsed_sec)} / {sec_to_hms(target_sec)} {draw_bar(already_sec + elapsed_sec, target_sec)}')
+            print(f'  📊 研習進度：{sec_to_hms(already_sec + elapsed_sec)} / {sec_to_hms(target_sec)} {draw_bar(already_sec + elapsed_sec, target_sec)}')
             ch_info = ch_map.get(scoid, {'name': scoid, 'done': False})
-            print(f'  進入單元：{ch_info["name"][:40]}...')
+            print(f'  📍 進入單元：{ch_info["name"][:40]}...')
 
             if not click_chapter_by_scoid(driver, scoid):
                 print('      ⚠️ 點擊失敗，跳過')
