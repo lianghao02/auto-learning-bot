@@ -698,15 +698,15 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
         url = driver.current_url or ''
         if 'mod/scorm/player.php' in url or bool(get_chapters(driver)):
             return True
-        # 若為開啟在新分頁/新視窗的閱讀教材，或當前頁面為教材閱讀頁面（非課程簡介主頁且非測驗問卷）
+        # 若為開啟在新分頁/新視窗的閱讀教材，或當前頁面為教材閱讀頁面（非課程簡介主頁且非測驗問卷/補充資源）
         clean_curr = url.split('#')[0].rstrip('/')
         clean_course = (course_url or '').split('#')[0].rstrip('/')
         is_not_course_home = bool(clean_curr and clean_curr != clean_course and 'course/view.php' not in clean_curr)
         if is_not_course_home:
-            # 排除非閱讀模組
-            if not any(bad in clean_curr for bad in ['mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign']):
-                # 若已在新視窗，或是 mod/page、mod/resource、外開閱讀器
-                if len(driver.window_handles) > 1 or any(k in clean_curr for k in ['mod/page', 'mod/resource', 'mod/scorm']):
+            # 排除非學習與非 SCORM 模組（補充資源/問卷/測驗/討論區/作業）
+            if not any(bad in clean_curr for bad in ['mod/resource', 'mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign']):
+                # 若已在新視窗，或是 mod/page、mod/scorm
+                if len(driver.window_handles) > 1 or any(k in clean_curr for k in ['mod/page', 'mod/scorm']):
                     return True
         return False
 
@@ -717,7 +717,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
             # 排除問卷、測驗、討論區、作業等非學習模組 URL
             bad_modules = ['mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign']
             if not allow_reading_resources:
-                bad_modules.extend(['mod/page', 'mod/resource'])
+                bad_modules.extend(['mod/resource', 'mod/page'])
             if any(bad in h for bad in bad_modules):
                 return False
             # 排除指向當前課程主頁本身的連結，防止同頁重複載入
@@ -728,38 +728,55 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                 return False
             return True
 
-        # 1. 在當前頁面尋找 direct scorm 連結
-        scorm_css = 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm/player.php"], a[href*="mod/scorm"], .modtype_scorm a, .activityinstance a'
+        def is_supplementary_or_resource(text_str, href_str):
+            t = (text_str or '').lower()
+            h = (href_str or '').lower()
+            if any(bad in t for bad in ['補充教材', '補充', 'pdf']):
+                return True
+            if 'mod/resource' in h or h.endswith('.pdf') or '.pdf?' in h:
+                return True
+            return False
+
+        # 1. 在當前頁面優先尋找真正的 direct scorm 連結 (最高優先)
+        scorm_css = 'a[href*="mod/scorm/view.php"], a[href*="mod/scorm/player.php"], a[href*="mod/scorm"], .modtype_scorm a'
         links = driver.find_elements(By.CSS_SELECTOR, scorm_css)
         for link in links:
             href = link.get_attribute('href') or ''
             text = (link.text or link.get_attribute('title') or '').strip()
+            if is_supplementary_or_resource(text, href):
+                continue
             if is_valid_scorm_href(href, allow_reading_resources=False):
                 return href, text or href
 
-        # 2. 若簡介頁無 mod/scorm 連結，進行語意彈性搜尋，尋找「進入教室/上課/補充教材」按鈕或連結
-        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課', '閱讀教材', '補充教材', '教材']
+        # 2. 若無直連 SCORM，進行語意彈性搜尋，尋找「進入教室/上課/進入課程」等按鈕或連結
+        # ⚠️ 不要用「教材」、「補充教材」作為優先關鍵字，排除補充與 resource
+        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課']
         DANGER_KEYWORDS = ['退選', '取消', '刪除', 'Unenroll', 'Cancel', 'Delete', '登出', 'Logout', '搜尋', 'Search',
-                           '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire']
+                           '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire',
+                           '補充教材', '補充']
         for css in ['a[href*="sso"]', 'a[href*="redirect"]', 'a.btn', 'button', 'a']:
             try:
                 elements = driver.find_elements(By.CSS_SELECTOR, css)
                 for el in elements:
                     txt = ((el.text or '') + ' ' + (el.get_attribute('value') or '') + ' ' + (el.get_attribute('title') or '')).strip()
+                    href = el.get_attribute('href') or ''
+                    if is_supplementary_or_resource(txt, href):
+                        continue
                     if any(k in txt for k in ENTER_KEYWORDS) and not any(dk in txt for dk in DANGER_KEYWORDS):
-                        href = el.get_attribute('href') or ''
-                        if is_valid_scorm_href(href, allow_reading_resources=True):
+                        if is_valid_scorm_href(href, allow_reading_resources=False):
                             return href, txt[:30]
             except Exception:
                 pass
 
-        # 3. 搜尋一般閱讀教材模組（如 mod/resource, mod/page）
-        reading_css = 'a[href*="mod/resource/view.php"], a[href*="mod/page/view.php"], .modtype_resource a, .modtype_page a'
+        # 3. 備用相容 fallback：搜尋其他閱讀模組（僅限 mod/page 等，絕不使用 mod/resource 或 PDF）
+        fallback_css = 'a[href*="mod/page/view.php"], .modtype_page a'
         try:
-            r_links = driver.find_elements(By.CSS_SELECTOR, reading_css)
+            r_links = driver.find_elements(By.CSS_SELECTOR, fallback_css)
             for link in r_links:
                 href = link.get_attribute('href') or ''
                 text = (link.text or link.get_attribute('title') or '').strip()
+                if is_supplementary_or_resource(text, href):
+                    continue
                 if is_valid_scorm_href(href, allow_reading_resources=True):
                     return href, text or href
         except Exception:
@@ -823,22 +840,23 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                     value = btn.get_attribute('value') or ''
                     text = ((btn.text or '') + ' ' + value + ' ' + href).strip()
                     is_submit = (btn.get_attribute('type') or '').lower() == 'submit'
-                    # ⚠️ 嚴格過濾危險按鈕（退選、取消、刪除、登出、問卷、滿意度等）
+                    # ⚠️ 嚴格過濾危險按鈕（退選、取消、刪除、登出、問卷、滿意度、補充教材、PDF 等）
                     DANGER_KEYWORDS = ['退選', '取消', '刪除', 'Unenroll', 'Cancel', 'Delete', '登出', 'Logout', '搜尋', 'Search',
-                                       '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire']
-                    if any(dk in text for dk in DANGER_KEYWORDS):
+                                       '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire',
+                                       '補充教材', '補充', 'pdf']
+                    if any(dk in text.lower() for dk in DANGER_KEYWORDS):
                         continue
-                    # 同時過濾 href 指向 feedback 模組的連結
-                    if href and 'mod/feedback' in href:
+                    # 同時過濾 href 指向 feedback、resource 或 pdf 的連結
+                    if href and any(bad in href.lower() for bad in ['mod/feedback', 'mod/resource', '.pdf']):
                         continue
 
                     if href and 'mod/scorm/player.php' in href:
                         print(f'  ▶️ 進入 SCORM player (URL): {href}')
                         driver.get(href)
-                    elif any(k in text for k in ['進入', '開始', '繼續', 'Start', 'Enter', 'Launch', '閱讀', '上課', '進入教室', '進入課程', '閱讀教材', '確定']):
+                    elif any(k in text for k in ['進入', '開始', '繼續', 'Start', 'Enter', 'Launch', '閱讀', '上課', '進入教室', '進入課程', '確定']):
                         print(f'  ▶️ 點擊 SCORM 進入按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
-                    elif is_submit and any(k in text for k in ['scorm', 'player', 'lesson', 'class', '課程', '教材', '單元']):
+                    elif is_submit and any(k in text for k in ['scorm', 'player', 'lesson', 'class', '課程', '單元']):
                         print(f'  ▶️ 點擊 SCORM 提交按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
                     else:
