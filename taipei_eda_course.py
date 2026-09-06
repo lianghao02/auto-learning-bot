@@ -696,14 +696,29 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
 
     def current_is_player():
         url = driver.current_url or ''
-        return 'mod/scorm/player.php' in url or bool(get_chapters(driver))
+        if 'mod/scorm/player.php' in url or bool(get_chapters(driver)):
+            return True
+        # 若為開啟在新分頁/新視窗的閱讀教材，或當前頁面為教材閱讀頁面（非課程簡介主頁且非測驗問卷）
+        clean_curr = url.split('#')[0].rstrip('/')
+        clean_course = (course_url or '').split('#')[0].rstrip('/')
+        is_not_course_home = bool(clean_curr and clean_curr != clean_course and 'course/view.php' not in clean_curr)
+        if is_not_course_home:
+            # 排除非閱讀模組
+            if not any(bad in clean_curr for bad in ['mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign']):
+                # 若已在新視窗，或是 mod/page、mod/resource、外開閱讀器
+                if len(driver.window_handles) > 1 or any(k in clean_curr for k in ['mod/page', 'mod/resource', 'mod/scorm']):
+                    return True
+        return False
 
     def find_scorm_link():
-        def is_valid_scorm_href(h):
+        def is_valid_scorm_href(h, allow_reading_resources=False):
             if not h or 'javascript' in h.lower():
                 return False
-            # 排除問卷、測驗、討論區、作業等非 SCORM 模組 URL
-            if any(bad in h for bad in ['mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign', 'mod/page', 'mod/resource']):
+            # 排除問卷、測驗、討論區、作業等非學習模組 URL
+            bad_modules = ['mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign']
+            if not allow_reading_resources:
+                bad_modules.extend(['mod/page', 'mod/resource'])
+            if any(bad in h for bad in bad_modules):
                 return False
             # 排除指向當前課程主頁本身的連結，防止同頁重複載入
             clean_h = h.split('#')[0].rstrip('/')
@@ -719,11 +734,11 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
         for link in links:
             href = link.get_attribute('href') or ''
             text = (link.text or link.get_attribute('title') or '').strip()
-            if is_valid_scorm_href(href):
+            if is_valid_scorm_href(href, allow_reading_resources=False):
                 return href, text or href
 
-        # 2. 若簡介頁無 mod/scorm 連結，進行語意彈性搜尋，尋找「進入教室/上課」按鈕
-        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課', '閱讀教材']
+        # 2. 若簡介頁無 mod/scorm 連結，進行語意彈性搜尋，尋找「進入教室/上課/補充教材」按鈕或連結
+        ENTER_KEYWORDS = ['上課', '進入教室', '開始學習', '閱讀課程', '開始閱讀', '進入課程', 'Go to course', '立即上課', '閱讀教材', '補充教材', '教材']
         DANGER_KEYWORDS = ['退選', '取消', '刪除', 'Unenroll', 'Cancel', 'Delete', '登出', 'Logout', '搜尋', 'Search',
                            '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire']
         for css in ['a[href*="sso"]', 'a[href*="redirect"]', 'a.btn', 'button', 'a']:
@@ -733,10 +748,22 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                     txt = ((el.text or '') + ' ' + (el.get_attribute('value') or '') + ' ' + (el.get_attribute('title') or '')).strip()
                     if any(k in txt for k in ENTER_KEYWORDS) and not any(dk in txt for dk in DANGER_KEYWORDS):
                         href = el.get_attribute('href') or ''
-                        if is_valid_scorm_href(href):
+                        if is_valid_scorm_href(href, allow_reading_resources=True):
                             return href, txt[:30]
             except Exception:
                 pass
+
+        # 3. 搜尋一般閱讀教材模組（如 mod/resource, mod/page）
+        reading_css = 'a[href*="mod/resource/view.php"], a[href*="mod/page/view.php"], .modtype_resource a, .modtype_page a'
+        try:
+            r_links = driver.find_elements(By.CSS_SELECTOR, reading_css)
+            for link in r_links:
+                href = link.get_attribute('href') or ''
+                text = (link.text or link.get_attribute('title') or '').strip()
+                if is_valid_scorm_href(href, allow_reading_resources=True):
+                    return href, text or href
+        except Exception:
+            pass
 
         return '', ''
 
@@ -1032,13 +1059,42 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
 
     chapters = get_chapters(driver)
     if not chapters:
-        print('  ⚠️ 找不到章節，等待後重試...')
-        time.sleep(10)
+        print('  ⚠️ 找不到 SCORM 章節，等待 5 秒確認是否為單一教材或外部閱讀頁面...')
+        time.sleep(5)
         chapters = get_chapters(driver)
 
     if not chapters:
-        print('  ⚠️ SCORM 頁面沒有讀到任何章節，避免空迴圈補時間，跳過此課程')
-        return False
+        if remain_sec > 0:
+            print('  📖 偵測為單一/補充教材閱讀模式（無 SCORM 章節樹），進入閱讀時數累積模式...')
+            start_time = time.time()
+            last_report = 0
+            while should_continue():
+                _auto_hide_taipei_popups_if_needed(driver)
+                elapsed_sec = time.time() - start_time
+                if elapsed_sec >= remain_sec:
+                    print(f'  ✅ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，結束教材閱讀！')
+                    break
+                if elapsed_sec - last_report >= 30:
+                    last_report = elapsed_sec
+                    print(f'  研習進度：{sec_to_hms(already_sec + elapsed_sec)} / {sec_to_hms(target_sec)} {draw_bar(already_sec + elapsed_sec, target_sec)}')
+                pause_and_mute_media(driver)
+                deep_commit(driver)
+                time.sleep(2)
+                if elapsed_sec > 7200:
+                    print('  ⚠️ 單一教材閱讀已達 2 小時，切換下一門課')
+                    break
+        else:
+            print('  ⚠️ SCORM 頁面沒有讀到任何章節且無剩餘時數要求，完成教材開啟確認')
+
+        # 若開啟了多個視窗（如新開的閱讀器），若有非主視窗則關閉回到主視窗
+        try:
+            if len(driver.window_handles) > 1:
+                driver.close()
+                driver.switch_to.window(driver.window_handles[0])
+        except Exception:
+            pass
+
+        return True
 
     scoid_order = [ch['scoid'] for ch in chapters]
     start_time = time.time()

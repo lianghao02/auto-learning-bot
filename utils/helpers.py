@@ -407,3 +407,41 @@ def parse_ai_quiz_answers(raw_text: str, questions_data: list) -> dict:
                         parsed[i] = list(dict.fromkeys(selected))
 
     return parsed
+
+
+def parse_multiple_choice_answers(raw_ans, num_options=4):
+    """將各類多選答案（如 'A,B,C'、'A、B、C'、'A B C'、'ABCD'、'1,2,3'、'1 2 3'、['A','B']）
+    標準化為大寫字母清單（如 ['A', 'B', 'C']）。"""
+    if not raw_ans:
+        return []
+    if isinstance(raw_ans, list):
+        items = []
+        for it in raw_ans:
+            items.extend(parse_multiple_choice_answers(it, num_options))
+        return sorted(list(dict.fromkeys(items)))
+    text = str(raw_ans).strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r'[,，、;\s/]+', text) if p.strip()]
+    res = []
+    for p in parts:
+        if re.fullmatch(r'[A-Za-z]+', p) and len(p) > 1:
+            for ch in p.upper():
+                res.append(ch)
+        elif re.fullmatch(r'[A-Za-z]', p):
+            res.append(p.upper())
+        elif p.isdigit():
+            val_int = int(p)
+            if 1 <= val_int <= num_options:
+                res.append(chr(ord('A') + val_int - 1))
+            elif val_int == 0 and num_options > 0:
+                res.append('A')
+            elif 0 <= val_int < num_options:
+                res.append(chr(ord('A') + val_int))
+        else:
+            m_ch = re.findall(r'[A-Za-z]', p)
+            if m_ch:
+                for ch in m_ch:
+                    res.append(ch.upper())
+    return sorted(list(dict.fromkeys(res)))
+

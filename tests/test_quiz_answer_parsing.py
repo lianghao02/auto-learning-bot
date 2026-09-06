@@ -109,6 +109,82 @@ class QuizAnswerParsingTests(unittest.TestCase):
         self.assertEqual(result[9], ["E"])
         self.assertEqual(result[10], ["E"])
 
+    def test_parse_multiple_choice_answers(self):
+        """測試多選答案解析：支援逗號、頓號、空白、連寫字母、數字等格式"""
+        from utils.helpers import parse_multiple_choice_answers
+
+        # 逗號與空格
+        self.assertEqual(parse_multiple_choice_answers("A,B,C,D"), ["A", "B", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("A, B, C"), ["A", "B", "C"])
+        self.assertEqual(parse_multiple_choice_answers("b, c"), ["B", "C"])
+
+        # 頓號
+        self.assertEqual(parse_multiple_choice_answers("A、B、D"), ["A", "B", "D"])
+
+        # 全形逗號、空白、斜線、分號
+        self.assertEqual(parse_multiple_choice_answers("A，C，D"), ["A", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("A B C D"), ["A", "B", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("A/B/C"), ["A", "B", "C"])
+        self.assertEqual(parse_multiple_choice_answers("A;C"), ["A", "C"])
+
+        # 連寫字母 (ABCD, ACD, BC)
+        self.assertEqual(parse_multiple_choice_answers("ABCD"), ["A", "B", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("ACD"), ["A", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("BC"), ["B", "C"])
+
+        # 數字格式 (1,2,3,4 或 1 2 4)
+        self.assertEqual(parse_multiple_choice_answers("1,2,3,4"), ["A", "B", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("1 3 4"), ["A", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers("2,3"), ["B", "C"])
+
+        # 清單輸入
+        self.assertEqual(parse_multiple_choice_answers(["A", "C", "D"]), ["A", "C", "D"])
+        self.assertEqual(parse_multiple_choice_answers(["A,B", "D"]), ["A", "B", "D"])
+
+        # 空值與邊界情況
+        self.assertEqual(parse_multiple_choice_answers(""), [])
+        self.assertEqual(parse_multiple_choice_answers(None), [])
+
+    def test_checkbox_group_answering_and_verification(self):
+        """測試在 Checkbox DOM 群組上，依預期答案集合精確勾選，並重新讀取 checked 集合比對"""
+        from utils.helpers import parse_multiple_choice_answers
+
+        class FakeCheckbox:
+            def __init__(self, value, is_checked=False):
+                self.value = value
+                self.checked = is_checked
+
+            def get_attribute(self, attr):
+                if attr == "value":
+                    return self.value
+                return ""
+
+        # 模擬 4 個 checkbox，value 分別為 "0", "1", "2", "3" (0-based)
+        checkboxes = [FakeCheckbox(str(i), False) for i in range(4)]
+        ans_raw = "A,B,D"  # 預期勾選 0 (A), 1 (B), 3 (D)
+        expected_letters = parse_multiple_choice_answers(ans_raw, num_options=len(checkboxes))
+        expected_set = set(expected_letters)
+
+        # 執行模擬勾選邏輯（與 app.py 相同）
+        for i, cb in enumerate(checkboxes):
+            let = chr(ord('A') + i)
+            cb_val = cb.get_attribute("value").strip().lower()
+            should_check = (let in expected_set)
+            if not should_check:
+                if cb_val and cb_val in [l.lower() for l in expected_set]:
+                    should_check = True
+
+            if should_check and not cb.checked:
+                cb.checked = True
+            elif not should_check and cb.checked:
+                cb.checked = False
+
+        actual_letters = [chr(ord('A') + i) for i, cb in enumerate(checkboxes) if cb.checked]
+        actual_set = set(actual_letters)
+
+        self.assertEqual(expected_set, {"A", "B", "D"})
+        self.assertEqual(actual_set, expected_set)
+
 
 if __name__ == "__main__":
     unittest.main()
