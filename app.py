@@ -1675,6 +1675,49 @@ class AdminEfficiencyPilot:
                             pass
                         return False
 
+            def _parse_multiple_choice_answers(raw_ans, num_options=4):
+                """將各類多選答案（如 'A,B,C'、'A、B、C'、'A B C'、'ABCD'、'1,2,3'、'1 2 3'、['A','B']）
+                標準化為大寫字母清單（如 ['A', 'B', 'C']）。"""
+                if not raw_ans:
+                    return []
+                if isinstance(raw_ans, list):
+                    items = []
+                    for it in raw_ans:
+                        items.extend(_parse_multiple_choice_answers(it, num_options))
+                    return sorted(list(dict.fromkeys(items)))
+                text = str(raw_ans).strip()
+                if not text:
+                    return []
+                # 排除「以上皆是」等非直接選項符號
+                # 先以逗號、頓號、分號、斜線、空白切分
+                parts = [p.strip() for p in re.split(r'[,，、;\s/]+', text) if p.strip()]
+                res = []
+                for p in parts:
+                    # 若為連寫字母（例如 "ABCD" 或 "ABC" 或 "CD"）
+                    if re.fullmatch(r'[A-Za-z]+', p) and len(p) > 1:
+                        for ch in p.upper():
+                            res.append(ch)
+                    # 單一字母（如 "A", "B"）
+                    elif re.fullmatch(r'[A-Za-z]', p):
+                        res.append(p.upper())
+                    # 數字（1-based 如 1,2,3,4 或 0-based 如 0,1,2,3）
+                    elif p.isdigit():
+                        val_int = int(p)
+                        # 優先以 1-based (1->A, 2->B...)
+                        if 1 <= val_int <= num_options:
+                            res.append(chr(ord('A') + val_int - 1))
+                        elif val_int == 0 and num_options > 0:
+                            res.append('A')
+                        elif 0 <= val_int < num_options:
+                            res.append(chr(ord('A') + val_int))
+                    else:
+                        # 包含括號如 (A)、[A] 等
+                        m_ch = re.findall(r'[A-Za-z]', p)
+                        if m_ch:
+                            for ch in m_ch:
+                                res.append(ch.upper())
+                return sorted(list(dict.fromkeys(res)))
+
             parsed_items = []
             for q_idx, row in enumerate(rows):
                 try:
@@ -1798,6 +1841,7 @@ class AdminEfficiencyPilot:
                         "radios": radios,
                         "checkboxes": checkboxes,
                         "ans": ans,
+                        "ans_source": "題庫" if ans is not None else None,
                     })
                 except Exception as e:
                     logger.warning(f"   ⚠️ 解析第 {q_idx + 1} 題失敗：{e}")
@@ -1845,6 +1889,7 @@ class AdminEfficiencyPilot:
                                 else:
                                     item["ans"] = str(ans_choice)
                                     _ai_answered[item["q_text"]] = str(ans_choice)
+                                item["ans_source"] = "AI"
                                 logger.info(f"   🤖 AI 批次解答 [{q_num}/{len(rows)} 題]：{item['ans']!r}")
                     else:
                         logger.warning(f"   ⚠️ AI 批次作答未取得有效答案：{batch_res.get('error')}，其餘題目以本地安全猜答處理（不重試 API，保證 1 卷 1 次）")
@@ -1860,14 +1905,15 @@ class AdminEfficiencyPilot:
                 radios = item["radios"]
                 checkboxes = item["checkboxes"]
                 ans = item["ans"]
+                ans_source = item.get("ans_source")
 
                 try:
                     logger.debug(f"   題目: {q_text[:50]!r}")
                     logger.debug(f"   選項: {[t[:20] for t in option_texts]!r}")
                     logger.debug(f"   答案: {ans!r}")
-                    logger.info(f"   📝 作答進度：[{q_idx + 1}/{len(rows)} 題] 已填答")
 
                     if checkboxes:
+                        n = len(checkboxes)
                         if ans is not None:
                             ans_text = (
                                 ans
@@ -1875,13 +1921,6 @@ class AdminEfficiencyPilot:
                                 else (ans[0] if isinstance(ans, list) else str(ans))
                             )
                             ans_norm = ans_text.strip()
-                            # 多選答案以「、」分隔，拆成清單分別比對
-                            ans_parts = [
-                                p.strip() for p in ans_norm.split("、") if p.strip()
-                            ]
-                            if not ans_parts:
-                                ans_parts = [ans_norm]
-                            # 「以上皆是/以上皆可/以上皆正確/以上皆對/all of the above」→ 全選
                             ALL_ABOVE_PATTERNS = [
                                 "以上皆是",
                                 "以上皆可",
@@ -1893,73 +1932,70 @@ class AdminEfficiencyPilot:
                             is_all_above = any(
                                 p in ans_norm for p in ALL_ABOVE_PATTERNS
                             )
+
                             if is_all_above:
-                                for cb in checkboxes:
-                                    self.driver.execute_script(
-                                        "arguments[0].click();", cb
-                                    )
-                                logger.debug(
-                                    f"   ✅ 全選（以上皆是）：{q_text[:20]}..."
-                                )
+                                expected_letters = [chr(ord('A') + i) for i in range(n)]
                             else:
-                                # 先嘗試 value 比對（向後相容 1/2/3/4/a/b/c/d）
-                                letter_to_num = {
-                                    "a": "1",
-                                    "b": "2",
-                                    "c": "3",
-                                    "d": "4",
-                                    "e": "5",
-                                    "f": "6",
-                                    "g": "7",
-                                    "h": "8",
-                                }
-                                ans_list = ans if isinstance(ans, list) else ans_parts
-                                ans_list_norm = [a.lower() for a in ans_list]
-                                value_matched = False
-                                for cb in checkboxes:
-                                    cb_val = (cb.get_attribute("value") or "").lower()
-                                    cb_letter = {
-                                        v: k for k, v in letter_to_num.items()
-                                    }.get(cb_val, cb_val)
-                                    if (
-                                        cb_val in ans_list_norm
-                                        or cb_letter in ans_list_norm
-                                    ):
-                                        self.driver.execute_script(
-                                            "arguments[0].click();", cb
-                                        )
-                                        value_matched = True
-                                # fallback: 用答案文字比對選項文字（支援多選拆分）
-                                if not value_matched:
-                                    for i, cb in enumerate(checkboxes):
-                                        opt_text = (
-                                            option_texts[i].strip()
-                                            if i < len(option_texts)
-                                            else ""
-                                        )
-                                        if opt_text:
-                                            # 任一答案部分與選項文字雙向包含即命中
-                                            for part in ans_parts:
-                                                if part and (
-                                                    part in opt_text or opt_text in part
-                                                ):
-                                                    self.driver.execute_script(
-                                                        "arguments[0].click();", cb
-                                                    )
-                                                    break
+                                expected_letters = _parse_multiple_choice_answers(ans, num_options=n)
+
+                            # 若未直接解析出字母且有選項文字，透過選項文字雙向包含反推
+                            if not expected_letters and option_texts:
+                                for i, opt_t in enumerate(option_texts[:n]):
+                                    opt_clean = (opt_t or "").strip()
+                                    if opt_clean and (opt_clean in ans_norm or ans_norm in opt_clean):
+                                        expected_letters.append(chr(ord('A') + i))
+                                expected_letters = sorted(list(set(expected_letters)))
+
+                            expected_set = set(expected_letters)
+
+                            # 在該題自己的 checkbox group 內逐一勾選
+                            for i, cb in enumerate(checkboxes):
+                                let = chr(ord('A') + i)
+                                cb_val = (cb.get_attribute("value") or "").strip().lower()
+
+                                # 該題 checkbox group 中的字母代號 (第 0 個為 A, 第 1 個為 B...)
+                                should_check = (let in expected_set)
+
+                                # 若 expected_set 包含特定 value 比對 (如 value 為 A/B/C/D 或特殊代碼)
+                                if not should_check:
+                                    if cb_val and cb_val in [l.lower() for l in expected_set]:
+                                        should_check = True
+
+                                is_checked = bool(self.driver.execute_script("return arguments[0].checked;", cb))
+                                if should_check and not is_checked:
+                                    self.driver.execute_script("arguments[0].click();", cb)
+                                elif not should_check and is_checked:
+                                    self.driver.execute_script("arguments[0].click();", cb)
+
+                            # click 後重新讀取 checked 集合
+                            actual_letters = []
+                            for i, cb in enumerate(checkboxes):
+                                if bool(self.driver.execute_script("return arguments[0].checked;", cb)):
+                                    actual_letters.append(chr(ord('A') + i))
+                            actual_set = set(actual_letters)
+
+                            exp_str = ",".join(sorted(expected_set)) if expected_set else "無"
+                            act_str = ",".join(sorted(actual_set)) if actual_set else "無"
+                            source_tag = f"[{ans_source}]" if ans_source else "[已知答案]"
+
+                            # 實際集合必須與預期集合完全一致，否則不得記錄「已填答」
+                            if expected_set and actual_set == expected_set:
+                                logger.info(f"   📝 第{q_idx + 1}題 {source_tag} 預期={exp_str}，實際={act_str}")
+                                answered += 1
+                            else:
+                                logger.warning(f"   ⚠️ 第{q_idx + 1}題 {source_tag} 填答驗證失敗！預期={exp_str}，實際={act_str}")
                         else:
                             # 無答案：隨機勾 2~3 個 checkbox
-                            n = len(checkboxes)
                             pick_count = min(n, random.randint(2, max(2, n - 1)))
                             picks = random.sample(checkboxes, pick_count)
                             for pick in picks:
                                 self.driver.execute_script(
                                     "arguments[0].click();", pick
                                 )
-                            logger.debug(
-                                f"   🎲 多選隨機作答({pick_count}/{n})：{q_text[:20]}..."
+                            logger.info(
+                                f"   🎲 多選題隨機猜答：[{q_idx + 1}/{len(rows)} 題] ({pick_count}/{n})：{q_text[:20]}..."
                             )
-                        answered += 1
+                            answered += 1
 
                     elif radios:
                         idx = None
@@ -2033,13 +2069,13 @@ class AdminEfficiencyPilot:
                             if len(radios) == 2:
                                 idx = 0
                                 logger.info(
-                                    f"   🎲 是非題無答案，預設猜正確：{q_text[:30]!r}"
+                                    f"   🎲 是非題無答案，預設猜正確：[{q_idx + 1}/{len(rows)} 題] {q_text[:30]!r}"
                                 )
                                 _missing.append({"type": "是非", "question": q_text, "options": option_texts})
                             else:
                                 idx = random.randrange(len(radios))
                                 logger.info(
-                                    f"   🎲 單選題隨機作答（無資料，稍後回報）：{q_text[:30]!r}"
+                                    f"   🎲 單選題隨機猜答（無答案，稍後回報）：[{q_idx + 1}/{len(rows)} 題] {q_text[:30]!r}"
                                 )
                                 _missing.append({"type": "單選", "question": q_text, "options": option_texts})
 
@@ -2068,6 +2104,9 @@ class AdminEfficiencyPilot:
                                 "arguments[0].click();", radios[idx]
                             )
                             answered += 1
+                            if ans is not None:
+                                source_tag = f"[{ans_source}]" if ans_source else "[已知答案]"
+                                logger.info(f"   📝 作答進度：[{q_idx + 1}/{len(rows)} 題] 已填答 {source_tag}")
                         else:
                             logger.debug(
                                 f"   ⚠️ 單選答案無法比對，略過：{q_text[:30]!r} ans={ans!r} options={option_texts!r}"

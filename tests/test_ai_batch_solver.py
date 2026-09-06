@@ -93,6 +93,40 @@ class AiBatchSolverTests(unittest.TestCase):
         self.assertEqual(res['parsed_answers'], {'q1': '2', 'q2': '0'})
 
     @patch('requests.post')
+    def test_ai_batch_solve_partial_answers(self, mock_post):
+        """測試當 AI 僅回傳部分題目（例如 10 題中只回傳 1、3、6）時，缺題不會導致拋錯或錯位"""
+        expanded_questions = [
+            {'index': 1, 'name': 'q1', 'type': '單選', 'is_multiple': False, 'q_text': 'Q1', 'options': [{'label': 'A', 'text': 'opt1', 'val': '0'}, {'label': 'B', 'text': 'opt2', 'val': '1'}]},
+            {'index': 2, 'name': 'q2', 'type': '是非', 'is_multiple': False, 'q_text': 'Q2', 'options': [{'label': 'A', 'text': '是', 'val': '0'}, {'label': 'B', 'text': '否', 'val': '1'}]},
+            {'index': 3, 'name': 'q3', 'type': '單選', 'is_multiple': False, 'q_text': 'Q3', 'options': [{'label': 'A', 'text': 'optA', 'val': '0'}, {'label': 'B', 'text': 'optB', 'val': '1'}]},
+            {'index': 4, 'name': 'q4', 'type': '單選', 'is_multiple': False, 'q_text': 'Q4', 'options': [{'label': 'A', 'text': 'optA', 'val': '0'}, {'label': 'B', 'text': 'optB', 'val': '1'}]},
+            {'index': 5, 'name': 'q5', 'type': '單選', 'is_multiple': False, 'q_text': 'Q5', 'options': [{'label': 'A', 'text': 'optA', 'val': '0'}, {'label': 'B', 'text': 'optB', 'val': '1'}]},
+            {'index': 6, 'name': 'q6', 'type': '單選', 'is_multiple': False, 'q_text': 'Q6', 'options': [{'label': 'A', 'text': 'optA', 'val': '0'}, {'label': 'B', 'text': 'optB', 'val': '1'}]},
+        ]
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        # AI 只回答了 1, 3, 6 題
+        mock_resp.json.return_value = {
+            'choices': [
+                {
+                    'message': {
+                        'content': '{"answers": {"1": "B", "3": "A", "6": "B"}}'
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = mock_resp
+
+        res = ai_batch_solve_quiz('測試課程', expanded_questions, self.config)
+        self.assertTrue(res['success'])
+        self.assertEqual(res['answers'], {'1': 'B', '3': 'A', '6': 'B'})
+        # 驗證 parsed_answers 只包含對應有回答的題目，缺漏的題目 (q2, q4, q5) 不應存在
+        self.assertEqual(res['parsed_answers'], {'q1': '1', 'q3': '0', 'q6': '1'})
+        self.assertNotIn('q2', res['parsed_answers'])
+        self.assertNotIn('q4', res['parsed_answers'])
+        self.assertNotIn('q5', res['parsed_answers'])
+
+    @patch('requests.post')
     def test_ai_batch_solve_missing_key(self, mock_post):
         empty_config = {'ai_provider': 'Gemini', 'ai_api_key': ''}
         res = ai_batch_solve_quiz('測試課程', self.sample_questions, empty_config)
