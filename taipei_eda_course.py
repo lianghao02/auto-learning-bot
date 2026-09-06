@@ -1348,13 +1348,16 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
         stopped = False
         session_completed_taipei = 0
-        session_passed_taipei = 0
+        session_quiz_passed_taipei = 0
+        session_quiz_total_taipei = 0
         for course in incomplete:
 
             if not should_continue():
                 print('使用者已停止臺北E大流程')
                 stopped = True
                 break
+
+            api_before = global_quota_tracker.get_stats().get("used", 0)
 
             print(f'\n{"="*60}')
             print(f'處理: {course["name"]}')
@@ -1460,28 +1463,57 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 print('  無問卷')
 
             # 📊 每完成一門課輸出即時成效儀表板卡片
+            # 註：course_api_calls 目前以單流程執行為前提；未來若支援多流程並行，改由 Gemini 呼叫層回報 per-course counter。
             session_completed_taipei += 1
-            is_c_passed = is_quiz_passed(course, req_score=req_score)
-            if is_c_passed:
-                session_passed_taipei += 1
+            has_quiz = bool(quiz_url and course_id)
+            if has_quiz:
+                session_quiz_total_taipei += 1
+                is_c_passed = is_quiz_passed(course, req_score=req_score)
+                quiz_passed_state = True if is_c_passed else False
+                if is_c_passed:
+                    session_quiz_passed_taipei += 1
+            else:
+                is_c_passed = True  # 免測驗視為及格通過
+                quiz_passed_state = None
+
+            api_after = global_quota_tracker.get_stats().get("used", 0)
+            course_api_calls = max(0, api_after - api_before)
+
+            # 作答方式枚舉判斷
+            if not has_quiz:
+                solve_mode = None
+            elif skip_exam_for_session:
+                solve_mode = "skipped"
+            elif course_api_calls > 0:
+                solve_mode = "ai"
+            else:
+                solve_mode = "quiz_bank"
+
+            survey_done = bool(quest == '已完成' or fb_url)
+
             try:
-                from utils.security import format_course_dashboard_card
-                c_card = format_course_dashboard_card(
+                from utils.course_dashboard import render_course_completion_card
+                c_card = render_course_completion_card(
                     course_name=course.get("name", ""),
-                    score_text="達標及格" if is_c_passed else ("測驗跳過（待後續處理）" if skip_exam_for_session else "未達門檻"),
-                    is_passed=is_c_passed,
-                    solve_mode_desc="🤖 Gemini 批次秒答" if config.get("ai_auto_solve") else ("⏩ 跳過測驗模式" if skip_exam_for_session else "📚 共用題庫秒殺"),
-                    feedback_status="✅ 已完成" if (quest == '已完成' or fb_url) else "無問卷",
+                    has_quiz=has_quiz,
+                    quiz_passed=quiz_passed_state,
+                    survey_completed=survey_done,
+                    course_completed=True,
+                    solve_mode=solve_mode,
+                    course_api_calls=course_api_calls,
+                    today_api_calls=api_after,
+                    daily_limit=global_quota_tracker.daily_limit,
                     session_completed=session_completed_taipei,
-                    session_passed=session_passed_taipei,
+                    session_quiz_passed=session_quiz_passed_taipei,
+                    session_quiz_total=session_quiz_total_taipei,
                 )
                 print("\n" + c_card)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"  ⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
 
             from models.course_state import CourseStatus
-            if is_c_passed:
-                _report_state(CourseStatus.COMPLETED, "時數達標且測驗及格", "已完課，接續下一門", is_comp=True)
+            if not has_quiz or is_c_passed:
+                _report_state(CourseStatus.COMPLETED, "時數達標且完成課程（免測驗或測驗及格）", "已完課，接續下一門", is_comp=True)
             elif skip_exam_for_session:
                 _report_state(CourseStatus.SKIPPED, "時數達標但已跳過測驗（問卷已處理）", "後續請手動補考即可認證完課", is_comp=False)
             else:
