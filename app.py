@@ -3524,6 +3524,11 @@ class AdminEfficiencyPilot:
         session_start = time.time()
         last_prog_sec = -1
         last_prog_time = time.time()
+        try:
+            from utils.security import global_quota_tracker
+            api_before = global_quota_tracker.get_stats().get("used", 0)
+        except Exception:
+            api_before = 0
 
         try:
             # ⭐ 檢查點 1
@@ -4031,20 +4036,28 @@ class AdminEfficiencyPilot:
                         self._completed_in_session.add(c_id)
                         self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
                         try:
-                            from utils.security import format_course_dashboard_card
-                            card = format_course_dashboard_card(
+                            from utils.security import global_quota_tracker
+                            from utils.course_dashboard import render_course_completion_card
+                            api_after = global_quota_tracker.get_stats().get("used", 0)
+                            card = render_course_completion_card(
                                 course_name=course.get('caption', ''),
-                                score_text="測驗跳過（待後續處理）",
-                                is_passed=False,
-                                solve_mode_desc="⏩ 跳過測驗模式",
-                                feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                has_quiz=True,
+                                quiz_passed=False,
+                                survey_completed=True,
+                                course_completed=True,
+                                solve_mode="skipped",
+                                course_api_calls=0,
+                                today_api_calls=api_after,
+                                daily_limit=global_quota_tracker.daily_limit,
                                 session_completed=self._session_completed_count,
-                                session_passed=getattr(self, "_session_passed_count", 0)
+                                session_quiz_passed=getattr(self, "_session_quiz_passed_count", getattr(self, "_session_passed_count", 0)),
+                                session_quiz_total=getattr(self, "_session_quiz_total_count", self._session_completed_count),
                             )
                             logger.info("\n" + card)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logger.warning(f"⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
                 else:
+                    self._session_quiz_total_count = getattr(self, "_session_quiz_total_count", 0) + 1
                     exam_passed = self.auto_exam(course)
                     if self.running and exam_passed:
                         q_ok = True
@@ -4060,20 +4073,30 @@ class AdminEfficiencyPilot:
                             self._completed_in_session.add(c_id)
                             self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
                             self._session_passed_count = getattr(self, "_session_passed_count", 0) + 1
+                            self._session_quiz_passed_count = getattr(self, "_session_quiz_passed_count", 0) + 1
                             try:
-                                from utils.security import format_course_dashboard_card
-                                card = format_course_dashboard_card(
+                                from utils.security import global_quota_tracker
+                                from utils.course_dashboard import render_course_completion_card
+                                api_after = global_quota_tracker.get_stats().get("used", 0)
+                                course_api = max(0, api_after - api_before)
+                                s_mode = "ai" if course_api > 0 or (self.config.get("ai_auto_solve") and self.config.get("ai_api_key")) else "quiz_bank"
+                                card = render_course_completion_card(
                                     course_name=course.get('caption', ''),
-                                    score_text="達標及格",
-                                    is_passed=True,
-                                    solve_mode_desc="🤖 Gemini 批次秒答" if self.config.get("ai_auto_solve") else "📚 SQLite 題庫秒殺",
-                                    feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                    has_quiz=True,
+                                    quiz_passed=True,
+                                    survey_completed=True,
+                                    course_completed=True,
+                                    solve_mode=s_mode,
+                                    course_api_calls=course_api,
+                                    today_api_calls=api_after,
+                                    daily_limit=global_quota_tracker.daily_limit,
                                     session_completed=self._session_completed_count,
-                                    session_passed=self._session_passed_count
+                                    session_quiz_passed=self._session_quiz_passed_count,
+                                    session_quiz_total=getattr(self, "_session_quiz_total_count", self._session_completed_count),
                                 )
                                 logger.info("\n" + card)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
 
 
             logger.info("   🔄 返回學習概況清單...")
@@ -4390,6 +4413,11 @@ class AdminEfficiencyPilot:
                                 break
                             c_id = str(c.get("course_id", ""))
                             try:
+                                from utils.security import global_quota_tracker
+                                auto_all_api_before = global_quota_tracker.get_stats().get("used", 0)
+                            except Exception:
+                                auto_all_api_before = 0
+                            try:
                                 self.driver.execute_script(
                                     f"gotoCourse({c['course_id']})"
                                 )
@@ -4494,25 +4522,33 @@ class AdminEfficiencyPilot:
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.SKIPPED, "使用者選擇本次跳過測驗（問卷已完成）", "課程已完成時數與問卷，後續補測即可完課", is_comp=False)
                                     try:
-                                        from utils.security import format_course_dashboard_card
-                                        card = format_course_dashboard_card(
+                                        from utils.security import global_quota_tracker
+                                        from utils.course_dashboard import render_course_completion_card
+                                        api_after = global_quota_tracker.get_stats().get("used", 0)
+                                        card = render_course_completion_card(
                                             course_name=c.get('caption', ''),
-                                            score_text="測驗跳過（待後續處理）",
-                                            is_passed=False,
-                                            solve_mode_desc="⏩ 跳過測驗模式",
-                                            feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                            has_quiz=True,
+                                            quiz_passed=False,
+                                            survey_completed=True,
+                                            course_completed=True,
+                                            solve_mode="skipped",
+                                            course_api_calls=0,
+                                            today_api_calls=api_after,
+                                            daily_limit=global_quota_tracker.daily_limit,
                                             session_completed=self._session_completed_count,
-                                            session_passed=getattr(self, "_session_passed_count", 0)
+                                            session_quiz_passed=getattr(self, "_session_quiz_passed_count", getattr(self, "_session_passed_count", 0)),
+                                            session_quiz_total=getattr(self, "_session_quiz_total_count", self._session_completed_count),
                                         )
                                         logger.info("\n" + card)
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
                                 else:
                                     self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "問卷填寫失敗，尚未確認完成", "請手動前往網站填寫問卷", needs_man=True)
                                 continue
 
+                            self._session_quiz_total_count = getattr(self, "_session_quiz_total_count", 0) + 1
                             passed = self.auto_exam(c)
                             if passed and self.running:
                                 q_ok = True
@@ -4524,22 +4560,32 @@ class AdminEfficiencyPilot:
                                     self._completed_in_session.add(c_id)
                                     self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
                                     self._session_passed_count = getattr(self, "_session_passed_count", 0) + 1
+                                    self._session_quiz_passed_count = getattr(self, "_session_quiz_passed_count", 0) + 1
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.COMPLETED, "時數達標且測驗及格，問卷已送出", "已完課，接續下一門", is_comp=True)
                                     try:
-                                        from utils.security import format_course_dashboard_card
-                                        card = format_course_dashboard_card(
+                                        from utils.security import global_quota_tracker
+                                        from utils.course_dashboard import render_course_completion_card
+                                        api_after = global_quota_tracker.get_stats().get("used", 0)
+                                        course_api = max(0, api_after - auto_all_api_before)
+                                        s_mode = "ai" if course_api > 0 or (self.config.get("ai_auto_solve") and self.config.get("ai_api_key")) else "quiz_bank"
+                                        card = render_course_completion_card(
                                             course_name=c.get('caption', ''),
-                                            score_text="達標及格",
-                                            is_passed=True,
-                                            solve_mode_desc="🤖 Gemini 批次秒答" if self.config.get("ai_auto_solve") else "📚 SQLite 題庫秒殺",
-                                            feedback_status="✅ 已完成" if q_ok else "⚠️ 待確認",
+                                            has_quiz=True,
+                                            quiz_passed=True,
+                                            survey_completed=True,
+                                            course_completed=True,
+                                            solve_mode=s_mode,
+                                            course_api_calls=course_api,
+                                            today_api_calls=api_after,
+                                            daily_limit=global_quota_tracker.daily_limit,
                                             session_completed=self._session_completed_count,
-                                            session_passed=self._session_passed_count
+                                            session_quiz_passed=self._session_quiz_passed_count,
+                                            session_quiz_total=getattr(self, "_session_quiz_total_count", self._session_completed_count),
                                         )
                                         logger.info("\n" + card)
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
 
                                 else:
                                     self._mark_exam_manual_review(c, "問卷填寫失敗，尚未確認完成")
@@ -4561,19 +4607,28 @@ class AdminEfficiencyPilot:
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "測驗連續不及格已達 3 次上限", "請至平台手動查看題目或題庫解析", needs_man=True)
                                     try:
-                                        from utils.security import format_course_dashboard_card
-                                        card = format_course_dashboard_card(
+                                        from utils.security import global_quota_tracker
+                                        from utils.course_dashboard import render_course_completion_card
+                                        api_after = global_quota_tracker.get_stats().get("used", 0)
+                                        course_api = max(0, api_after - auto_all_api_before)
+                                        s_mode = "ai" if course_api > 0 else "manual"
+                                        card = render_course_completion_card(
                                             course_name=c.get('caption', ''),
-                                            score_text="未達門檻（已達3次上限）",
-                                            is_passed=False,
-                                            solve_mode_desc="📚 本地作答",
-                                            feedback_status="未填寫",
+                                            has_quiz=True,
+                                            quiz_passed=False,
+                                            survey_completed=False,
+                                            course_completed=False,
+                                            solve_mode=s_mode,
+                                            course_api_calls=course_api,
+                                            today_api_calls=api_after,
+                                            daily_limit=global_quota_tracker.daily_limit,
                                             session_completed=self._session_completed_count,
-                                            session_passed=getattr(self, "_session_passed_count", 0)
+                                            session_quiz_passed=getattr(self, "_session_quiz_passed_count", getattr(self, "_session_passed_count", 0)),
+                                            session_quiz_total=getattr(self, "_session_quiz_total_count", self._session_completed_count),
                                         )
                                         logger.info("\n" + card)
-                                    except Exception:
-                                        pass
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
 
 
 
