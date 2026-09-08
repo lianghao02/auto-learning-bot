@@ -195,13 +195,15 @@ def _prepare_runtime() -> None:
     runtime_target = CURRENT_DIR / "runtime"
     if not runtime_source.is_dir():
         raise FileNotFoundError("找不到官方 Python 嵌入式執行環境")
-    shutil.copytree(runtime_source, runtime_target)
+    def _ignore_site_packages(path, names):
+        if Path(path) == (runtime_source / "Lib"):
+            return ["site-packages"]
+        return []
 
-    # python_embed 可能是開發者已使用過的環境。發行版不可混入其中的
-    # 舊套件，因此只清理「輸出副本」後再依鎖定清單乾淨安裝。
+    shutil.copytree(runtime_source, runtime_target, ignore=_ignore_site_packages)
+
+    # 發行版依鎖定清單乾淨安裝全新套件
     site_packages = runtime_target / "Lib" / "site-packages"
-    if site_packages.exists():
-        shutil.rmtree(site_packages)
     site_packages.mkdir(parents=True, exist_ok=True)
     requirements = PROJECT_ROOT / CONFIG["requirements"]
     command = [

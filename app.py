@@ -137,12 +137,13 @@ def _read_local_version() -> str:
 class AdminEfficiencyPilot:
     VERSION = _read_local_version()
     CHANGELOG = (
-        "V3.2.0 Gemini 3.1 Flash-Lite 批次作答與跳過測驗自動補填問卷\n"
+        "V1.0.0 正式穩定版（Stable Release）\n"
+        "• 雙平臺研習流程穩定化：支援「臺北 E 大」與「e 等公務園」自動上課、教材切換與排程\n"
         "• Google Gemini 2.0 Flash 批次極速作答引擎：10 題合一發送，1 秒內 JSON 結構化解析並自動寫入本機 SQLite 題庫\n"
         "• 人機協同助理彈窗升級：新增「✨ Gemini 1 秒智慧作答」專屬按鈕，開啟時自動將 Prompt 複製至剪貼簿\n"
         "• 跳過測驗自動補填問卷機制：跳過測驗後自動檢查並完成滿意度問卷提交，完課進度零遺漏\n"
         "• 免費額度滑動窗口安全限速器（5 RPM）與 API Key 日誌遮罩脫敏防護\n"
-        "• 延續 V3.1.1 的動態及格門檻多重判定與 V3.1.0 的 5 小時主動定期 Session 保養機制"
+        "• 具備動態及格門檻多重判定與主動定期 Session 保養機制"
     )
 
 
