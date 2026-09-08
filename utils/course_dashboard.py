@@ -51,25 +51,33 @@ def render_course_completion_card(
 
     # 4. 本次執行累計文字
     if session_quiz_total > 0:
-        session_text = f"已完成 {session_completed}/{session_completed} 門課程（測驗通過 {session_quiz_passed}/{session_quiz_total} 門）"
+        session_text = f"已完成 {session_completed} 門課程（測驗通過 {session_quiz_passed}/{session_quiz_total} 門）"
     else:
-        session_text = f"已完成 {session_completed}/{session_completed} 門課程"
+        session_text = f"已完成 {session_completed} 門課程"
 
     # 5. 配額與健康狀態
     remaining = max(0, daily_limit - today_api_calls)
     percentage = round((remaining / max(1, daily_limit)) * 100, 1)
-    status_icon = "🟢" if remaining > 300 else ("🟡" if remaining > 50 else "🔴")
+
+    if remaining > 300:
+        status_icon, status_text = "🟢", "充足"
+    elif remaining > 50:
+        status_icon, status_text = "🟡", "偏低"
+    else:
+        status_icon, status_text = "🔴", "不足"
+
+    course_tag = "最新完成課程" if course_completed else "最新處理課程"
 
     card = f"""
 ┌────────────────────────────────────────────────────────────┐
 │ 🎯 行政效能領航員 - 即時研習成效儀表板                        │
 │ ────────────────────────────────────────────────────────── │
-│ 📚 最新完成課程：【{course_name}】
+│ 📚 {course_tag}：【{course_name}】
 │ 🏆 測驗成果：{quiz_text} ｜ 問卷：{survey_text}
 │ ⚡ 本門作答方式：{solve_mode_text}
 │                                                            │
 │ 📊 本次執行累計：{session_text}
 │ 💳 本門 API 呼叫：{course_api_calls} 次 ｜ 今日累計已用：{today_api_calls} / {daily_limit} 次
-│ {status_icon} 配額健康狀態：充足（剩餘 {percentage}%，實際以官方為準）
+│ {status_icon} 配額健康狀態：{status_text}（剩餘 {percentage}%，實際以官方為準）
 └────────────────────────────────────────────────────────────┘"""
     return card.strip()
