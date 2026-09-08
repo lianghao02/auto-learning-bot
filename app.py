@@ -4079,7 +4079,7 @@ class AdminEfficiencyPilot:
                                 from utils.course_dashboard import render_course_completion_card
                                 api_after = global_quota_tracker.get_stats().get("used", 0)
                                 course_api = max(0, api_after - api_before)
-                                s_mode = "ai" if course_api > 0 or (self.config.get("ai_auto_solve") and self.config.get("ai_api_key")) else "quiz_bank"
+                                s_mode = "ai" if course_api > 0 else "quiz_bank"
                                 card = render_course_completion_card(
                                     course_name=course.get('caption', ''),
                                     has_quiz=True,
@@ -4568,7 +4568,7 @@ class AdminEfficiencyPilot:
                                         from utils.course_dashboard import render_course_completion_card
                                         api_after = global_quota_tracker.get_stats().get("used", 0)
                                         course_api = max(0, api_after - auto_all_api_before)
-                                        s_mode = "ai" if course_api > 0 or (self.config.get("ai_auto_solve") and self.config.get("ai_api_key")) else "quiz_bank"
+                                        s_mode = "ai" if course_api > 0 else "quiz_bank"
                                         card = render_course_completion_card(
                                             course_name=c.get('caption', ''),
                                             has_quiz=True,
@@ -4701,6 +4701,15 @@ class AdminEfficiencyPilot:
                             from models.course_state import CourseStatus
                             _emit_course_state(pending[0], CourseStatus.ERROR, "研習過程中遭遇例外", "將在下一輪或稍後重試", is_comp=False)
                             time.sleep(5)
+                        elif res == "SUCCESS":
+                            from models.course_state import CourseStatus
+                            _emit_course_state(
+                                pending[0],
+                                CourseStatus.COMPLETED,
+                                "研習流程已完成",
+                                "已完成本課程，接續下一門",
+                                is_comp=True,
+                            )
 
                         # 💡 主動定期 Session 保養：每連續研習滿指定時數（預設 5 小時），在課程結算後自動刷新 Cookie 與 Session
                         refresh_hours = float(self.config.get("session_refresh_hours", 5.0))
