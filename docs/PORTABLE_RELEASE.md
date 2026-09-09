@@ -10,9 +10,11 @@ python scripts/build_portable_release.py
 
 建置結果位於 `dist/`：
 
-- `行政效能領航員_V3.1.0_Portable/`：解壓後的完整離線版本。
-- `AdminEfficiencyPilot_V3.1.0_Portable.zip`：交付與發行之可攜壓縮檔。
-- `AdminEfficiencyPilot_V3.1.0_Portable.zip.sha256`：ZIP 完整性雜湊。
+- `行政效能領航員_<VERSION>_Portable/`：解壓後的完整離線版本。
+- `AdminEfficiencyPilot_<VERSION>_Portable.zip`：交付與發行之可攜壓縮檔。
+- `AdminEfficiencyPilot_<VERSION>_Portable.zip.sha256`：ZIP 完整性雜湊。
+
+> **說明**：`<VERSION>` 由專案根目錄的 `version.txt`（如 `V1.0.0`）自動取得，建置時無需手動修改檔名。
 
 專案主要開發、測試與可攜式發行流程全面統一為 Windows Python 3.13 64-bit 執行環境。使用者端不需要安裝 Python、pip，也不會於首次啟動時連線下載依賴。
 
