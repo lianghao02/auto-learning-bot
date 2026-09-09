@@ -1,23 +1,23 @@
 # 當前交接狀態 (Current Handoff)
 
-- **本輪目標**：auto-learning-bot 第一輪實質改善任務（整理課程狀態模型與工作台呈現，讓兩平台邏輯清楚分離，降低未來維護成本）。
-- **已完成**：
-  1. 新增 `models/course_state.py`，建立 `CourseStatus` 列舉與 `CourseState` 結構化資料模型（含平台、狀態徽章、時數、原因、下一步動作）。
-  2. 升級 `ui.py` `PlatformTabPanel` 工作台 UX：
-     - 頂部總覽摘要進度條。
-     - 目前聚焦課程卡片（顯示目前課程名稱、狀態徽章、💡 原因說明、👉 下一步動作）。
-     - 分頁工作區：頁籤 1【📋 課程狀態工作台】表格化呈現課程進度與原因；頁籤 2【📜 詳細執行紀錄】將除錯日誌移至第二層。
-  3. 解耦雙平台狀態回報：
-     - `taipei_eda_course.py` 與 `app.py` 於研習、測驗、問卷、跳過及異常標記點，透過 `course_state_callback` 統一發送 `CourseState`。
-  4. 新增 `tests/test_course_state_model.py` 單元測試。
-- **刻意未修改（保留範圍）**：
-  - 嚴格維持既有 Selenium 引擎（不引入 Playwright）。
-  - 嚴禁更動登入、Session 恢復、Cookie 維護、題庫與 Gemini 流程。
-- **驗證結果與測試證據**：
-  - `pytest tests/ -q`：50 項測試全部通過 (100% passed in 3.72s)。
-  - UI 模擬發送 `CourseState` 整合測試：MainWindow 初始化正常，表格與聚焦卡片即時同步渲染通過。
-- **已知事項與注意事項**：
-  - 既有文字 Log 輸出與正則解析邏輯完整保留，具備雙重相容性。
-- **下一步建議**：
-  - 後續輪次可依實際需求針對特定網站改版時擴充 `CourseState` 中的細部統計指標。
-- **目前狀態判定**：目前版本可交付
+- **專案狀態**：Stable / Maintenance
+- **正式版本**：由 `version.txt` / GitHub Release 為準（目前正式發布：`v1.0.0`）
+
+---
+
+### 目前核心狀態
+
+- **v1.0.0 正式發布完成**：GitHub Release 與 Release Assets（可攜版 ZIP 及 SHA256）已就緒。
+- **發行產物一致**：`README.md`、`version.txt`、UI 介面、`app.py`、打包腳本與 GitHub Release 完全對齊。
+- **核心雙平臺流程已驗證**：「臺北 E 大」與「e 等公務園」之全自動登入、上課掛時數、本地題庫與 Gemini 批次秒答、問卷提交、Session 自動保養皆完成實機完整流程驗收。
+- **自動化測試全部通過**：單元測試、狀態模型測試與更新驗證測試 100% 通過（0 failures, 0 errors）。
+
+---
+
+### 後續開發與維護邊界
+
+本專案現已封版轉入穩定維護期，**後續僅於下列情況重新開啟開發**：
+1. **實際 Bug**：執行中發生的例外錯誤或未預期中斷。
+2. **平臺改版**：公務平臺（E大 / e等）前端 DOM 或 SSO 登入流程重大異動。
+3. **相容性問題**：新版 Chrome / ChromeDriver 或 Python / Selenium 依賴相容性失效。
+4. **使用者明確新需求**：使用者提出具體功能擴充指示。
