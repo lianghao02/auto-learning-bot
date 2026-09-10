@@ -19,6 +19,7 @@ REQUIRED_CURRENT_FILES = (
     "app.py",
     "ui.py",
     "version.txt",
+    "models/course_state.py",
     "runtime/python.exe",
     "runtime/pythonw.exe",
 )
