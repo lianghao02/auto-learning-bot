@@ -25,6 +25,7 @@ class PortableUpdateTests(unittest.TestCase):
             "current/app.py": b"# app\n",
             "current/ui.py": b"# ui\n",
             "current/version.txt": version.encode(),
+            "current/models/course_state.py": b"# models\n",
             "current/runtime/python.exe": b"python",
             "current/runtime/pythonw.exe": b"pythonw",
         }

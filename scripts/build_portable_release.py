@@ -55,7 +55,7 @@ APP_FILES = (
     "version.txt",
     "README.md",
 )
-APP_DIRS = ("drivers", "icons", "patches", "utils")
+APP_DIRS = ("drivers", "icons", "models", "patches", "utils")
 
 LAUNCHER = r"""@echo off
 setlocal
