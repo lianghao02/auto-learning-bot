@@ -50,3 +50,12 @@ Thumbs.db
 python_embed/
 python-embed/
 *.lock
+
+# 瀏覽器驅動與快取（由程式自動按 Chrome 版本下載）
+drivers/
+*.chromedriver
+
+# 二進制執行檔與啟動器編譯產物
+*.exe
+scripts/launcher/*.exe
+
