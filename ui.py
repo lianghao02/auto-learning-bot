@@ -3304,7 +3304,20 @@ class PlatformTabPanel(QWidget):
 class AccountSettingsTabPanel(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
+        # 外層主版面配置
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # 滾動區域：支援不同螢幕高度與解析度，避免內容卡片被擠壓
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
+        scroll_area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+
+        content_widget = QWidget()
+        content_widget.setStyleSheet("background: transparent;")
+        layout = QVBoxLayout(content_widget)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(14)
 
@@ -3316,7 +3329,7 @@ class AccountSettingsTabPanel(QWidget):
 
         form_card = QFrame()
         form_card.setObjectName("accountSettingsCard")
-        form_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        form_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         form_card.setStyleSheet("""
             QFrame#accountSettingsCard {
                 background: #FAF9F6;
@@ -3433,12 +3446,12 @@ class AccountSettingsTabPanel(QWidget):
                 background: #F0FDF4;
                 border: 1px solid #86EFAC;
                 border-radius: 8px;
-                padding: 10px;
+                padding: 6px;
             }
         """)
         ai_tip_layout = QVBoxLayout(ai_tip_box)
-        ai_tip_layout.setContentsMargins(10, 8, 10, 8)
-        ai_tip_layout.setSpacing(6)
+        ai_tip_layout.setContentsMargins(10, 6, 10, 6)
+        ai_tip_layout.setSpacing(4)
 
         ai_tip_title = QLabel("💡 <b>Google Gemini API 申請與配額說明</b>")
         ai_tip_title.setStyleSheet("color: #166534; font-size: 13px; font-weight: bold; background: transparent; border: none;")
@@ -3450,8 +3463,7 @@ class AccountSettingsTabPanel(QWidget):
             "• <b>金鑰安全</b>：API Key 僅保存在本機 <code>data/config.json</code>，日誌自動遮罩脫敏，絕不上傳第三方伺服器。"
         )
 
-
-        ai_tip_text.setStyleSheet("color: #15803D; font-size: 12px; line-height: 1.5; background: transparent; border: none;")
+        ai_tip_text.setStyleSheet("color: #15803D; font-size: 12px; line-height: 1.4; background: transparent; border: none;")
         ai_tip_text.setWordWrap(True)
 
         ai_btn_row = QHBoxLayout()
@@ -3459,7 +3471,7 @@ class AccountSettingsTabPanel(QWidget):
         open_ai_studio_btn.setStyleSheet("""
             QPushButton {
                 background: #16A34A; color: #FFFFFF; font-weight: bold; font-size: 12px;
-                padding: 6px 14px; border-radius: 6px; border: none;
+                padding: 5px 12px; border-radius: 6px; border: none;
             }
             QPushButton:hover { background: #15803D; }
         """)
@@ -3469,7 +3481,7 @@ class AccountSettingsTabPanel(QWidget):
         open_pricing_btn.setStyleSheet("""
             QPushButton {
                 background: #E2E8F0; color: #334155; font-size: 12px;
-                padding: 6px 12px; border-radius: 6px; border: 1px solid #CBD5E1;
+                padding: 5px 12px; border-radius: 6px; border: 1px solid #CBD5E1;
             }
             QPushButton:hover { background: #CBD5E1; }
         """)
@@ -3487,7 +3499,6 @@ class AccountSettingsTabPanel(QWidget):
 
         layout.addWidget(form_card)
 
-
         btn_bar = QHBoxLayout()
         self.save_btn = QPushButton("💾 儲存並套用設定")
         self.save_btn.setStyleSheet("""
@@ -3503,6 +3514,9 @@ class AccountSettingsTabPanel(QWidget):
         layout.addLayout(btn_bar)
         # 多出的垂直空間放在底部，不把標題與表單推開。
         layout.addStretch(1)
+
+        scroll_area.setWidget(content_widget)
+        outer_layout.addWidget(scroll_area)
 
         self.load_settings()
 
@@ -3814,7 +3828,7 @@ class MainWindow(QWidget):
         self.immersive.on_start_all = self._start_all_platforms
         self.immersive.on_check_update = self._handle_manual_check_update
 
-        self.resize(1000, 650)
+        self.resize(1000, 670)
         self.setMinimumSize(950, 620)
 
         self.stack.addWidget(self.immersive)
