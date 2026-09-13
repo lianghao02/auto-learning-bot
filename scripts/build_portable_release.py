@@ -55,7 +55,8 @@ APP_FILES = (
     "version.txt",
     "README.md",
 )
-APP_DIRS = ("drivers", "icons", "models", "patches", "utils")
+APP_DIRS = ("icons", "models", "patches", "utils")
+OPTIONAL_DIRS = ("drivers",)
 
 LAUNCHER = r"""@echo off
 setlocal
@@ -167,6 +168,11 @@ def _copy_application_files() -> None:
         if not source.is_dir():
             raise FileNotFoundError(f"缺少發行必要資料夾：{name}")
         shutil.copytree(source, CURRENT_DIR / name, ignore=ignore)
+
+    for name in OPTIONAL_DIRS:
+        source = PROJECT_ROOT / name
+        if source.is_dir():
+            shutil.copytree(source, CURRENT_DIR / name, ignore=ignore)
 
 
 def _create_seed_database() -> None:
