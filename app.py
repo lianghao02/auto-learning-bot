@@ -137,14 +137,19 @@ def _read_local_version() -> str:
 class AdminEfficiencyPilot:
     VERSION = _read_local_version()
     CHANGELOG = (
+        "V1.1.0 介面體驗重塑版（UI UX Redesign）\n"
+        "• 主工作台控制列整合：融合平台資訊、測驗模式與啟動按鈕，釋放垂直空間\n"
+        "• 帳號設定模組化分組卡片：臺北 E 大 / e 等公務員並列卡片 + 全域 AI 設定獨立卡片\n"
+        "• 頂部全域導航列收斂：純粹化全域控制，消除雙重入口心智負擔\n\n"
         "V1.0.0 正式穩定版（Stable Release）\n"
         "• 雙平臺研習流程穩定化：支援「臺北 E 大」與「e 等公務園」自動上課、教材切換與排程\n"
-        "• Google Gemini 2.0 Flash 批次極速作答引擎：10 題合一發送，1 秒內 JSON 結構化解析並自動寫入本機 SQLite 題庫\n"
+        "• Google Gemini 批次極速作答引擎：10 題合一發送，1 秒內結構化解析並自動寫入本機 SQLite 題庫\n"
         "• 人機協同助理彈窗升級：新增「✨ Gemini 1 秒智慧作答」專屬按鈕，開啟時自動將 Prompt 複製至剪貼簿\n"
         "• 跳過測驗自動補填問卷機制：跳過測驗後自動檢查並完成滿意度問卷提交，完課進度零遺漏\n"
         "• 免費額度滑動窗口安全限速器（5 RPM）與 API Key 日誌遮罩脫敏防護\n"
         "• 具備動態及格門檻多重判定與主動定期 Session 保養機制"
     )
+
 
 
     def __init__(
