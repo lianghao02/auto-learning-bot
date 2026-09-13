@@ -2839,42 +2839,31 @@ class PlatformTabPanel(QWidget):
         summary_layout.addWidget(self.execution_status_lbl)
         layout.addWidget(summary_card)
 
-        # ── 2. 操作列：主要動作按鈕 ────────────────────────────────
-        btn_bar = QHBoxLayout()
-        self.info_lbl = QLabel(f"{platform_title}控制台")
-        self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 15px; background: transparent; border: none;")
-
-        self.exam_mode_combo = QComboBox()
-        self.exam_mode_combo.addItem("1. SQLite 題庫秒殺模式（本機題庫優先）", "sqlite")
-        self.exam_mode_combo.addItem("2. 人機協同助理彈窗模式（彈窗回貼／一鍵作答）", "interactive")
-        self.exam_mode_combo.addItem("3. 跳過測驗模式（嘗試填問卷）", "skip")
-        self.exam_mode_combo.addItem("4. Gemini API 批次直連 ⭐（整卷秒答）", "gemini_direct")
-        self.exam_mode_combo.setToolTip(
-            "1. SQLite 題庫秒殺：本機題庫優先作答（0 耗額）\n2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n3. 跳過測驗：跳過測驗並嘗試完成滿意度問卷調查\n4. Gemini 批次直連：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
-        )
-        self.exam_mode_combo.setMinimumWidth(320)
-
-
-        self.exam_mode_combo.setStyleSheet("""
-            QComboBox {
-                background: #FAF9F6; color: #2F3B43;
-                border: 1px solid #B9B5AE; border-radius: 7px;
-                padding: 8px 32px 8px 11px; font-size: 13px; font-weight: 600;
-            }
-            QComboBox:hover { border-color: #70889B; background: #F4F2EE; }
-            QComboBox:disabled { background: #E4E0DA; color: #88847E; }
-            QComboBox QAbstractItemView {
-                background: #FAF9F6; color: #2F3B43;
-                selection-background-color: #70889B; selection-color: #FFFFFF;
-                border: 1px solid #B9B5AE;
+        # ── 2. 旗艦整合操作儀表帶（方案 A：收斂方框，融合模式與操作按鈕） ─────
+        ctrl_card = QFrame()
+        ctrl_card.setObjectName("ctrlRibbonCard")
+        ctrl_card.setStyleSheet("""
+            QFrame#ctrlRibbonCard {
+                background: #FAF9F6;
+                border: 1px solid #D6D3CC;
+                border-radius: 10px;
+                padding: 6px 12px;
             }
         """)
+        ctrl_layout = QVBoxLayout(ctrl_card)
+        ctrl_layout.setContentsMargins(6, 6, 6, 6)
+        ctrl_layout.setSpacing(6)
+
+        # 第一排：平台資訊與動作按鈕
+        top_ctrl_row = QHBoxLayout()
+        self.info_lbl = QLabel(f"{platform_title}控制台")
+        self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 15px; background: transparent; border: none;")
 
         self.start_btn = QPushButton("▶️ 開始此平台")
         self.start_btn.setStyleSheet("""
             QPushButton {
-                background: #6F917B; color: #FFFFFF; border-radius: 8px;
-                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
+                background: #6F917B; color: #FFFFFF; border-radius: 7px;
+                padding: 7px 16px; font-weight: bold; font-size: 13px; border: none;
             }
             QPushButton:hover { background: #5D7D69; }
         """)
@@ -2883,8 +2872,8 @@ class PlatformTabPanel(QWidget):
         self.stop_btn = QPushButton("⏹ 停止此平台")
         self.stop_btn.setStyleSheet("""
             QPushButton {
-                background: #A96F6B; color: #FFFFFF; border-radius: 8px;
-                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
+                background: #A96F6B; color: #FFFFFF; border-radius: 7px;
+                padding: 7px 16px; font-weight: bold; font-size: 13px; border: none;
             }
             QPushButton:hover { background: #925D59; }
             QPushButton:disabled { background: #DDD9D3; color: #8A8782; }
@@ -2895,41 +2884,65 @@ class PlatformTabPanel(QWidget):
         self.toggle_browser_btn = QPushButton("👁️ 顯示瀏覽器")
         self.toggle_browser_btn.setStyleSheet("""
             QPushButton {
-                background: #748399; color: #FFFFFF; border-radius: 8px;
-                padding: 9px 18px; font-weight: bold; font-size: 14px; border: none;
+                background: #748399; color: #FFFFFF; border-radius: 7px;
+                padding: 7px 16px; font-weight: bold; font-size: 13px; border: none;
             }
             QPushButton:hover { background: #657489; }
         """)
         self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
-        btn_bar.addWidget(self.info_lbl)
-        btn_bar.addStretch()
-        btn_bar.addWidget(self.start_btn)
-        btn_bar.addWidget(self.stop_btn)
-        btn_bar.addWidget(self.toggle_browser_btn)
-        layout.addLayout(btn_bar)
+        top_ctrl_row.addWidget(self.info_lbl)
+        top_ctrl_row.addStretch()
+        top_ctrl_row.addWidget(self.start_btn)
+        top_ctrl_row.addWidget(self.stop_btn)
+        top_ctrl_row.addWidget(self.toggle_browser_btn)
+        ctrl_layout.addLayout(top_ctrl_row)
 
-        option_card = QFrame()
-        option_card.setObjectName("examModeCard")
-        option_card.setStyleSheet("""
-            QFrame#examModeCard { background: #F5F2ED; border: 1px solid #D6D1C9; border-radius: 9px; }
-            QFrame#examModeCard QLabel { color: #35434C; background: transparent; border: none; }
-        """)
-        option_layout = QVBoxLayout(option_card)
-        option_layout.setContentsMargins(14, 6, 14, 6)
-        option_layout.setSpacing(3)
+        # 第二排：測驗模式選擇與提示
         mode_row = QHBoxLayout()
-        mode_row.setSpacing(12)
-        mode_label = QLabel("本次測驗處理方式")
-        mode_label.setStyleSheet("color: #35434C; font-size: 13px; font-weight: 700; background: transparent; border: none;")
+        mode_row.setSpacing(10)
+        mode_label = QLabel("本次測驗處理方式：")
+        mode_label.setStyleSheet("color: #4B5962; font-size: 13px; font-weight: 700; background: transparent; border: none;")
+
+        self.exam_mode_combo = QComboBox()
+        self.exam_mode_combo.addItem("1. SQLite 題庫秒殺模式（本機題庫優先）", "sqlite")
+        self.exam_mode_combo.addItem("2. 人機協同助理彈窗模式（彈窗回貼／一鍵作答）", "interactive")
+        self.exam_mode_combo.addItem("3. 跳過測驗模式（嘗試填問卷）", "skip")
+        self.exam_mode_combo.addItem("4. Gemini API 批次直連 ⭐（整卷秒答）", "gemini_direct")
+        self.exam_mode_combo.setToolTip(
+            "【測驗模式說明】僅影響本次執行：\n"
+            "• 1. SQLite 題庫秒殺：本機題庫優先作答（0 耗額）\n"
+            "• 2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n"
+            "• 3. 跳過測驗：跳過測驗並嘗試完成滿意度問卷調查\n"
+            "• 4. Gemini 批次直連：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
+        )
+        self.exam_mode_combo.setMinimumWidth(340)
+        self.exam_mode_combo.setStyleSheet("""
+            QComboBox {
+                background: #F3F1ED; color: #2F3B43;
+                border: 1px solid #B9B5AE; border-radius: 7px;
+                padding: 6px 30px 6px 10px; font-size: 13px; font-weight: 600;
+            }
+            QComboBox:hover { border-color: #70889B; background: #EBE8E3; }
+            QComboBox:disabled { background: #E4E0DA; color: #88847E; }
+            QComboBox QAbstractItemView {
+                background: #FAF9F6; color: #2F3B43;
+                selection-background-color: #70889B; selection-color: #FFFFFF;
+                border: 1px solid #B9B5AE;
+            }
+        """)
+
+        mode_hint = QLabel("💡 僅影響本次執行，不會改變儲存設定")
+        mode_hint.setStyleSheet("color: #7E8B93; font-size: 12px; font-weight: 500; background: transparent; border: none;")
+
         mode_row.addWidget(mode_label)
         mode_row.addWidget(self.exam_mode_combo)
+        mode_row.addWidget(mode_hint)
         mode_row.addStretch()
-        option_layout.addLayout(mode_row)
-        mode_hint = QLabel("僅影響這次執行，不會改變帳號設定")
-        mode_hint.setStyleSheet("color: #6B777F; font-size: 12px; font-weight: 500; background: transparent; border: none;")
-        option_layout.addWidget(mode_hint)
-        layout.addWidget(option_card)
+        ctrl_layout.addLayout(mode_row)
+
+        layout.addWidget(ctrl_card)
+
 
         # ── 3. 目前聚焦課程卡片（狀態、原因、下一步） ─────────────────
         self.focus_card = QFrame()
@@ -3327,43 +3340,35 @@ class AccountSettingsTabPanel(QWidget):
         lbl.setFixedHeight(30)
         layout.addWidget(lbl)
 
-        form_card = QFrame()
-        form_card.setObjectName("accountSettingsCard")
-        form_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        form_card.setStyleSheet("""
-            QFrame#accountSettingsCard {
-                background: #FAF9F6;
-                border: 1px solid #D6D3CC;
-                border-radius: 12px;
-                padding: 20px;
-            }
-            QFrame#accountSettingsCard QLabel {
-                color: #35434C;
-                font-weight: bold;
-                font-size: 13px;
-                background: transparent;
-                border: none;
-                min-height: 28px;
-                padding: 2px 0px;
-            }
-        """)
-        form_layout = QFormLayout(form_card)
-        form_layout.setSpacing(14)
-        form_layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
         input_style = """
             QLineEdit, QComboBox {
                 background: #F3F1ED;
                 color: #2F3B43;
                 border: 1px solid #BDB9B2;
                 border-radius: 6px;
-                padding: 8px 12px;
+                padding: 7px 10px;
                 font-size: 13px;
                 min-height: 20px;
             }
             QLineEdit:focus, QComboBox:focus {
                 border: 2px solid #70889B;
                 background: #FAF9F6;
+            }
+        """
+
+        card_style = """
+            QFrame.settingSectionCard {
+                background: #FAF9F6;
+                border: 1px solid #D6D3CC;
+                border-radius: 10px;
+                padding: 12px 14px;
+            }
+            QFrame.settingSectionCard QLabel {
+                color: #35434C;
+                font-weight: bold;
+                font-size: 13px;
+                background: transparent;
+                border: none;
             }
         """
 
@@ -3429,15 +3434,75 @@ class AccountSettingsTabPanel(QWidget):
         self.ai_key_input.setPlaceholderText("選填；未填時只使用本機題庫，不會呼叫 AI")
         self.ai_key_input.setStyleSheet(input_style)
 
-        form_layout.addRow(QLabel("臺北E大名稱:"), self.name_input)
-        form_layout.addRow(QLabel("臺北E大帳號:"), self.acc_input)
-        form_layout.addRow(QLabel("臺北E大密碼:"), self.pwd_input)
-        form_layout.addRow(QLabel("e等顯示名稱:"), self.egov_name_input)
-        form_layout.addRow(QLabel("e等登入方式:"), self.egov_type_combo)
-        form_layout.addRow(QLabel("e等登入帳號:"), self.egov_acc_input)
-        form_layout.addRow(QLabel("e等登入密碼:"), self.egov_pwd_input)
-        form_layout.addRow(QLabel("執行模式:"), self.headless_cb)
-        form_layout.addRow(QLabel("Gemini API Key（選填）:"), self.ai_key_input)
+        # ── 1. 雙平臺帳號設定（左右並列卡片） ─────────────────────
+        platforms_row = QHBoxLayout()
+        platforms_row.setSpacing(14)
+
+        # 🏛️ 臺北 E 大 卡片
+        taipei_card = QFrame()
+        taipei_card.setProperty("class", "settingSectionCard")
+        taipei_card.setStyleSheet(card_style)
+        taipei_card_layout = QVBoxLayout(taipei_card)
+        taipei_card_layout.setContentsMargins(12, 12, 12, 12)
+        taipei_card_layout.setSpacing(10)
+
+        taipei_title = QLabel("🏛️ 臺北 E 大 帳號設定")
+        taipei_title.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 14px; background: transparent; border: none; padding-bottom: 2px;")
+        taipei_card_layout.addWidget(taipei_title)
+
+        taipei_form = QFormLayout()
+        taipei_form.setSpacing(10)
+        taipei_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        taipei_form.addRow(QLabel("顯示名稱:"), self.name_input)
+        taipei_form.addRow(QLabel("登入帳號:"), self.acc_input)
+        taipei_form.addRow(QLabel("登入密碼:"), self.pwd_input)
+        taipei_card_layout.addLayout(taipei_form)
+        taipei_card_layout.addStretch(1)
+
+        # 🏛️ e 等公務員 卡片
+        egov_card = QFrame()
+        egov_card.setProperty("class", "settingSectionCard")
+        egov_card.setStyleSheet(card_style)
+        egov_card_layout = QVBoxLayout(egov_card)
+        egov_card_layout.setContentsMargins(12, 12, 12, 12)
+        egov_card_layout.setSpacing(10)
+
+        egov_title = QLabel("🏛️ e 等公務員 帳號設定")
+        egov_title.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 14px; background: transparent; border: none; padding-bottom: 2px;")
+        egov_card_layout.addWidget(egov_title)
+
+        egov_form = QFormLayout()
+        egov_form.setSpacing(10)
+        egov_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        egov_form.addRow(QLabel("顯示名稱:"), self.egov_name_input)
+        egov_form.addRow(QLabel("登入方式:"), self.egov_type_combo)
+        egov_form.addRow(QLabel("登入帳號:"), self.egov_acc_input)
+        egov_form.addRow(QLabel("登入密碼:"), self.egov_pwd_input)
+        egov_card_layout.addLayout(egov_form)
+        egov_card_layout.addStretch(1)
+
+        platforms_row.addWidget(taipei_card, 1)
+        platforms_row.addWidget(egov_card, 1)
+        layout.addLayout(platforms_row)
+
+        # ── 2. 全域執行與 AI 擴充設定（獨立卡片） ──────────────────
+        global_card = QFrame()
+        global_card.setProperty("class", "settingSectionCard")
+        global_card.setStyleSheet(card_style)
+        global_layout = QVBoxLayout(global_card)
+        global_layout.setContentsMargins(14, 12, 14, 12)
+        global_layout.setSpacing(10)
+
+        global_title = QLabel("⚙️ 全域執行與 AI 擴充設定")
+        global_title.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 14px; background: transparent; border: none; padding-bottom: 2px;")
+        global_layout.addWidget(global_title)
+
+        global_form = QFormLayout()
+        global_form.setSpacing(10)
+        global_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        global_form.addRow(QLabel("執行模式:"), self.headless_cb)
+        global_form.addRow(QLabel("Gemini API Key（選填）:"), self.ai_key_input)
+        global_layout.addLayout(global_form)
 
         # 💡 Google Gemini API 免費申請與 0 元防扣款指南卡片
         ai_tip_box = QFrame()
@@ -3462,7 +3527,6 @@ class AccountSettingsTabPanel(QWidget):
             "• <b>費用與防護</b>：未在 Google Cloud 啟用付費帳單之專案，超額時僅會返回 429 暫停。<br>"
             "• <b>金鑰安全</b>：API Key 僅保存在本機 <code>data/config.json</code>，日誌自動遮罩脫敏，絕不上傳第三方伺服器。"
         )
-
         ai_tip_text.setStyleSheet("color: #15803D; font-size: 12px; line-height: 1.4; background: transparent; border: none;")
         ai_tip_text.setWordWrap(True)
 
@@ -3495,25 +3559,25 @@ class AccountSettingsTabPanel(QWidget):
         ai_tip_layout.addWidget(ai_tip_text)
         ai_tip_layout.addLayout(ai_btn_row)
 
-        form_layout.addRow("", ai_tip_box)
-
-        layout.addWidget(form_card)
+        global_layout.addWidget(ai_tip_box)
 
         btn_bar = QHBoxLayout()
         self.save_btn = QPushButton("💾 儲存並套用設定")
         self.save_btn.setStyleSheet("""
             QPushButton {
                 background: #70889B; color: #FFFFFF; border-radius: 8px;
-                padding: 10px 24px; font-weight: bold; font-size: 14px; border: none;
+                padding: 9px 24px; font-weight: bold; font-size: 14px; border: none;
             }
             QPushButton:hover { background: #60798D; }
         """)
         self.save_btn.clicked.connect(self.save_settings)
         btn_bar.addStretch()
         btn_bar.addWidget(self.save_btn)
-        layout.addLayout(btn_bar)
-        # 多出的垂直空間放在底部，不把標題與表單推開。
+        global_layout.addLayout(btn_bar)
+
+        layout.addWidget(global_card)
         layout.addStretch(1)
+
 
         scroll_area.setWidget(content_widget)
         outer_layout.addWidget(scroll_area)
@@ -3683,16 +3747,6 @@ class ImmersivePage(QWidget):
         """)
         self.stop_all_btn.clicked.connect(self.on_stop)
 
-        self.account_mgr_btn = QPushButton("⚙️ 帳號與系統設定")
-        self.account_mgr_btn.setStyleSheet("""
-            QPushButton {
-                background: #FAF9F6; color: #2F3B43; border-radius: 8px;
-                padding: 9px 16px; font-weight: bold; font-size: 14px; border: 1px solid #C9C5BE;
-            }
-            QPushButton:hover { background: #E9E5DF; }
-        """)
-        self.account_mgr_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
-
         self.check_update_btn = QPushButton("🔄 檢查更新")
         self.check_update_btn.setStyleSheet("""
             QPushButton {
@@ -3708,7 +3762,6 @@ class ImmersivePage(QWidget):
         top_bar.addStretch()
         top_bar.addWidget(self.start_all_btn)
         top_bar.addWidget(self.stop_all_btn)
-        top_bar.addWidget(self.account_mgr_btn)
         top_bar.addWidget(self.check_update_btn)
         root.addLayout(top_bar)
 
