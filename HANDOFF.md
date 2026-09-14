@@ -69,10 +69,11 @@
 
 ## Git 狀態
 - Commit：本輪 V2.0.0 發布提交已建立（詳見 Git log）
-- Push：待推送至 `origin/feature/v2.0-commercial-uiux`
-- Working Tree：預期為 Clean
+- Push：已推送至 `origin/feature/v2.0-commercial-uiux`
+- Release：已發布 [`V2.0.0`](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.0)
+- Working Tree：Clean
 - Branch：feature/v2.0-commercial-uiux
 
 ## 下一步
-1. 推送 V2.0.0 發布提交至功能分支。
-2. 建立 GitHub Release，附上 Portable ZIP 與 SHA-256 校驗檔。
+1. 於實際 Windows 桌面環境進行 V2.0.0 人工視覺驗收。
+2. 收集使用者回饋後，再評估是否合併至 `main`。
