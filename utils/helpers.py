@@ -445,3 +445,92 @@ def parse_multiple_choice_answers(raw_ans, num_options=4):
                     res.append(ch.upper())
     return sorted(list(dict.fromkeys(res)))
 
+
+def normalize_choice_text(text: str) -> str:
+    """去除選項前綴（如 '1.', 'A、', '(1)' 等）與標點空白，保留可用於精準比對的中英數。"""
+    import unicodedata
+    val = unicodedata.normalize("NFKC", str(text or "")).lower()
+    val = re.sub(r"^[\s\(\[]*[a-zA-Z0-9一二三四五六七八九十]+[\s\)\]\.、:：-]+", "", val)
+    return "".join(ch for ch in val if ch.isalnum() or "\u4e00" <= ch <= "\u9fff")
+
+
+def match_radio_option_index(ans, option_texts, num_radios: int) -> int | None:
+    """
+    根據題庫答案文字與當前畫面的選項文字清單，抗選項隨機重排地計算出目標 radio index。
+    策略優先順序（文字本位 Text-Content-First）：
+    1. 實質文字精準比對（去除前綴與標點後的 key 比對或雙向包含）
+    2. 是非題文字語意比對（對/是/O vs 錯/否/X）
+    3. 字母代號 (A/B/C/D) 向下相容
+    4. 數字索引 (1/2/3/4) 向下相容
+    """
+    if ans is None:
+        return None
+
+    ans_str = ans if isinstance(ans, str) else (ans[0] if isinstance(ans, list) else str(ans))
+    ans_norm = ans_str.strip()
+    if not ans_norm:
+        return None
+
+    ans_key = normalize_choice_text(ans_norm)
+    ans_compact = re.sub(r"\s+", "", ans_norm).lower()
+    cleaned_options = [str(t or "").strip() for t in (option_texts or [])[:num_radios]]
+
+    # 1. 優先：實質文字匹配（抗選項重排核心）
+    # 只有在 ans_key 或 ans_compact 具備足夠實質內容時（非純單一字母/數字代號）進行文字比對
+    is_pure_digit = ans_norm.isdigit()
+    is_pure_single_letter = len(ans_norm) == 1 and ans_norm.isalpha()
+
+    if cleaned_options and not (is_pure_digit or is_pure_single_letter):
+        # 1.1 精確 key 完全吻合
+        if ans_key:
+            for i, opt in enumerate(cleaned_options):
+                opt_key = normalize_choice_text(opt)
+                if opt_key and opt_key == ans_key:
+                    return i
+
+        # 1.2 雙向包含比對
+        for i, opt in enumerate(cleaned_options):
+            opt_clean = opt.lower()
+            opt_compact = re.sub(r"\s+", "", opt_clean)
+            opt_key = normalize_choice_text(opt)
+            if (
+                ans_compact
+                and opt_compact
+                and (ans_compact in opt_compact or opt_compact in ans_compact)
+            ) or (
+                ans_key
+                and opt_key
+                and (ans_key in opt_key or opt_key in ans_key)
+            ):
+                return i
+
+    # 2. 是非題語意比對（若為 2 個選項或答案包含明確是非語意）
+    if num_radios == 2:
+        ans_upper = ans_norm.upper()
+        ans_lower = ans_norm.lower()
+        if ans_upper in ("O", "T", "TRUE"):
+            return 0
+        if ans_upper in ("X", "F", "FALSE"):
+            return 1
+        true_words = ["對", "是", "正確", "true"]
+        false_words = ["錯", "否", "不正確", "錯誤", "false", "非"]
+        if any(w in ans_lower for w in true_words) and not any(w in ans_lower for w in false_words):
+            return 0
+        if any(w in ans_lower for w in false_words):
+            return 1
+
+    # 3. 字母代號向下相容 (A/B/C/D)
+    letter_map = {chr(ord("a") + i): i for i in range(num_radios)}
+    token = re.sub(r"[^a-zA-Z]", "", ans_norm).lower()
+    if token in letter_map:
+        return letter_map[token]
+
+    # 4. 數字索引向下相容 (1/2/3/4)
+    m = re.search(r"(?<!\d)(\d+)(?!\d)", ans_norm)
+    if m:
+        n = int(m.group(1))
+        if 1 <= n <= num_radios:
+            return n - 1
+
+    return None
+

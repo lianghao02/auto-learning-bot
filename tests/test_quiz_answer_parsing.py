@@ -185,6 +185,41 @@ class QuizAnswerParsingTests(unittest.TestCase):
         self.assertEqual(expected_set, {"A", "B", "D"})
         self.assertEqual(actual_set, expected_set)
 
+    def test_match_radio_option_index_text_first(self):
+        """測試軌道 B 核心：選項順序隨機洗牌時，依文字內容精準選出正確 index"""
+        from utils.helpers import match_radio_option_index
+
+        # 原始情境：題庫儲存正確文字「新北市」
+        # 原版順序：0: 臺北市, 1: 新北市, 2: 桃園市, 3: 臺中市
+        # 重排後順序：0: 臺中市, 1: 桃園市, 2: 臺北市, 3: 新北市
+        shuffled_options = ["臺中市", "桃園市", "臺北市", "新北市"]
+        idx = match_radio_option_index("新北市", shuffled_options, num_radios=4)
+        self.assertEqual(idx, 3)
+
+        # 包含選項序號前綴時仍能乾淨比對
+        shuffled_with_prefix = ["A. 臺中市", "B. 桃園市", "C. 新北市", "D. 臺北市"]
+        idx_prefix = match_radio_option_index("新北市", shuffled_with_prefix, num_radios=4)
+        self.assertEqual(idx_prefix, 2)
+
+        # 題庫為舊格式（純數字代號 2 或字母 B）的向下相容測試
+        legacy_digit_idx = match_radio_option_index("2", shuffled_options, num_radios=4)
+        self.assertEqual(legacy_digit_idx, 1)  # 2 映射為 index 1
+
+        legacy_letter_idx = match_radio_option_index("C", shuffled_options, num_radios=4)
+        self.assertEqual(legacy_letter_idx, 2)  # C 映射為 index 2
+
+    def test_match_radio_option_index_true_false_semantics(self):
+        """測試是非題語意與文字包含比對"""
+        from utils.helpers import match_radio_option_index
+
+        tf_options = ["正確（是）", "錯誤（否）"]
+        self.assertEqual(match_radio_option_index("對", tf_options, 2), 0)
+        self.assertEqual(match_radio_option_index("是", tf_options, 2), 0)
+        self.assertEqual(match_radio_option_index("O", tf_options, 2), 0)
+        self.assertEqual(match_radio_option_index("錯", tf_options, 2), 1)
+        self.assertEqual(match_radio_option_index("錯誤", tf_options, 2), 1)
+        self.assertEqual(match_radio_option_index("X", tf_options, 2), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
