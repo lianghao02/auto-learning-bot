@@ -7,6 +7,7 @@
 
 import re, json, time, requests, difflib, threading, sys
 from utils.security import validate_ai_base_url
+from utils.helpers import match_radio_option_index
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -570,14 +571,35 @@ def _read_questions(driver):
         deduped.append(q)
     return deduped
 
-def _fill_answers(driver, answers):
+def _fill_answers(driver, answers, questions=None):
     """
     填答：answers = {name: val} 或 {name: [val1, val2]} (多選)
+    questions: 選擇性傳入 _read_questions 的題目清單，用於當答案包含文字時動態比對選項
     """
+    q_map = {q['name']: q for q in (questions or [])}
     for name, val in answers.items():
         vals = val if isinstance(val, list) else [val]
         for v in vals:
             v_str = str(v).strip()
+            # 🛡️ 軌道 B：若有題目選項資訊且答案非純代碼，優先依選項文字動態找出當前對應的 radio
+            q_info = q_map.get(name)
+            if q_info and q_info.get("options") and not v_str.isdigit():
+                opt_texts = [txt for _, txt in sorted(q_info["options"].items(), key=lambda x: str(x[0]))]
+                matched_idx = match_radio_option_index(v_str, opt_texts, len(opt_texts))
+                if matched_idx is not None:
+                    try:
+                        inputs = driver.find_elements(By.CSS_SELECTOR, f'input[name="{name}"]')
+                        if 0 <= matched_idx < len(inputs):
+                            r = inputs[matched_idx]
+                            driver.execute_script("arguments[0].click();", r)
+                            driver.execute_script(
+                                "arguments[0].checked=true;"
+                                "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
+                            print(f'  [填答] 🎯 依選項文字命中填答：{name} 第 {matched_idx + 1} 個選項 (val={r.get_attribute("value")})')
+                            continue
+                    except Exception:
+                        pass
+
             try:
                 # 優先使用原有的 value 屬性精確匹配（radio 或 checkbox）
                 r = driver.find_element(By.CSS_SELECTOR,
@@ -935,7 +957,7 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
 
         _report_missing_once(missing_qs)
 
-        _fill_answers(driver, answers)
+        _fill_answers(driver, answers, questions=questions)
         _submit_quiz(driver, wait)
         time.sleep(2)
 

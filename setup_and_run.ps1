@@ -12,6 +12,30 @@ $projectName = Split-Path -Leaf $projectDir
 $embedDir = Join-Path $projectDir 'python_embed'
 $embedPython = Join-Path $embedDir 'python.exe'
 
+function Set-EmbeddedPythonImportPath {
+    param([Parameter(Mandatory = $true)][string]$RuntimeDirectory)
+
+    # Embedded Python 啟用 ._pth 後不會自動加入專案根目錄；必須明確加入
+    # runtime 的上層，否則 ui.py 無法匯入同層的 app、utils 與 models。
+    $pthFile = Get-ChildItem -LiteralPath $RuntimeDirectory -Filter "*._pth" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($pthFile) {
+        $zipName = [IO.Path]::GetFileNameWithoutExtension($pthFile.Name) + '.zip'
+        $pthLines = @(
+            $zipName,
+            '.',
+            '..',
+            'Lib\site-packages',
+            'import site'
+        )
+        $asciiBytes = [System.Text.Encoding]::ASCII.GetBytes(($pthLines -join "`r`n") + "`r`n")
+        [System.IO.File]::WriteAllBytes($pthFile.FullName, $asciiBytes)
+    }
+}
+
+if (Test-Path -LiteralPath $embedPython) {
+    Set-EmbeddedPythonImportPath -RuntimeDirectory $embedDir
+}
+
 # 判定進入點檔案
 $entryPoint = if (Test-Path -LiteralPath (Join-Path $projectDir 'main.py')) {
     'main.py'
@@ -101,18 +125,7 @@ if (-not $isEnvironmentReady) {
     # 階段 4：解除 ._pth 限制與補全 _sqlite3
     # ------------------------------------------------------------------
     Write-Host "[3/4] 正在解除環境隔離限制並配置 pip 套件管理器..." -ForegroundColor Green
-    $pthFile = Get-ChildItem -LiteralPath $embedDir -Filter "*._pth" -File | Select-Object -First 1
-    if ($pthFile) {
-        $zipName = [IO.Path]::GetFileNameWithoutExtension($pthFile.Name) + '.zip'
-        $pthLines = @(
-            $zipName,
-            '.',
-            'Lib\site-packages',
-            'import site'
-        )
-        $asciiBytes = [System.Text.Encoding]::ASCII.GetBytes(($pthLines -join "`r`n") + "`r`n")
-        [System.IO.File]::WriteAllBytes($pthFile.FullName, $asciiBytes)
-    }
+    Set-EmbeddedPythonImportPath -RuntimeDirectory $embedDir
 
     $targetSqlitePyd = Join-Path $embedDir '_sqlite3.pyd'
     if (-not (Test-Path -LiteralPath $targetSqlitePyd)) {

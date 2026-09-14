@@ -51,6 +51,7 @@ from utils.helpers import (
     set_driver_window_visibility,
     maintain_driver_windows_hidden,
     INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
+    match_radio_option_index,
 )
 from utils.security import validate_ai_base_url
 from utils.webdriver_mgr import download_best_chromedriver
@@ -137,6 +138,12 @@ def _read_local_version() -> str:
 class AdminEfficiencyPilot:
     VERSION = _read_local_version()
     CHANGELOG = (
+        "V2.0.0 商業級自適應架構重構版（Commercial UI/UX Architecture）\n"
+        "• 徹底移除絕對座標硬編碼與靜態外殼：消除高 DPI 縮放下的文字切邊溢出與版面錯位隱患\n"
+        "• 控制中心單一現代架構：主視窗直接承載 Immersive 控制中心，消除雙層 EntryPage 心智負擔\n"
+        "• 柔和陰影互動體驗升級：全面移除 btn.move 座標位移，解決按鈕邊界滑鼠懸浮震顫（Jittering）\n"
+        "• 視覺調性純粹化：徹底清理宇宙粒子轉場殘留，回歸行政公務工具沉穩專業之莫蘭迪色系\n"
+        "• 新增初次啟動引導橫幅：未設定研習帳號時自動彈性提醒並一鍵導引至設定頁籤\n\n"
         "V1.1.0 介面體驗重塑版（UI UX Redesign）\n"
         "• 主工作台控制列整合：融合平台資訊、測驗模式與啟動按鈕，釋放垂直空間\n"
         "• 帳號設定模組化分組卡片：臺北 E 大 / e 等公務員並列卡片 + 全域 AI 設定獨立卡片\n"
@@ -1891,7 +1898,9 @@ class AdminEfficiencyPilot:
                                 matched_opt = next((o for o in b_q["options"] if o["label"].upper() == str(ans_choice).upper() or o["val"] == str(ans_choice)), None)
                                 if matched_opt:
                                     item["ans"] = matched_opt["val"]
-                                    _ai_answered[item["q_text"]] = matched_opt["val"]
+                                    # 🛡️ 軌道 B：滿分存庫優先儲存標準選項文字（若有），徹底抗選項隨機重排
+                                    opt_text = (matched_opt.get("text") or "").strip()
+                                    _ai_answered[item["q_text"]] = opt_text if opt_text else matched_opt["val"]
                                 else:
                                     item["ans"] = str(ans_choice)
                                     _ai_answered[item["q_text"]] = str(ans_choice)
@@ -2006,70 +2015,12 @@ class AdminEfficiencyPilot:
                     elif radios:
                         idx = None
                         if ans is not None:
-                            ans_str = (
-                                ans
-                                if isinstance(ans, str)
-                                else (ans[0] if isinstance(ans, list) else str(ans))
-                            )
-                            ans_norm = ans_str.strip()
-                            ans_lower = ans_norm.lower()
-
-                            # AI 新格式會只回 1/2/3/4；題庫也可能存 A/B/C/D 或「2. 答案」。
-                            m = re.search(r"(?<!\d)(\d+)(?!\d)", ans_norm)
-                            if m:
-                                n = int(m.group(1))
-                                if 1 <= n <= len(radios):
-                                    idx = n - 1
-
-                            if idx is None:
-                                letter_map = {chr(ord("a") + i): i for i in range(len(radios))}
-                                token = re.sub(r"[^a-zA-Z]", "", ans_norm).lower()
-                                if token in letter_map:
-                                    idx = letter_map[token]
-
-                            if idx is None and len(radios) == 2:
-                                ans_upper = ans_norm.upper()
-                                if ans_upper in ("O", "T", "TRUE", "A"):
-                                    idx = 0
-                                elif ans_upper in ("X", "F", "FALSE", "B"):
-                                    idx = 1
-                                else:
-                                    true_words = ["對", "是", "正確", "true"]
-                                    false_words = ["錯", "否", "不正確", "錯誤", "false", "非"]
-                                    if any(w in ans_lower for w in true_words):
-                                        idx = 0
-                                    elif any(w in ans_lower for w in false_words):
-                                        idx = 1
-
-                            if idx is None and option_texts:
-                                def _choice_key(value):
-                                    value = unicodedata.normalize("NFKC", str(value or "")).lower()
-                                    # 去除選項前綴與所有標點空白，只保留可比對的中英數。
-                                    value = re.sub(r"^[\s\(\[]*[a-zA-Z0-9一二三四五六七八九十]+[\s\)\]\.、:：-]+", "", value)
-                                    return "".join(ch for ch in value if ch.isalnum() or "\u4e00" <= ch <= "\u9fff")
-
-                                ans_key = _choice_key(ans_norm)
-                                ans_compact = re.sub(r"\s+", "", ans_norm)
-                                for i, opt_text in enumerate(option_texts[: len(radios)]):
-                                    opt_clean = str(opt_text).strip()
-                                    opt_key = _choice_key(opt_clean)
-                                    opt_compact = re.sub(r"\s+", "", opt_clean)
-                                    if (
-                                        ans_compact
-                                        and opt_compact
-                                        and (ans_compact in opt_compact or opt_compact in ans_compact)
-                                    ) or (
-                                        ans_key
-                                        and opt_key
-                                        and (ans_key in opt_key or opt_key in ans_key)
-                                    ):
-                                        idx = i
-                                        break
-
+                            # 🛡️ 軌道 B：文字本位（Text-Content-First）優先比對，抗選項隨機重排
+                            idx = match_radio_option_index(ans, option_texts, len(radios))
                             if idx is None and len(radios) == 2:
                                 idx = 0
                                 logger.debug(
-                                    f"   ⚠️ 是非題答案無法比對，預設選第一個：{q_text[:30]!r} ans={ans_norm!r}"
+                                    f"   ⚠️ 是非題答案無法比對，預設選第一個：{q_text[:30]!r} ans={ans!r}"
                                 )
                         else:
                             if len(radios) == 2:
@@ -2085,25 +2036,6 @@ class AdminEfficiencyPilot:
                                 )
                                 _missing.append({"type": "單選", "question": q_text, "options": option_texts})
 
-                        if idx is None and ans is not None and len(radios) > 2:
-                            ans_compact = _normalize_q(ans_norm)
-                            for i, opt_text in enumerate(option_texts):
-                                opt_clean = (opt_text or "").strip()
-                                opt_compact = _normalize_q(opt_clean)
-                                if ans_norm and opt_clean and (
-                                    ans_norm in opt_clean
-                                    or opt_clean in ans_norm
-                                    or (
-                                        ans_compact
-                                        and opt_compact
-                                        and (
-                                            ans_compact in opt_compact
-                                            or opt_compact in ans_compact
-                                        )
-                                    )
-                                ):
-                                    idx = i
-                                    break
 
                         if idx is not None and idx < len(radios):
                             self.driver.execute_script(

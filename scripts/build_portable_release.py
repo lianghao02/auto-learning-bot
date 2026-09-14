@@ -235,7 +235,7 @@ def _prepare_runtime() -> None:
     compact_version = CONFIG["python_version"].replace(".", "")
     pth_path = runtime_target / f"python{compact_version}._pth"
     pth_path.write_text(
-        f"python{compact_version}.zip\n.\nLib\\site-packages\nimport site\n",
+        f"python{compact_version}.zip\n.\n..\nLib\\site-packages\nimport site\n",
         encoding="utf-8",
     )
 
@@ -256,7 +256,7 @@ def _prepare_runtime() -> None:
             str(runtime_python),
             "-B",
             "-c",
-            "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil",
+            "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil; import app, quiz_bank, ui",
         ],
         cwd=CURRENT_DIR,
         check=True,

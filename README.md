@@ -1,6 +1,6 @@
 # 行政效能領航員（auto-learning-bot）
 
-[![Version](https://img.shields.io/badge/version-v1.0.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-v2.0.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/v2.0.0)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-blue.svg)](https://www.microsoft.com/windows)
@@ -15,7 +15,7 @@
 
 1. 前往 **[GitHub Releases 最新發行頁面](https://github.com/lianghao02/auto-learning-bot/releases/latest)**。
 2. 在 **Assets** 區塊點擊下載：
-   👉 **`AdminEfficiencyPilot_V1.0.0_Portable.zip`**
+   👉 **`AdminEfficiencyPilot_V2.0.0_Portable.zip`**
 3. **解壓縮**：將下載的 ZIP 壓縮檔完整解壓縮至本機任意資料夾（建議放置於桌面或非系統槽）。
 4. **啟動**：進入解壓縮後的資料夾，直接雙擊 **`行政效能領航員.exe`**（自帶專屬圖示，點擊直接啟動，無 CMD 黑窗）；亦可雙擊 **`啟動程式.bat`**。
    - 💡 可雙擊 **`建立桌面捷徑.bat`** 一鍵在桌面建立專屬圖示捷徑。
