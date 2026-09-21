@@ -52,8 +52,8 @@
 
 ## 本輪發布補充
 - 修正嵌入式 Python 的 `._pth` 匯入路徑，讓可攜版 runtime 能從 `current/runtime/` 正確載入上層程式根目錄中的 `app`、`utils` 與 `models`。
-- 已建置 `dist/AdminEfficiencyPilot_V2.0.0_Portable.zip`；SHA-256 為 `e8cfcfae52a9f70eaa3abf1959d7cac26dc3a9978af071f45518314519f0bcdf`。
-- 已確認壓縮檔不含使用者 `config.json`、`questions.db` 或執行日誌，且其 runtime 可成功匯入 `app`、`quiz_bank`、`ui`。
+- 已建置 `dist/AdminEfficiencyPilot_V2.0.0_Portable.zip`；SHA-256 為 `603b065baf3f475ec1b28a55d1849cfd054051008283ef24ade4b1f9804dfc06`。
+- 已確認壓縮檔不含使用者 `config.json`、`questions.db` 或執行日誌，且其 runtime 可成功匯入 `app`、`quiz_bank`、`ui`、`taipei_eda_course`。
 
 ## 驗證結果
 ### 已執行
