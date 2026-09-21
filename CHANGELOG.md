@@ -24,6 +24,14 @@
 - **舊版題庫與字母代號向下相容**：
   - 完美相容歷史題庫中的純數字（1/2/3/4）、字母（A/B/C/D）與是非題語意（對/是/O vs 錯/否/X），維持 100% 回歸安全性。
 
+### 核心執行穩定性與防護修正 (Stability & Quota Safety)
+- **修復臺北 E 大課程執行迴圈 NameError 阻斷缺陷**：
+  - 補齊 `taipei_eda_course.py` 對 `global_quota_tracker` 的全域引用，並針對課程處理前／後的 API 配額統計增加 `try...except` 容錯保護，避免因配額讀取異常直接阻斷待處理課程主流程。
+- **標準化控制台 UTF-8 編碼與 I/O 安全**：
+  - 將模組頂部重複包裝 `sys.stdout.buffer` 的寫法改為安全 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，徹底避免多執行緒或測試環境下底層 buffer 遭非預期關閉引發之 `ValueError: I/O operation on closed file`。
+- **擴充單元測試覆蓋與隔離防護**：
+  - 新增 `TaipeiRunQueueLoopTests` 整合測試，驗證待處理課程迴圈執行中配額追蹤與即時成效儀表板正常運作；全套單元測試增至 68 項，通過率 100%。
+
 ## 🏆 [V1.1.0] - 2026-09-13
 
 ### 介面與使用者體驗 (UI/UX) 重構

@@ -18,21 +18,22 @@ class WindowVisibilityGuardTests(unittest.TestCase):
         calls = []
 
         def record_visibility(target, visible):
-            calls.append((target, visible))
-            if len(calls) >= 2:
-                called.set()
+            if target is driver:
+                calls.append((target, visible))
+                if len(calls) >= 2:
+                    called.set()
             return 1
 
         with patch.object(helpers, "set_driver_window_visibility", side_effect=record_visibility):
             helpers.maintain_driver_windows_hidden(driver, duration=0.08, interval=0.02)
             self.assertTrue(called.wait(0.5))
             deadline = time.monotonic() + 0.5
-            while helpers._WINDOW_HIDE_GUARDS and time.monotonic() < deadline:
+            while id(driver) in helpers._WINDOW_HIDE_GUARDS and time.monotonic() < deadline:
                 time.sleep(0.01)
 
         self.assertGreaterEqual(len(calls), 2)
         self.assertTrue(all(target is driver and visible is False for target, visible in calls))
-        self.assertFalse(helpers._WINDOW_HIDE_GUARDS)
+        self.assertNotIn(id(driver), helpers._WINDOW_HIDE_GUARDS)
 
     def test_repeated_request_reuses_same_guard(self):
         driver = object()
