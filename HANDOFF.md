@@ -33,12 +33,17 @@
    - 保留對純數字代號（1/2/3/4）、字母代號（A/B/C/D）與是非題語意（對/是/O vs 錯/否/X）的向下相容。
 3. **臺北 E 大動態填答防禦 (`quiz_bank.py`)**：
    - 重構 `_fill_answers` 支援可選 `questions` 參數，當答案包含文字時動態校驗當前頁面選項文字定位 radio，搭配既有 value 與 index 機制形成三層安全防禦。
-4. **回歸測試與單元測試擴充 (`tests/test_quiz_answer_parsing.py`)**：
+4. **臺北 E 大待處理課程迴圈 NameError 阻斷缺陷修復 (`taipei_eda_course.py`)**：
+   - 補齊對 `global_quota_tracker` 的 import 引用。
+   - 為即時成效儀表板之 `api_before` 與 `api_after` 配額統計加上 `try...except` 容錯防禦，避免配額模組微小異常中斷主流程。
+   - 將標準輸出編碼配置標準化為 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，根除重複建立 `TextIOWrapper` 導致底層 buffer 遭 GC 關閉之 `ValueError: I/O operation on closed file` 風險。
+5. **回歸測試與單元測試擴充 (`tests/test_quiz_answer_parsing.py`, `tests/test_taipei_scan_safety.py`)**：
    - 新增 `test_match_radio_option_index_text_first` 驗證選項順序隨機洗牌時 100% 選中正確文字對應 radio。
    - 新增 `test_match_radio_option_index_true_false_semantics` 驗證是非題語意比對。
-   - 全套測試增至 67 項，通過率 100%。
+   - 新增 `TaipeiRunQueueLoopTests.test_run_taipei_eda_work_queue_quota_tracker_integration` 驗證待處理課程迴圈與成效儀表板整合正常。
+   - 全套測試增至 68 項，通過率 100%。
 
-5. **版本號全域對齊**：
+6. **版本號全域對齊**：
    - `version.txt`、`app.py`、`CHANGELOG.md`、`README.md` 全數對齊至 `V2.0.0`。
 
 ## 刻意未修改
@@ -53,11 +58,11 @@
 ## 驗證結果
 ### 已執行
 1. **全套自動化單元與回歸測試**：
-   - 指令：`.\\python_embed\\python.exe -m unittest discover -s tests -p "test_*.py"`
-   - 結果：`Ran 67 tests in 1.329s, OK`（67 項測試 100% 全數通過）。
-3. **可攜版 runtime 匯入檢驗**：
+   - 指令：`python -m unittest discover -s tests -p "test_*.py"`
+   - 結果：`Ran 68 tests in 3.024s, OK`（68 項測試 100% 全數通過）。
+2. **可攜版 runtime 匯入檢驗**：
    - 結果：`PORTABLE_IMPORT_OK`。
-2. **無介面與離屏實例化檢驗**：
+3. **無介面與離屏實例化檢驗**：
    - 驗證主視窗乾淨初始化、視窗標題包含 `V2.0.0`、預設尺寸為 `1000x670`。
    - 驗證有帳號時引導橫幅自動隱藏；空帳號設定時引導橫幅自動展示。
 

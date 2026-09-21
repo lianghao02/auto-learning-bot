@@ -23,12 +23,11 @@ class _Tee(io.TextIOBase):
             except Exception:
                 pass
 
-_console = None
-if sys.stdout is not None:
-    if hasattr(sys.stdout, "buffer"):
-        _console = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-    else:
-        _console = sys.stdout
+if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 _logfile = open(log_path("taipei_eda_course.log"), "a", encoding="utf-8")
 # ⚠️ 保留原始 sys.stdout，讓 run_taipei_eda 的 _UILog 作為唯一 UI 路由
@@ -45,6 +44,7 @@ from selenium.common.exceptions import NoAlertPresentException, UnexpectedAlertP
 from quiz_bank import do_quiz_with_bank, do_feedback
 
 from utils.helpers import maintain_driver_windows_hidden, set_driver_window_visibility
+from utils.security import global_quota_tracker
 
 # ── DOM 語意彈性相容防護網 (Resilient Selector Fallback) ──────────────────────
 def find_element_resilient(driver, css_selector=None, text_keywords=None, tag_names=None, timeout=5):
@@ -1357,7 +1357,10 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 stopped = True
                 break
 
-            api_before = global_quota_tracker.get_stats().get("used", 0)
+            try:
+                api_before = global_quota_tracker.get_stats().get("used", 0)
+            except Exception:
+                api_before = 0
 
             print(f'\n{"="*60}')
             print(f'處理: {course["name"]}')
@@ -1476,7 +1479,12 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 is_c_passed = True  # 免測驗視為及格通過
                 quiz_passed_state = None
 
-            api_after = global_quota_tracker.get_stats().get("used", 0)
+            try:
+                api_after = global_quota_tracker.get_stats().get("used", 0)
+                daily_limit_val = getattr(global_quota_tracker, "daily_limit", 1500)
+            except Exception:
+                api_after = api_before
+                daily_limit_val = 1500
             course_api_calls = max(0, api_after - api_before)
 
             # 作答方式枚舉判斷
@@ -1502,7 +1510,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     solve_mode=solve_mode,
                     course_api_calls=course_api_calls,
                     today_api_calls=api_after,
-                    daily_limit=global_quota_tracker.daily_limit,
+                    daily_limit=daily_limit_val,
                     session_completed=session_completed_taipei,
                     session_quiz_passed=session_quiz_passed_taipei,
                     session_quiz_total=session_quiz_total_taipei,

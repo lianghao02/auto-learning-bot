@@ -1,7 +1,15 @@
 """臺北E大課程清單掃描的誤判防護測試。"""
 
+import io
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
+
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 from taipei_eda_course import get_course_list
 
@@ -122,4 +130,37 @@ class TaipeiScormPriorityTests(unittest.TestCase):
         self.assertIsNotNone(player_url)
         self.assertIn('mod/scorm', player_url)
         self.assertNotIn('mod/resource', player_url)
+
+
+class TaipeiRunQueueLoopTests(unittest.TestCase):
+    def test_run_taipei_eda_work_queue_quota_tracker_integration(self):
+        """測試 run_taipei_eda 進入待處理課程處理時，global_quota_tracker 正常可用且不拋出 NameError"""
+        from taipei_eda_course import run_taipei_eda
+
+        mock_driver = MagicMock()
+        mock_driver.window_handles = ['win1']
+
+        sample_course = {
+            'name': '測試資安意識課程',
+            'href': 'https://elearning.taipei/course/view.php?id=9999',
+            'study': '01:00:00',
+            'cert_hrs': '1.0',
+            'quiz': '已及格',
+            'quest': '已完成',
+        }
+
+        # 模擬登入成功、取得 1 門待處理課程、模組解析完成
+        with patch('taipei_eda_course.webdriver.Chrome', return_value=mock_driver), \
+             patch('taipei_eda_course.do_login', return_value=True), \
+             patch('taipei_eda_course.get_course_list', return_value=[sample_course]), \
+             patch('taipei_eda_course.build_taipei_work_queue', return_value=[sample_course]), \
+             patch('taipei_eda_course.get_course_modules', return_value={'course_id': 9999, 'req_minutes': 30.0, 'req_score': 60.0}), \
+             patch('taipei_eda_course.is_study_incomplete', return_value=False), \
+             patch('taipei_eda_course.is_quiz_passed', return_value=True), \
+             patch('taipei_eda_course.is_questionnaire_pending', return_value=False), \
+             patch('taipei_eda_course.time.sleep'):
+
+            # 呼叫 run_taipei_eda，若 global_quota_tracker 未定義會拋出 NameError
+            success = run_taipei_eda(config_override={'account': 'test_user', 'password': 'pwd'})
+            self.assertTrue(success)
 
