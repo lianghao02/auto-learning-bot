@@ -7,6 +7,12 @@
   - 徹底移除舊版 `EntryPage`、手機外殼圖（`login.png`）與 `screen_x=421, screen_y=132` 絕對座標硬編碼，消除 Windows 高 DPI（125%、150%）縮放或更改系統字型時的文字切邊、溢出與控制項錯位問題。
 - **單一現代控制中心架構**：
   - 主視窗直接承載 `ImmersivePage` 多頁籤控制中心，消除雙層入口頁與多層堆疊的心智負擔，啟動即進入主工作台。
+- **工作台 UI/UX 緊湊化與操作儀表列 (Compact Ribbon)**：
+  - 將平臺摘要與控制列融合為緊湊的 44px 導覽列，移除佔位過大之 `focus_card`，垂直視覺空間釋放逾 150px，顯著擴增課程佇列之可視範圍。
+- **表格行內焦點引導 (In-Row Focus)**：
+  - 於課程清單表格實作即時狀態引導，處理中課程自動加上 `▶ ` 前綴標記、粗體字型、莫蘭迪淡雅色（`#EAF1EE`）背景高亮與完整 Tooltip 說明。
+- **詳細日誌實用工具列**：
+  - 於「詳細執行紀錄」頁籤頂部新增專屬工具列，提供一鍵複製日誌、開啟日誌資料夾與清空日誌畫面功能。
 - **按鈕互動體驗防震顫優化**：
   - 全面移除 `btn.move(btn.x(), btn.y() - 4)` 座標位移機制，改用純 `QGraphicsDropShadowEffect` 柔和陰影與原生 hover 樣式，徹底消除按鈕邊界滑鼠懸浮判定震顫（Jittering）。
 - **視覺風格與調性純粹化**：
@@ -30,7 +36,9 @@
 - **標準化控制台 UTF-8 編碼與 I/O 安全**：
   - 將模組頂部重複包裝 `sys.stdout.buffer` 的寫法改為安全 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，徹底避免多執行緒或測試環境下底層 buffer 遭非預期關閉引發之 `ValueError: I/O operation on closed file`。
 - **擴充單元測試覆蓋與隔離防護**：
-  - 新增 `TaipeiRunQueueLoopTests` 整合測試，驗證待處理課程迴圈執行中配額追蹤與即時成效儀表板正常運作；全套單元測試增至 68 項，通過率 100%。
+  - 新增 `TaipeiRunQueueLoopTests` 整合測試與測試執行器 `scripts/run_tests.ps1`，全套單元與回歸測試增至 70 項，通過率 100%。
+- **版本治理與主幹對齊**：
+  - 徹底合併收斂 `feature/v2.0-commercial-uiux` 至預設 `main` 分支，更新 Release V2.0.0 資產與 SHA-256 校驗碼。
 
 ## 🏆 [V1.1.0] - 2026-09-13
 
