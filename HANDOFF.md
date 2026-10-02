@@ -65,11 +65,12 @@
 - 無阻斷性風險。舊設定檔 `data/config.json` 與題庫資料庫完全向下相容。
 
 ## Git 狀態
-- Commit：已合併至 `main` 分支最新提交（含 V2.0.0 全部歷史與本輪 UI 強化）
-- Push：待交付推播
+- Commit：`d3cbbc7a`
+- Push：是（已成功推送至 `origin/main`，遠端預設分支與本機完全對齊）
 - Working Tree：Clean
 - Branch：main
+- Release：GitHub Release `V2.0.0` 附件與 Release Notes 已全數更新同步
 
 ## 下一步
-1. 視需要將本機已合併之 `main` 分支推送至遠端 `origin/main`。
-2. 啟動 `run.bat`，即可直接於桌面上體驗完整對齊之 V2.0.0 正式工作台。
+1. 隨時執行 `run.bat`，即可直接於桌面上體驗完整對齊之 V2.0.0 正式工作台。
+2. 進行日常自動研習或長效掛機運作。
