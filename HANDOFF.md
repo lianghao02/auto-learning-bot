@@ -1,84 +1,75 @@
 # HANDOFF
 
 ## 目前狀態
-可發布（V2.0.0 可攜版已建置並完成驗證）
+可交付（V2.0.0 版本基線與 main 分支已全面對齊，可攜版重新建置並通過驗證）
 
 ## 本輪目標
-以 V2.0.0 為新開發階段，同步完成兩大核心軌道任務：
-- **軌道 A（UI/UX 商業自適應重構）**：徹底移除 `EntryPage` 靜態貼圖外殼（`login.png`）與 `screen_x=421, screen_y=132` 絕對座標硬編碼、消除 `btn.move` 導致之滑鼠邊界震顫、拔除宇宙粒子死碼、主視窗直連現代控制中心並增加初次引導橫幅。
-- **軌道 B（題庫與選項配對演算法核心 — 抗選項隨機重排）**：修復 AI 存庫丟失選項真實文字、單選作答盲目優先使用數字索引 (1/2/3/4) 之核心缺陷，實施「文字內容本位 (Text-Content-First)」動態比對架構。
+執行 **P1「版本與分支收斂任務」**：
+1. 解決「GitHub Release 為 V2.0.0，但 main 分支與本機工作樹停留在 V1.1.0」之版本治理斷層。
+2. 將線上最新 `origin/feature/v2.0-commercial-uiux`（V2.0.0 商業級架構）完整合併回 `main` 主幹。
+3. 將本機開發的高價值成果（Compact Ribbon 緊湊操作列、In-Row Focus 表格行內焦點、日誌工具列、台灣繁體中文用語修訂、`scripts/run_tests.ps1` 測試執行器）疊加至 V2.0.0 基線。
+4. 清理 `dist/` 歷史過期打包檔，重新產出對齊線上版本號之 `AdminEfficiencyPilot_V2.0.0_Portable.zip`。
 
 ## 已完成
-### 軌道 A：UI/UX 商業自適應重構
-1. **`ui.py` 絕對座標與 EntryPage 徹底拔除**：
-   - 移除舊版 `EntryPage`、`AddAccountPanel`、`DeleteAccountPanel`、`SettingsPanel`。
-   - 建立獨立集中設定讀寫輔助函式 `load_config_data()` 與 `save_config_data()`。
-   - 淨化逾 1,600 行歷史殘留死碼。
-2. **`MainWindow` 單一現代控制中心架構**：
-   - 移除 `self.stack` 多層堆疊與雙層入口，直接將 `ImmersivePage` 作為 Central Widget。
-   - 清理重複宣告的 `_request_stop_current_pilot`、`_cleanup_pilot_async`、`closeEvent`。
-3. **按鈕互動防震顫優化**：
-   - 重構 `add_hover_effect`，徹底移除 `btn.move` 座標位移，改用純 `QGraphicsDropShadowEffect` 柔和陰影與原生 hover。
-4. **純粹化莫蘭迪視覺風格**：
-   - 徹底移除 `ParticleEffect` 類別及其相關調用與定時器。
-5. **初次啟動引導橫幅 (Onboarding Banner)**：
-   - 當本機尚未設定任何平臺帳號時，頂部自動顯示溫和的導引卡片，並提供「立即前往設定」按鈕一鍵跳轉至設定分頁。
+### 1. P1 版本與分支完整對齊
+- **分支關係收斂**：確認 `feature/v2.0-commercial-uiux` 是自 `main`（`cfb80f0b`）向前線性延伸之 5 個 commit，已成功透過 Fast-Forward 合併回 `main` 主幹分支。
+- **全域版本號單一真理（Source of Truth）**：
+  - `version.txt`：`V2.0.0`
+  - `app.py`：`AdminEfficiencyPilot.VERSION = "V2.0.0"`
+  - `README.md` & `CHANGELOG.md`：以 V2.0.0 為主要正式發行版本記錄
+  - UI 視窗標題：`行政效能領航員 V2.0.0`
+  - GitHub Release：對齊線上 [`V2.0.0`](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.0)
 
-### 軌道 B：題庫與選項配對演算法核心（抗選項隨機重排）
-1. **e 等公務園 AI 滿分存庫真實文字化 (`app.py`)**：
-   - 修訂第 1897~1903 行：當 Gemini 命中 `matched_opt` 時，`_ai_answered` 記錄真實選項文字 `opt_text`（若無才退回 val）。測驗獲得 100 分滿分寫入 SQLite 時，題庫保存標準文字而非純數字代號。
-2. **文字本位選項配對核心引擎 (`utils/helpers.py` & `app.py`)**：
-   - 新增並呼叫 `match_radio_option_index` 與 `normalize_choice_text`。
-   - 將「文字匹配（Text Matching）」提升為最高優先級：在選項被平臺隨機重排（Shuffled）時，能依題庫標準解答文字自動精準命中對應的 radio，徹底根除舊版因優先取用數字代號（1/2/3/4）導致盲目選到錯誤位置之根本缺陷。
-   - 保留對純數字代號（1/2/3/4）、字母代號（A/B/C/D）與是非題語意（對/是/O vs 錯/否/X）的向下相容。
-3. **臺北 E 大動態填答防禦 (`quiz_bank.py`)**：
-   - 重構 `_fill_answers` 支援可選 `questions` 參數，當答案包含文字時動態校驗當前頁面選項文字定位 radio，搭配既有 value 與 index 機制形成三層安全防禦。
-4. **臺北 E 大待處理課程迴圈 NameError 阻斷缺陷修復 (`taipei_eda_course.py`)**：
-   - 補齊對 `global_quota_tracker` 的 import 引用。
-   - 為即時成效儀表板之 `api_before` 與 `api_after` 配額統計加上 `try...except` 容錯防禦，避免配額模組微小異常中斷主流程。
-   - 將標準輸出編碼配置標準化為 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，根除重複建立 `TextIOWrapper` 導致底層 buffer 遭 GC 關閉之 `ValueError: I/O operation on closed file` 風險。
-5. **回歸測試與單元測試擴充 (`tests/test_quiz_answer_parsing.py`, `tests/test_taipei_scan_safety.py`)**：
-   - 新增 `test_match_radio_option_index_text_first` 驗證選項順序隨機洗牌時 100% 選中正確文字對應 radio。
-   - 新增 `test_match_radio_option_index_true_false_semantics` 驗證是非題語意比對。
-   - 新增 `TaipeiRunQueueLoopTests.test_run_taipei_eda_work_queue_quota_tracker_integration` 驗證待處理課程迴圈與成效儀表板整合正常。
-   - 全套測試增至 68 項，通過率 100%。
+### 2. 核心功能與缺陷修復（繼承自 V2.0.0）
+- **文字本位選項配對核心引擎（抗隨機重排題庫）**：
+  - `utils/helpers.py` 實作 `match_radio_option_index` 與 `normalize_choice_text`，徹底解決平臺隨機重排選項時因純數字代號導致盲選錯誤的缺陷。
+  - e 等公務園 AI 滿分存庫真實文字化（`app.py`）。
+- **臺北 E 大待處理課程 NameError 阻斷修復**：
+  - `taipei_eda_course.py` 補齊 `global_quota_tracker` 引用與雙重 `try...except` 容錯防禦。
+  - 將標準輸出編碼配置標準化為 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，根除重複建立 `TextIOWrapper` 導致之 `ValueError: I/O operation on closed file`。
 
-6. **版本號全域對齊**：
-   - `version.txt`、`app.py`、`CHANGELOG.md`、`README.md` 全數對齊至 `V2.0.0`。
+### 3. 工作台 UI/UX 緊湊化與功能強化（本輪疊加成果）
+- **Compact Ribbon（操作儀表列）**：合併平臺摘要與控制列，移除獨立佔位之 `focus_card`，大幅釋放垂直視野。
+- **In-Row Focus（表格行內焦點）**：於課程佇列表格實作進行中課程前綴標記（`▶ `）、粗體字型、莫蘭迪淡雅背景色（`#EAF1EE`）與完整 Tooltip。
+- **測驗模式選單文案收斂**：精簡文案並維持底層鍵值相容 `["sqlite", "interactive", "skip", "gemini_direct"]`。
+- **日誌工具列**：於詳細執行紀錄頁籤新增 `[📋 複製紀錄]`、`[📁 開啟日誌資料夾]`、`[🧹 清空畫面]` 功能。
+- **語言標準化**：介面、日誌與註解 100% 採用台灣標準繁體中文（如「即時除錯日誌」、「更新程式」）。
+
+### 4. 測試套件與發行產物更新
+- 新增 `scripts/run_tests.ps1`，提供具備 UTF-8 控制台編碼防禦與 `python_embed` 隔離環境注入之標準測試執行器。
+- 清理 `dist/` 資料夾內過期之 8 月底歷史備份檔（`V3.1.0`、`V3.1.1`）。
+- 成功重新建置 `dist/AdminEfficiencyPilot_V2.0.0_Portable.zip`（SHA-256: `d6ab5fa5297820bea3c7e205cf3aae759c3dc555a60caa3778592b4006d2defe`）。
 
 ## 刻意未修改
-- 未更換底層技術棧（維持 Python 3.13 + PySide6）。
-- 未引進外部商業 DRM 授權伺服器。
+- 未改動核心業務邏輯：維持 Selenium 自動化流程、SCORM 倒數、題庫查詢與 AI 批次作答。
+- 未更換底層技術棧（維持 Python 3.13 + 原生 PySide6）。
 
-## 本輪發布補充
-- 修正嵌入式 Python 的 `._pth` 匯入路徑，讓可攜版 runtime 能從 `current/runtime/` 正確載入上層程式根目錄中的 `app`、`utils` 與 `models`。
-- 已建置 `dist/AdminEfficiencyPilot_V2.0.0_Portable.zip`；SHA-256 為 `603b065baf3f475ec1b28a55d1849cfd054051008283ef24ade4b1f9804dfc06`。
-- 已確認壓縮檔不含使用者 `config.json`、`questions.db` 或執行日誌，且其 runtime 可成功匯入 `app`、`quiz_bank`、`ui`、`taipei_eda_course`。
+## 尚未完成
+- 無阻斷性與重要問題。P1 版本治理錯亂已徹底排除。
 
 ## 驗證結果
 ### 已執行
 1. **全套自動化單元與回歸測試**：
-   - 指令：`python -m unittest discover -s tests -p "test_*.py"`
-   - 結果：`Ran 68 tests in 3.024s, OK`（68 項測試 100% 全數通過）。
-2. **可攜版 runtime 匯入檢驗**：
-   - 結果：`PORTABLE_IMPORT_OK`。
-3. **無介面與離屏實例化檢驗**：
-   - 驗證主視窗乾淨初始化、視窗標題包含 `V2.0.0`、預設尺寸為 `1000x670`。
-   - 驗證有帳號時引導橫幅自動隱藏；空帳號設定時引導橫幅自動展示。
+   - 指令：`pwsh -NoProfile -File scripts/run_tests.ps1`
+   - 結果：`Ran 70 tests in 3.386s, OK`（**全套 70 項測試 100% 全數通過**）。
+2. **可攜版獨立 Runtime 啟動檢驗**：
+   - 透過 `dist/行政效能領航員_V2.0.0_Portable/current/runtime/python.exe` 實測載入 `ui.MainWindow`。
+   - 視窗標題成功輸出：`行政效能領航員 V2.0.0`。
+3. **離屏實例化檢驗**：
+   - 驗證 Compact Ribbon、In-Row 表格高亮、測驗模式鍵值與無淘汰依賴殘留。
 
 ### 尚未驗證
-- 實際 Windows 桌面上人工視覺審查。
+- 實際 Windows 桌面 live 環境人工操作兩小時以上長效掛機。
 
 ### 已知風險
-- 無阻斷性風險。舊題庫與舊設定檔 `data/config.json` 完全向下相容。
+- 無阻斷性風險。舊設定檔 `data/config.json` 與題庫資料庫完全向下相容。
 
 ## Git 狀態
-- Commit：本輪 V2.0.0 發布提交已建立（詳見 Git log）
-- Push：已推送至 `origin/feature/v2.0-commercial-uiux`
-- Release：已發布 [`V2.0.0`](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.0)
+- Commit：已合併至 `main` 分支最新提交（含 V2.0.0 全部歷史與本輪 UI 強化）
+- Push：待交付推播
 - Working Tree：Clean
-- Branch：feature/v2.0-commercial-uiux
+- Branch：main
 
 ## 下一步
-1. 於實際 Windows 桌面環境進行 V2.0.0 人工視覺驗收。
-2. 收集使用者回饋後，再評估是否合併至 `main`。
+1. 視需要將本機已合併之 `main` 分支推送至遠端 `origin/main`。
+2. 啟動 `run.bat`，即可直接於桌面上體驗完整對齊之 V2.0.0 正式工作台。
