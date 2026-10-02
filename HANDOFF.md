@@ -42,10 +42,13 @@
 - 無阻斷性與重要問題。
 
 ## Git 狀態
+- Commit：`8f0af0df`
+- Push：是（已成功推送至 `origin/main`，遠端完全同步）
+- Working Tree：Clean
 - Branch：main
-- Tag：V2.0.1（待打標與發布）
-- Release：待透過 GitHub CLI 建立 Release V2.0.1
+- Tag：`V2.0.1`（已推播至遠端）
+- Release：[GitHub Release V2.0.1](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.1) 正式發布完成（狀態：Latest）
 
 ## 下一步
-1. 完成 GitHub Release V2.0.1 發布。
-2. 既有使用者啟動時將可順利接收到自動更新通知。
+1. 既有使用者啟動軟體時，將可自動偵測到 `V2.0.1` 並觸發一鍵更新升級。
+2. 隨時可執行 `run.bat` 或免安裝可攜版於桌面體驗最新商業級緊湊工作台。
