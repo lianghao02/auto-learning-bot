@@ -407,7 +407,7 @@ class UpdateDialog(QDialog):
     def _make_header(self, layout):
         header = QLabel()
         header.setFixedHeight(6)
-        header.setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #4fc3f7,stop:1 #0288d1);")
+        header.setStyleSheet("background: qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #70889B,stop:1 #5F798E);")
         layout.addWidget(header)
 
     def _fmt_size(self, n: int) -> str:
@@ -436,9 +436,9 @@ class UpdateDialog(QDialog):
         icon_lbl = QLabel()
         icon_lbl.setFixedSize(40, 40)
         icon_lbl.setStyleSheet("""
-            background: #e3f2fd;
+            background: #EAEFF2;
             border-radius: 8px;
-            color: #0288d1;
+            color: #5F798E;
             font-size: 22px;
             font-weight: bold;
             qproperty-alignment: AlignCenter;
@@ -449,7 +449,7 @@ class UpdateDialog(QDialog):
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         title = QLabel(f"新版本 {self.latest} 可用")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #0277bd;")
+        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #2F3B43;")
         title_box.addWidget(title)
 
         size_txt = self._fmt_size(self.size) if self.size else ""
@@ -526,11 +526,11 @@ class UpdateDialog(QDialog):
         btn_download.setFixedHeight(36)
         btn_download.setStyleSheet("""
             QPushButton {
-                background: #0288d1; color: #fff; font-weight: bold;
+                background: #5F798E; color: #fff; font-weight: bold;
                 border-radius: 6px; padding: 0 22px; font-size: 13px;
                 border: none;
             }
-            QPushButton:hover { background: #0277bd; }
+            QPushButton:hover { background: #4D6477; }
         """)
         if can_auto_update:
             btn_download.clicked.connect(self._start_download)
@@ -906,7 +906,7 @@ class UpdateDialog(QDialog):
             )
         except Exception as e:
             shutil.rmtree(staging_dir, ignore_errors=True)
-            self._on_failed(f"無法啟動更新程序：{e}")
+            self._on_failed(f"無法啟動更新程式：{e}")
             return
 
         self.accept()
@@ -1346,62 +1346,7 @@ class PlatformTabPanel(QWidget):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
-        # ── 1. 頂部總覽摘要與進度卡片 ─────────────────────────────
-        summary_card = QFrame()
-        summary_card.setObjectName("summaryCard")
-        summary_card.setStyleSheet("""
-            QFrame#summaryCard {
-                background: #FAF9F6;
-                border: 1px solid #D6D3CC;
-                border-radius: 10px;
-                padding: 6px 12px;
-            }
-            QFrame#summaryCard QLabel {
-                color: #2F3B43; font-size: 13px; font-weight: bold; background: transparent;
-                border: none;
-            }
-        """)
-        summary_layout = QVBoxLayout(summary_card)
-        summary_layout.setContentsMargins(8, 6, 8, 6)
-        summary_layout.setSpacing(4)
-
-        prog_layout = QHBoxLayout()
-        prog_layout.setContentsMargins(0, 0, 0, 0)
-        self.stats_lbl = QLabel("📊 研習時數與課程進度：準備就緒")
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(16)
-        self.progress_bar.setStyleSheet("""
-            QProgressBar {
-                background-color: #E4E0DA;
-                border: 1px solid #C9C5BE;
-                border-radius: 8px;
-                text-align: center;
-                color: #26343C;
-                font-weight: bold;
-                font-size: 11px;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #70889B, stop:1 #7F9A88);
-                border-radius: 7px;
-            }
-        """)
-
-        prog_layout.addWidget(self.stats_lbl)
-        prog_layout.addStretch()
-        prog_layout.addWidget(self.progress_bar)
-
-        self.execution_status_lbl = QLabel("● 待命：尚未開始本次執行")
-        self.execution_status_lbl.setStyleSheet(
-            "color: #66737D; font-size: 12px; font-weight: 600; background: transparent; border: none;"
-        )
-        summary_layout.addLayout(prog_layout)
-        summary_layout.addWidget(self.execution_status_lbl)
-        layout.addWidget(summary_card)
-
-        # ── 2. 旗艦整合操作儀表帶（方案 A：收斂方框，融合模式與操作按鈕） ─────
+        # ── 1. 旗艦緊湊操作儀表列 (Compact Ribbon) ─────────────────────
         ctrl_card = QFrame()
         ctrl_card.setObjectName("ctrlRibbonCard")
         ctrl_card.setStyleSheet("""
@@ -1413,19 +1358,46 @@ class PlatformTabPanel(QWidget):
             }
         """)
         ctrl_layout = QVBoxLayout(ctrl_card)
-        ctrl_layout.setContentsMargins(6, 6, 6, 6)
+        ctrl_layout.setContentsMargins(8, 6, 8, 6)
         ctrl_layout.setSpacing(6)
 
-        # 第一排：平台資訊與動作按鈕
+        # 第一排：平台資訊、狀態標籤、進度條、動作按鈕
         top_ctrl_row = QHBoxLayout()
+        top_ctrl_row.setSpacing(8)
+
         self.info_lbl = QLabel(f"{platform_title}控制台")
-        self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 15px; background: transparent; border: none;")
+        self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 14px; background: transparent; border: none;")
+
+        self.execution_status_lbl = QLabel("● 待命")
+        self.execution_status_lbl.setStyleSheet("color: #66737D; font-size: 12px; font-weight: 700; background: transparent; border: none;")
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFixedHeight(14)
+        self.progress_bar.setMinimumWidth(120)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #E4E0DA;
+                border: 1px solid #C9C5BE;
+                border-radius: 7px;
+                text-align: center;
+                color: #26343C;
+                font-weight: bold;
+                font-size: 10px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #70889B, stop:1 #7F9A88);
+                border-radius: 6px;
+            }
+        """)
 
         self.start_btn = QPushButton("▶️ 開始此平台")
         self.start_btn.setStyleSheet("""
             QPushButton {
-                background: #6F917B; color: #FFFFFF; border-radius: 7px;
-                padding: 7px 16px; font-weight: bold; font-size: 13px; border: none;
+                background: #6F917B; color: #FFFFFF; border-radius: 6px;
+                padding: 6px 14px; font-weight: bold; font-size: 12px; border: none;
             }
             QPushButton:hover { background: #5D7D69; }
         """)
@@ -1434,8 +1406,8 @@ class PlatformTabPanel(QWidget):
         self.stop_btn = QPushButton("⏹ 停止此平台")
         self.stop_btn.setStyleSheet("""
             QPushButton {
-                background: #A96F6B; color: #FFFFFF; border-radius: 7px;
-                padding: 7px 16px; font-weight: bold; font-size: 13px; border: none;
+                background: #A96F6B; color: #FFFFFF; border-radius: 6px;
+                padding: 6px 14px; font-weight: bold; font-size: 12px; border: none;
             }
             QPushButton:hover { background: #925D59; }
             QPushButton:disabled { background: #DDD9D3; color: #8A8782; }
@@ -1446,44 +1418,47 @@ class PlatformTabPanel(QWidget):
         self.toggle_browser_btn = QPushButton("👁️ 顯示瀏覽器")
         self.toggle_browser_btn.setStyleSheet("""
             QPushButton {
-                background: #748399; color: #FFFFFF; border-radius: 7px;
-                padding: 7px 16px; font-weight: bold; font-size: 13px; border: none;
+                background: #748399; color: #FFFFFF; border-radius: 6px;
+                padding: 6px 14px; font-weight: bold; font-size: 12px; border: none;
             }
             QPushButton:hover { background: #657489; }
         """)
         self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
         top_ctrl_row.addWidget(self.info_lbl)
+        top_ctrl_row.addWidget(self.execution_status_lbl)
         top_ctrl_row.addStretch()
+        top_ctrl_row.addWidget(self.progress_bar)
         top_ctrl_row.addWidget(self.start_btn)
         top_ctrl_row.addWidget(self.stop_btn)
         top_ctrl_row.addWidget(self.toggle_browser_btn)
         ctrl_layout.addLayout(top_ctrl_row)
 
-        # 第二排：測驗模式選擇與提示
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(10)
+        # 第二排：測驗模式選擇與即時研習摘要
+        bottom_ctrl_row = QHBoxLayout()
+        bottom_ctrl_row.setSpacing(8)
+
         mode_label = QLabel("本次測驗處理方式：")
-        mode_label.setStyleSheet("color: #4B5962; font-size: 13px; font-weight: 700; background: transparent; border: none;")
+        mode_label.setStyleSheet("color: #4B5962; font-size: 12px; font-weight: 700; background: transparent; border: none;")
 
         self.exam_mode_combo = QComboBox()
-        self.exam_mode_combo.addItem("1. SQLite 題庫秒殺模式（本機題庫優先）", "sqlite")
-        self.exam_mode_combo.addItem("2. 人機協同助理彈窗模式（彈窗回貼／一鍵作答）", "interactive")
-        self.exam_mode_combo.addItem("3. 跳過測驗模式（嘗試填問卷）", "skip")
-        self.exam_mode_combo.addItem("4. Gemini API 批次直連 ⭐（整卷秒答）", "gemini_direct")
+        self.exam_mode_combo.addItem("1. 本機題庫秒殺模式（0 耗額）", "sqlite")
+        self.exam_mode_combo.addItem("2. 人機協同助理（遇生題彈窗作答）", "interactive")
+        self.exam_mode_combo.addItem("3. 跳過測驗（嘗試完成問卷）", "skip")
+        self.exam_mode_combo.addItem("4. Gemini API 批次作答（整卷 AI 解析）", "gemini_direct")
         self.exam_mode_combo.setToolTip(
             "【測驗模式說明】僅影響本次執行：\n"
-            "• 1. SQLite 題庫秒殺：本機題庫優先作答（0 耗額）\n"
+            "• 1. 本機題庫秒殺：本機題庫優先作答（0 耗額）\n"
             "• 2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n"
             "• 3. 跳過測驗：跳過測驗並嘗試完成滿意度問卷調查\n"
-            "• 4. Gemini 批次直連：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
+            "• 4. Gemini 批次作答：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
         )
-        self.exam_mode_combo.setMinimumWidth(340)
+        self.exam_mode_combo.setMinimumWidth(270)
         self.exam_mode_combo.setStyleSheet("""
             QComboBox {
                 background: #F3F1ED; color: #2F3B43;
-                border: 1px solid #B9B5AE; border-radius: 7px;
-                padding: 6px 30px 6px 10px; font-size: 13px; font-weight: 600;
+                border: 1px solid #B9B5AE; border-radius: 6px;
+                padding: 4px 26px 4px 8px; font-size: 12px; font-weight: 600;
             }
             QComboBox:hover { border-color: #70889B; background: #EBE8E3; }
             QComboBox:disabled { background: #E4E0DA; color: #88847E; }
@@ -1494,50 +1469,23 @@ class PlatformTabPanel(QWidget):
             }
         """)
 
-        mode_hint = QLabel("💡 僅影響本次執行，不會改變儲存設定")
-        mode_hint.setStyleSheet("color: #7E8B93; font-size: 12px; font-weight: 500; background: transparent; border: none;")
+        self.stats_lbl = QLabel("📊 研習時數：準備就緒")
+        self.stats_lbl.setStyleSheet("color: #55626D; font-size: 12px; font-weight: 600; background: transparent; border: none;")
 
-        mode_row.addWidget(mode_label)
-        mode_row.addWidget(self.exam_mode_combo)
-        mode_row.addWidget(mode_hint)
-        mode_row.addStretch()
-        ctrl_layout.addLayout(mode_row)
+        bottom_ctrl_row.addWidget(mode_label)
+        bottom_ctrl_row.addWidget(self.exam_mode_combo)
+        bottom_ctrl_row.addSpacing(10)
+        bottom_ctrl_row.addWidget(self.stats_lbl)
+        bottom_ctrl_row.addStretch()
+        ctrl_layout.addLayout(bottom_ctrl_row)
 
         layout.addWidget(ctrl_card)
 
-
-        # ── 3. 目前聚焦課程卡片（狀態、原因、下一步） ─────────────────
-        self.focus_card = QFrame()
-        self.focus_card.setObjectName("focusCard")
-        self.focus_card.setStyleSheet("""
-            QFrame#focusCard {
-                background: #FAF8F5;
-                border: 1px solid #D9D5CC;
-                border-radius: 10px;
-                padding: 6px 12px;
-            }
-        """)
-        focus_layout = QVBoxLayout(self.focus_card)
-        focus_layout.setContentsMargins(8, 6, 8, 6)
-        focus_layout.setSpacing(3)
-
-        focus_top_row = QHBoxLayout()
-        self.focus_course_lbl = QLabel("📚 目前課程：待命或掃描中…")
-        self.focus_course_lbl.setStyleSheet("color: #2F3B43; font-size: 13px; font-weight: 700; background: transparent; border: none;")
-        self.focus_badge_lbl = QLabel("○ 待命")
-        self.focus_badge_lbl.setStyleSheet("background: #6B777F; color: #FFFFFF; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px;")
-        focus_top_row.addWidget(self.focus_course_lbl)
-        focus_top_row.addStretch()
-        focus_top_row.addWidget(self.focus_badge_lbl)
-        focus_layout.addLayout(focus_top_row)
-
-        self.focus_reason_lbl = QLabel("💡 原因：尚未開始執行或尚無進行中任務")
-        self.focus_reason_lbl.setStyleSheet("color: #55626D; font-size: 12px; background: transparent; border: none;")
-        self.focus_next_lbl = QLabel("👉 下一步：點擊上方「開始此平台」啟動自動研習流程")
-        self.focus_next_lbl.setStyleSheet("color: #354F5E; font-size: 12px; font-weight: 600; background: transparent; border: none;")
-        focus_layout.addWidget(self.focus_reason_lbl)
-        focus_layout.addWidget(self.focus_next_lbl)
-        layout.addWidget(self.focus_card)
+        # 保留相容性指針（避免外部程式以 hasattr 存取時失效）
+        self.focus_course_lbl = QLabel()
+        self.focus_badge_lbl = QLabel()
+        self.focus_reason_lbl = QLabel()
+        self.focus_next_lbl = QLabel()
 
         # ── 4. 分頁工作區：頁籤 1【課程狀態工作台】/ 頁籤 2【執行紀錄】 ──────
         self.workspace_tabs = QTabWidget()
@@ -1594,7 +1542,55 @@ class PlatformTabPanel(QWidget):
         """)
         self.workspace_tabs.addTab(self.course_table, "📋 課程狀態工作台")
 
-        # 頁籤 2：詳細 Log 視窗
+        # 頁籤 2：詳細 Log 視窗容器
+        log_container = QWidget()
+        log_layout = QVBoxLayout(log_container)
+        log_layout.setContentsMargins(6, 6, 6, 6)
+        log_layout.setSpacing(6)
+
+        # Log 工具列（複製、開啟資料夾、清空）
+        log_bar = QHBoxLayout()
+        log_bar.setSpacing(6)
+        log_tip = QLabel("💡 即時除錯日誌（發生異常或需排查進度時檢視）：")
+        log_tip.setStyleSheet("color: #71848E; font-size: 12px; font-weight: 500; background: transparent;")
+
+        copy_btn = QPushButton("📋 複製紀錄")
+        copy_btn.setStyleSheet("""
+            QPushButton {
+                background: #E8E5DF; color: #2F3B43; border-radius: 5px;
+                padding: 4px 10px; font-size: 12px; font-weight: 600; border: 1px solid #C9C5BE;
+            }
+            QPushButton:hover { background: #DCD8D0; }
+        """)
+        copy_btn.clicked.connect(self._copy_log_to_clipboard)
+
+        open_dir_btn = QPushButton("📁 開啟日誌資料夾")
+        open_dir_btn.setStyleSheet("""
+            QPushButton {
+                background: #E8E5DF; color: #2F3B43; border-radius: 5px;
+                padding: 4px 10px; font-size: 12px; font-weight: 600; border: 1px solid #C9C5BE;
+            }
+            QPushButton:hover { background: #DCD8D0; }
+        """)
+        open_dir_btn.clicked.connect(self._open_log_dir)
+
+        clear_btn = QPushButton("🧹 清空畫面")
+        clear_btn.setStyleSheet("""
+            QPushButton {
+                background: #E8E5DF; color: #71848E; border-radius: 5px;
+                padding: 4px 8px; font-size: 12px; border: 1px solid #C9C5BE;
+            }
+            QPushButton:hover { background: #DCD8D0; }
+        """)
+        clear_btn.clicked.connect(lambda: self.log_view.clear())
+
+        log_bar.addWidget(log_tip)
+        log_bar.addStretch()
+        log_bar.addWidget(copy_btn)
+        log_bar.addWidget(open_dir_btn)
+        log_bar.addWidget(clear_btn)
+        log_layout.addLayout(log_bar)
+
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
         self.log_view.document().setMaximumBlockCount(300)
@@ -1625,7 +1621,8 @@ class PlatformTabPanel(QWidget):
                 height: 0px;
             }
         """)
-        self.workspace_tabs.addTab(self.log_view, "📜 詳細執行紀錄 (Debug Log)")
+        log_layout.addWidget(self.log_view)
+        self.workspace_tabs.addTab(log_container, "📜 詳細執行紀錄 (Debug Log)")
         layout.addWidget(self.workspace_tabs)
 
         self.log_signal.connect(self._append_text_safe)
@@ -1723,23 +1720,39 @@ class PlatformTabPanel(QWidget):
         if self.on_toggle_browser:
             self.on_toggle_browser(self.platform_key, self.browser_visible)
 
+    def _copy_log_to_clipboard(self):
+        """將目前日誌視窗文字複製至系統剪貼簿"""
+        clipboard = QApplication.clipboard()
+        if clipboard and self.log_view:
+            text = self.log_view.toPlainText()
+            clipboard.setText(text)
+            QMessageBox.information(self, "複製完成", "✅ 已將目前的執行紀錄複製至剪貼簿！")
+
+    def _open_log_dir(self):
+        """開啟應用程式日誌所在的本機資料夾"""
+        try:
+            target_dir = str(log_path().parent)
+            if os.path.exists(target_dir):
+                os.startfile(target_dir)
+            else:
+                QMessageBox.warning(self, "資料夾不存在", f"找不到日誌資料夾：{target_dir}")
+        except Exception as e:
+            QMessageBox.warning(self, "開啟失敗", f"無法開啟日誌資料夾：{e}")
+
     def emit_course_state(self, state):
         """提供後台線程透過信號安全更新 UI 課程狀態模型"""
         self.course_state_signal.emit(state)
 
     def _handle_course_state_update(self, state):
-        """在主線程中更新頂部聚焦課程卡片與佇列表格"""
+        """在主線程中更新表格行內焦點高亮 (In-Row Focus) 與狀態模型"""
         try:
             from models.course_state import CourseState, CourseStatus
             if not isinstance(state, CourseState):
                 return
 
-            # 1. 更新目前聚焦課程卡片
+            # 1. 更新相容標籤（避免外部相依失效）
             self.focus_course_lbl.setText(f"📚 目前課程：【{state.course_name}】")
             self.focus_badge_lbl.setText(state.status.badge_text)
-            self.focus_badge_lbl.setStyleSheet(
-                f"background: {state.status.color_hex}; color: #FFFFFF; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 2px 8px;"
-            )
             self.focus_reason_lbl.setText(f"💡 原因：{state.reason or '流程正常進行中'}")
             self.focus_next_lbl.setText(f"👉 下一步：{state.next_step or '等待目前步驟結束'}")
 
@@ -1752,25 +1765,50 @@ class PlatformTabPanel(QWidget):
             else:
                 row = self._course_rows[c_id]
 
-            self.course_table.setItem(row, 0, QTableWidgetItem(state.course_name))
+            # 3. 表格行內高亮 (In-Row Focus Highlight)
+            is_active = (state.status in (CourseStatus.LEARNING, CourseStatus.QUIZ, CourseStatus.SURVEY))
+            row_bg = QColor("#EAF1EE") if is_active else QColor("#FAF9F6" if row % 2 == 0 else "#F3F0EB")
+            brush = QBrush(row_bg)
+
+            prefix = "▶ " if is_active else ""
+            name_item = QTableWidgetItem(f"{prefix}{state.course_name}")
+            name_item.setBackground(brush)
+            if is_active:
+                f = name_item.font()
+                f.setBold(True)
+                name_item.setFont(f)
+            name_item.setToolTip(f"課程名稱：{state.course_name}\n狀態：{state.status.value}\n累計：{state.formatted_study_progress}")
+            self.course_table.setItem(row, 0, name_item)
             
             badge_item = QTableWidgetItem(state.status.badge_text)
             badge_item.setTextAlignment(Qt.AlignCenter)
+            badge_item.setBackground(brush)
             self.course_table.setItem(row, 1, badge_item)
 
             time_item = QTableWidgetItem(state.formatted_study_progress)
             time_item.setTextAlignment(Qt.AlignCenter)
+            time_item.setBackground(brush)
             self.course_table.setItem(row, 2, time_item)
 
-            self.course_table.setItem(row, 3, QTableWidgetItem(state.reason or "-"))
-            self.course_table.setItem(row, 4, QTableWidgetItem(state.next_step or "-"))
+            reason_str = state.reason or "-"
+            reason_item = QTableWidgetItem(reason_str)
+            reason_item.setBackground(brush)
+            reason_item.setToolTip(f"原因：{reason_str}")
+            self.course_table.setItem(row, 3, reason_item)
 
-            # 3. 同步微調進度條與統計摘要
-            if state.status == CourseStatus.LEARNING and state.progress_pct > 0:
-                self.progress_bar.setValue(int(state.progress_pct))
-                self.stats_lbl.setText(f"📊 正在研習：{state.course_name[:12]}... ({state.formatted_study_progress})")
+            next_str = state.next_step or "-"
+            next_item = QTableWidgetItem(next_str)
+            next_item.setBackground(brush)
+            next_item.setToolTip(f"下一步：{next_str}")
+            self.course_table.setItem(row, 4, next_item)
+
+            # 4. 同步頂部狀態列摘要與進度條
+            if is_active:
+                self.stats_lbl.setText(f"📚 目前課程：{state.course_name} ({state.formatted_study_progress})")
+                if state.progress_pct > 0:
+                    self.progress_bar.setValue(int(state.progress_pct))
             elif state.status == CourseStatus.COMPLETED:
-                self.stats_lbl.setText(f"✅ 已完成：{state.course_name[:15]}")
+                self.stats_lbl.setText(f"✅ 已完成：{state.course_name}")
         except Exception as e:
             logger.debug(f"更新課程狀態 UI 異常: {e}")
 
@@ -1831,7 +1869,7 @@ class PlatformTabPanel(QWidget):
             if m_time:
                 time_str, pct_float = m_time.group(1), float(m_time.group(2))
                 pct_int = min(100, max(0, int(pct_float)))
-                # 實時無條件動態驅動右側進度條！
+                # 即時無條件動態驅動右側進度條！
                 self.progress_bar.setValue(pct_int)
                 self.stats_lbl.setText(f"📊 本課程研習時數：{time_str} ({pct_float:.1f}%)")
 
@@ -2625,7 +2663,7 @@ class MainWindow(QWidget):
 
         full_config = acc_data.copy()
         full_config.update(config_from_entry.get("settings", {}))
-        # 🔒 實時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
+        # 🔒 即時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
         full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
         panel = self.immersive.taipei_panel if key == "taipei_eda" else self.immersive.egov_panel
         exam_mode = panel.exam_mode_combo.currentData() or "sqlite"
