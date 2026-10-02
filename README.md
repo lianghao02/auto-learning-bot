@@ -1,6 +1,6 @@
 # 行政效能領航員（Admin Efficiency Pilot）
 
-[![Version](https://img.shields.io/badge/version-V2.0.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.0)
+[![Version](https://img.shields.io/badge/version-V2.0.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.1)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 [![Tests](https://img.shields.io/badge/tests-70%20passed-brightgreen.svg)](https://github.com/lianghao02/auto-learning-bot)
@@ -16,7 +16,7 @@
 
 1. 前往 **[GitHub Releases 最新發行頁面](https://github.com/lianghao02/auto-learning-bot/releases/latest)**。
 2. 在 **Assets** 區塊點擊下載：
-   👉 **`AdminEfficiencyPilot_V2.0.0_Portable.zip`**
+   👉 **`AdminEfficiencyPilot_V2.0.1_Portable.zip`**
 3. **解壓縮**：將下載的 ZIP 壓縮檔完整解壓縮至本機任意資料夾（建議放置於桌面或非系統槽，避免路徑權限問題）。
 4. **啟動**：進入解壓縮後的資料夾，直接雙擊 **`行政效能領航員.exe`**（自帶專屬圖示，點擊直接啟動，無 CMD 黑窗）；亦可雙擊 **`啟動程式.bat`**。
    - 💡 可雙擊 **`建立桌面捷徑.bat`** 一鍵在桌面建立專屬圖示捷徑。
@@ -53,7 +53,7 @@
 
 ---
 
-## 🌟 V2.0.0 商業級介面與核心功能特色
+## 🌟 V2.0.1 商業級介面與核心功能特色
 
 - 🎨 **現代自適應工作台（Compact Ribbon & In-Row Focus）**：
   - 徹底重構主視窗架構，全面移除舊版絕對座標與靜態貼圖外殼，完美適應 Windows 高 DPI（125%、150%）顯示環境。
