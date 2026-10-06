@@ -3,58 +3,64 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/auto-learning-bot
 - **Branch**：main
-- **Commit SHA**：1e41809ae02a2e805f032cebbf29a17d2b4a83c4（本輪提交前基準；最新提交以 Git 記錄為準）
+- **Commit SHA**：6d672f9b（本輪提交前基準；包含本交接的最新 SHA 以 Git 記錄為準）
 - **Skill Version**：v1.0.0
-- **Task Type**：HANDOFF
+- **Task Type**：FIX
 - **Local Path Hint**：07_auto-learning-bot
 
 ---
 
 ## 目前狀態
-開發環境修復已驗證；本輪不包含正式發布。
+原有兩個未提交檔案的審查與隔離驗證完成，日誌資料夾修正可交付；正式可攜版尚未重新打包。
 
 ## 本輪目標
-依已授權計畫修復 Python 環境，保留既有功能與使用者資料。
+依使用者授權，審查 `ui.py` 與 `utils/app_paths.py` 的既有修改，驗證後提交，完成前輪 GitHub 同步留下的兩個檔案。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-上述 SHA 為修復前已存在的 HEAD。既有功能成果承接原版本，不重做或撤銷；詳細跨專案基準位於控制中心 docs/python-environment-repair/baseline.json。
+- 開始時 main 與 origin/main 一致，只剩上述兩個原有修改；前輪環境修復已提交於 6d672f9b，成果繼承。
+- HEAD 的介面以無參數呼叫要求 name 參數的 log_path，日誌按鈕會失敗。
+- 既有修改提供 log_dir、log_path 預設 app.log，介面明確指定檔名並建立目錄；原有兩個檔案本輪沒有再改寫。
 
 ## 已完成 (Completed)
-2026-10-06 GitHub 同步交接：使用者已授權提交與推送前輪成果；本輪只提交已核對範圍。最新 Commit SHA、遠端同步與 CI 結果統一見控制中心 `docs/github-sync/RESULTS.md`，不將提交本身的 SHA 寫入同一份提交。 本輪補正 PowerShell 5.1 中文腳本編碼：僅增加 UTF-8 BOM，原內容位元組不變；29 個相關腳本在 5.1／7 語法檢查均通過，環境 CheckOnly 亦通過。 `ui.py` 與 `utils/app_paths.py` 的原有修改不納入提交；以 HEAD 版本替換這兩個檔案的隔離來源快照重跑 70 項測試，全數通過。原工作目錄檔案沒有覆寫。
-
-2026-10-05 README 文件更新：補齊專案概念、開發原因、典型流程、已知 Bug／限制及回報方式，並依實際入口校正必要操作說明。本次沒有修改產品程式、環境或個人資料，未 Commit／Push；前輪成果與既有待辦繼承。文件檢核與逐案索引由控制中心 docs/readme-refresh/RESULTS.md 彙整，不代表本次重新驗收全部功能。
-
-2026-10-05 目錄整理補充：只清除已盤點快取，保留資料/題庫/WAL/SHM、drivers、embedded 及既有 ui.py/app_paths.py 修改；CheckOnly/pip check 與雜湊核對通過。本輪基準 dist 已為空，未刪發布 runtime。詳見中央 docs/project-layout/RESULTS.md，未 Commit/Push。
-
-保留 embedded 3.13.0 與目前功能版本。來源啟動、測試、建置模板、捷徑、更新後重啟加入 -s；正常啟動不覆寫 ._pth；鎖定來源環境版本。
+- 審查日誌路徑、既有指定檔名相容性及可攜版 current／data 分離；沒有發現阻斷性問題。
+- 增加 5 項回歸：預設日誌路徑與既有內容保留、指定檔名邊界、可攜版資料位置、真實 Qt 按鈕成功流程、資料夾開啟失敗提示。
+- HEAD 隔離對照 10 項中出現 2 失敗、1 錯誤，重現缺少參數及按鈕故障；目前來源完整 75 項全部通過。
+- README 記錄已修復問題與舊可攜版尚未包含修正的邊界。
 
 ## 異動檔案 (Changed Files)
-AGENTS.md、setup_and_run.ps1、requirements.txt、README.md、scripts/run_tests.ps1、scripts/build_portable_release.py、scripts/auto_update.ps1。本輪不包含既有 ui.py／utils/app_paths.py 修改。
+ui.py、utils/app_paths.py、tests/test_app_paths.py、tests/test_interactive_quiz_dialog.py、README.md、HANDOFF.md。
 
 ## 刻意未修改 (Do Not Do / Deliberately Omitted)
-未變更全域 Python／PATH／全域套件、既有發布包、業務演算法或原始資料；未 Commit／Push。07 原有兩個檔案修改保留且已核對雜湊。
+未更動課程自動化、AI 作答、帳號設定、全域 Python／PATH、依賴、embedded 環境、個人題庫或正式發布包；不結束現有使用者程式、不解除檔案鎖定、不回復活動中的資料檔案。
 
 ## 尚未完成 (Remaining Work)
-- **P1 (阻斷/必須)**：無已確認的現行開發環境阻斷。
-- **P2 (重要/當次)**：本輪必要修復與驗證完成。
-- **P3 (改善建議/暫緩)**：舊發布包不會因來源修正自動更新；下一次發布另驗證乾淨電腦與隔離入口。全域套件及共用 cv2 去重另案處理。
+- **P1 (阻斷/必須)**：無本輪已確認的阻斷性問題。
+- **P2 (重要/當次)**：本輪必要修正與驗證已完成；提交與同步的實際證據以 Git 區塊及遠端 SHA 為準。
+- **P3 (改善建議/暫緩)**：正式可攜版重新打包與 Win10／乾淨電腦驗收另案處理；全域套件去重維持暫緩。
 
 ## 驗證結果 (Validation)
 ### 已執行測試與結果
-全套 70 項通過；CheckOnly、NoLaunch、pip check 通過；ui.py 及 utils/app_paths.py 與修復前 SHA-256 完全一致。
+- 使用專案 embedded Python 3.13.0，帶 -B／-s，在中文空白路徑的隔離 current 來源快照執行現有 unittest 探索流程；75 項通過，0 失敗、0 錯誤、0 略過。
+- Qt 使用 offscreen，實際建立 PlatformTabPanel 並點擊已連接的按鈕；Windows 資料夾開啟器使用 mock，包含失敗處理。網路連線在測試行程內阻斷。
+- Python AST 語法解析通過；驗證前後 30 份原始 Python 檔案雜湊一致。
+- 7 份可讀個人資料雜湊一致。6 份資料在建立基準時鎖定，沒有起始雜湊；期間原 data 的日誌與 SQLite 檔案有活動變動，WAL／SHM 後續消失，未將其標示雜湊不變，沒有回復或改寫。
+- Git fetch 後 ahead／behind 為 0／0；六個檔案的差異格式與新增敏感資料檢核通過。
+- 本機詳細證據在控制中心 Git 忽略的 artifacts/07-log-review-372f8afaaff7426082bb214314cc010d，不隨版本庫發布。
+
 ### 尚未驗證項目
-Win10／其他使用者／無全域 Python 電腦、完整原生介面互動、重新打包及正式更新切換，本輪未宣稱通過。
+沒有操作真實研習帳號、呼叫 AI 服務或進行線上課程；未實際開啟檔案總管、重新打包或驗證正式更新切換。
+
 ### 已知風險 (Known Risks)
-完整明細與回復方式見控制中心 docs/python-environment-repair/RESULTS.md；不可將新 .venv 的驗證視為舊 Portable 包已修復。
+原始碼修正不會自動套用到舊可攜發布包。鎖定與活動中的個人資料沒有完整雜湊基準，不能宣稱全部資料檔案在本輪期間保持不變。
 
 ## Git 狀態
-- Commit：上述 SHA 為提交前基準；最新 SHA 見 `git log -1` 與中央同步報告。
-- Push：實際推送及遠端核對結果見中央 `docs/github-sync/RESULTS.md`。
-- Working Tree：07 另有兩個原有修改刻意保留；其餘同步成果的狀態見中央報告。
+- Commit：本輪六個檔案以單一 fix 提交；實際 SHA 見 git log -1。
+- Push：依前輪 GitHub 同步授權，正常推送 origin/main，實際遠端 SHA 以 git ls-remote 核對。
+- Working Tree：提交前為上述六個檔案；提交與核對完成後應為 Clean，以 git status 實際結果為準。
 - Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
-正常使用既有入口；若未要求發布，停止擴大修改。日後提交須先核對工作範圍，07 既有修改不得混入本輪。正式發布前再完成發布門檻。
+本輪提交與同步完成後停止擴大修改。日後若要求更新可攜成品，再依既有發布門檻重建並驗收；課程流程與資料保持既有邊界。
 
 ## 發布狀態 (Release Status)
-本輪沒有建立新發布版；既有版本保留。
+原始碼可交付；本輪沒有建立新 Release 或取代正式可攜包。

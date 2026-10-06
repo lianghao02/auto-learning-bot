@@ -1731,7 +1731,8 @@ class PlatformTabPanel(QWidget):
     def _open_log_dir(self):
         """開啟應用程式日誌所在的本機資料夾"""
         try:
-            target_dir = str(log_path().parent)
+            target_dir = str(log_path("app.log").parent)
+            os.makedirs(target_dir, exist_ok=True)
             if os.path.exists(target_dir):
                 os.startfile(target_dir)
             else:
