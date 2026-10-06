@@ -68,11 +68,11 @@ if not exist "data" mkdir "data"
 if not exist "data\logs" mkdir "data\logs"
 if not exist "data\config.json" copy /Y "current\config.json.example" "data\config.json" >nul
 
-"current\runtime\python.exe" -B -c "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil" >"data\logs\startup_error.log" 2>&1
+"current\runtime\python.exe" -B -s -c "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil" >"data\logs\startup_error.log" 2>&1
 if errorlevel 1 goto IMPORT_ERROR
 del /Q "data\logs\startup_error.log" >nul 2>&1
 
-start "" /D "%~dp0current" "%~dp0current\runtime\pythonw.exe" -B "ui.py"
+start "" /D "%~dp0current" "%~dp0current\runtime\pythonw.exe" -B -s "ui.py"
 exit /b 0
 
 :RUNTIME_ERROR
@@ -90,7 +90,7 @@ exit /b 1
 SHORTCUT_BAT = r"""@echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\行政效能領航員.lnk'); $Shortcut.TargetPath = '%~dp0current\runtime\pythonw.exe'; $Shortcut.Arguments = '-B \"ui.py\"'; $Shortcut.WorkingDirectory = '%~dp0current'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; $Shortcut.Description = '行政效能領航員 - 公務數位研習輔助系統'; $Shortcut.Save(); Write-Host '已成功於桌面建立「行政效能領航員」捷徑！' -ForegroundColor Green"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$WshShell = New-Object -ComObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut([Environment]::GetFolderPath('Desktop') + '\行政效能領航員.lnk'); $Shortcut.TargetPath = '%~dp0current\runtime\pythonw.exe'; $Shortcut.Arguments = '-B -s \"ui.py\"'; $Shortcut.WorkingDirectory = '%~dp0current'; $Shortcut.IconLocation = '%~dp0current\icons\app.ico, 0'; $Shortcut.Description = '行政效能領航員 - 公務數位研習輔助系統'; $Shortcut.Save(); Write-Host '已成功於桌面建立「行政效能領航員」捷徑！' -ForegroundColor Green"
 echo.
 echo 已完成！請至桌面查看捷徑圖示。
 pause
@@ -214,6 +214,7 @@ def _prepare_runtime() -> None:
     requirements = PROJECT_ROOT / CONFIG["requirements"]
     command = [
         sys.executable,
+        "-s",
         "-m",
         "pip",
         "install",
@@ -254,7 +255,7 @@ def _prepare_runtime() -> None:
     subprocess.run(
         [
             str(runtime_python),
-            "-B",
+            "-B", "-s",
             "-c",
             "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil; import app, quiz_bank, ui",
         ],

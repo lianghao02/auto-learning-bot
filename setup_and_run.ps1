@@ -1,7 +1,8 @@
 ﻿[CmdletBinding()]
 param(
     [string]$TargetProject = '',
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$CheckOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,6 +12,14 @@ $projectDir = $PSScriptRoot
 $projectName = Split-Path -Leaf $projectDir
 $embedDir = Join-Path $projectDir 'python_embed'
 $embedPython = Join-Path $embedDir 'python.exe'
+if ($CheckOnly) {
+    if (-not (Test-Path -LiteralPath $embedPython -PathType Leaf)) { throw '找不到專案 embedded runtime；檢查模式不會安裝。' }
+    & $embedPython -B -s -c "import sys,site,sqlite3; assert sys.version_info[:2] == (3,13); assert not site.ENABLE_USER_SITE; print(sys.version,sys.executable)"
+    if ($LASTEXITCODE -ne 0) { throw 'Runtime 檢查失敗。' }
+    & $embedPython -B -s -m pip --disable-pip-version-check check
+    if ($LASTEXITCODE -ne 0) { throw '套件相依檢查失敗。' }
+    return
+}
 
 function Set-EmbeddedPythonImportPath {
     param([Parameter(Mandatory = $true)][string]$RuntimeDirectory)
@@ -32,9 +41,7 @@ function Set-EmbeddedPythonImportPath {
     }
 }
 
-if (Test-Path -LiteralPath $embedPython) {
-    Set-EmbeddedPythonImportPath -RuntimeDirectory $embedDir
-}
+
 
 # 判定進入點檔案
 $entryPoint = if (Test-Path -LiteralPath (Join-Path $projectDir 'main.py')) {
@@ -67,28 +74,29 @@ Write-Host '=================================================================' -
 # ----------------------------------------------------------------------
 $isEnvironmentReady = $false
 if (Test-Path -LiteralPath $embedPython) {
-    $testRun = & "$embedPython" -c "import sys, sqlite3, PySide6, selenium, requests, colorama, psutil; print('READY')" 2>$null
+    $testRun = & "$embedPython" -B -s -c "import sys, sqlite3, PySide6, selenium, requests, colorama, psutil; assert sys.version_info[:2] == (3,13); print('READY')" 2>$null
     if ($testRun -match 'READY') {
         $isEnvironmentReady = $true
     }
 }
 
 if (-not $isEnvironmentReady) {
+    if (Test-Path -LiteralPath $embedDir) { throw '既有 runtime 驗證失敗；保留現場，不自動刪除或覆寫。' }
     Write-Host "[環境檢查] 偵測到環境尚未就緒，正在啟動自動自癒佈置..." -ForegroundColor Yellow
     Write-Host ''
 
-    # 搜尋本機候選 ZIP (優先級：專案根目錄 -> 00_home\downloads -> D:\Caches -> 使用者 Downloads)
+    # 本機 ZIP：專案、控制中心下載區、可選快取環境變數、使用者下載區。
     $searchPaths = @(
         $projectDir,
-        (Join-Path (Split-Path -Parent $projectDir) "00_home\downloads"),
-        "D:\Caches",
+        (Join-Path (Split-Path -Parent $projectDir) "00_Dev-Control-Center\downloads"),
+        $env:LIANGHAO_DOWNLOAD_CACHE,
         (Join-Path $env:USERPROFILE "Downloads")
     )
 
     $zipPath = $null
     foreach ($sp in $searchPaths) {
         if ($sp -and (Test-Path -LiteralPath $sp)) {
-            $found = Get-ChildItem -LiteralPath $sp -Filter "*embed*amd64*.zip" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -LiteralPath $sp -Filter "python-3.13*-embed-amd64.zip" -File -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) {
                 $zipPath = $found.FullName
                 break
@@ -130,10 +138,10 @@ if (-not $isEnvironmentReady) {
     $targetSqlitePyd = Join-Path $embedDir '_sqlite3.pyd'
     if (-not (Test-Path -LiteralPath $targetSqlitePyd)) {
         $sqliteSources = @(
-            (Join-Path (Split-Path -Parent $projectDir) "06_System-Optimizer-Tool\python_embed\_sqlite3.pyd"),
-            (Join-Path (Split-Path -Parent $projectDir) "01_AG-Monitor-Forensics\python_embed\_sqlite3.pyd"),
-            (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313\DLLs\_sqlite3.pyd"),
-            (Join-Path $env:LOCALAPPDATA "Programs\Python\Python311\DLLs\_sqlite3.pyd")
+
+            (Join-Path (Split-Path -Parent $projectDir) "01_AG-MONITOR-Smart-Video-Screening\python_embed\_sqlite3.pyd"),
+
+            (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313\DLLs\_sqlite3.pyd")
         )
         foreach ($src in $sqliteSources) {
             if ($src -and (Test-Path -LiteralPath $src)) {
@@ -149,7 +157,7 @@ if (-not $isEnvironmentReady) {
 
     # 配置 get-pip.py
     $getPipPath = Join-Path $embedDir 'get-pip.py'
-    $cachedGetPip = Join-Path (Split-Path -Parent $projectDir) "00_home\downloads\get-pip.py"
+    $cachedGetPip = Join-Path (Split-Path -Parent $projectDir) "00_Dev-Control-Center\downloads\get-pip.py"
     if (Test-Path -LiteralPath $cachedGetPip) {
         Copy-Item -LiteralPath $cachedGetPip -Destination $getPipPath -Force
     } else {
@@ -165,7 +173,7 @@ if (-not $isEnvironmentReady) {
         $oldEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            $null = & "$embedPython" "$getPipPath" --no-warn-script-location 2>$null
+            $null = & "$embedPython" -B -s "$getPipPath" --no-warn-script-location 2>$null
         } finally {
             $ErrorActionPreference = $oldEap
         }
@@ -179,7 +187,8 @@ if (-not $isEnvironmentReady) {
         $oldEap = $ErrorActionPreference
         $ErrorActionPreference = 'Continue'
         try {
-            & "$embedPython" -m pip install --no-warn-script-location -r "$reqFile"
+            & "$embedPython" -B -s -m pip install --no-warn-script-location -r "$reqFile"
+            if ($LASTEXITCODE -ne 0) { throw '專案套件安裝失敗；保留環境，不宣稱就緒。' }
         } finally {
             $ErrorActionPreference = $oldEap
         }
@@ -205,7 +214,7 @@ if (-not (Test-Path -LiteralPath $mainFile)) {
 
 $pythonwExe = Join-Path $embedDir 'pythonw.exe'
 if (Test-Path -LiteralPath $pythonwExe) {
-    Start-Process -FilePath $pythonwExe -ArgumentList $entryPoint -WorkingDirectory $projectDir
+    Start-Process -FilePath $pythonwExe -ArgumentList @('-B', '-s', $entryPoint) -WorkingDirectory $projectDir
 } else {
-    & $embedPython $mainFile
+    & $embedPython -B -s $mainFile
 }
