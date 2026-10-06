@@ -51,10 +51,14 @@ def ensure_seeded_database() -> Path:
     return target
 
 
-def log_path(name: str) -> Path:
+def log_dir() -> Path:
     logs = data_dir(create=True) / "logs"
     logs.mkdir(parents=True, exist_ok=True)
-    return logs / Path(name).name
+    return logs
+
+
+def log_path(name: str = "app.log") -> Path:
+    return log_dir() / Path(name).name
 
 
 def update_cache_path() -> Path:

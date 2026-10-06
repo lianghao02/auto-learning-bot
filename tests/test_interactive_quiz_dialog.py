@@ -1,19 +1,59 @@
 """人機協同測驗視窗的基本建立測試。"""
 
 import os
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QPushButton
 
 from ui import InteractiveQuizDialog, PlatformTabPanel
+from utils import app_paths
 
 
 class InteractiveQuizDialogTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
+
+    def _log_directory_button(self):
+        panel = PlatformTabPanel("ecpa", "測試平臺", lambda *_: None, lambda *_: None, lambda *_: None)
+        self.addCleanup(panel.close)
+        buttons = [button for button in panel.findChildren(QPushButton) if button.text() == "📁 開啟日誌資料夾"]
+        self.assertEqual(len(buttons), 1)
+        return panel, buttons[0]
+
+    def test_log_directory_button_creates_and_opens_the_data_logs_directory(self):
+        with tempfile.TemporaryDirectory(prefix="介面日誌 中文 空白 ") as tmp:
+            root = Path(tmp)
+            with patch.object(app_paths, "install_root", return_value=root), patch(
+                "ui.os.startfile", create=True
+            ) as open_folder, patch("ui.QMessageBox.warning") as warning:
+                _, button = self._log_directory_button()
+                button.click()
+                expected = root / "data" / "logs"
+                self.assertTrue(expected.is_dir())
+                open_folder.assert_called_once_with(str(expected))
+                warning.assert_not_called()
+
+    def test_log_directory_open_failure_shows_warning_without_changing_existing_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            logs = root / "data" / "logs"
+            logs.mkdir(parents=True)
+            existing = logs / "app.log"
+            existing.write_text("既有日誌不可覆寫", encoding="utf-8")
+            with patch.object(app_paths, "install_root", return_value=root), patch(
+                "ui.os.startfile", side_effect=OSError("合成開啟錯誤"), create=True
+            ) as open_folder, patch("ui.QMessageBox.warning") as warning:
+                panel, button = self._log_directory_button()
+                button.click()
+                open_folder.assert_called_once_with(str(logs))
+                warning.assert_called_once_with(panel, "開啟失敗", "無法開啟日誌資料夾：合成開啟錯誤")
+                self.assertEqual(existing.read_text(encoding="utf-8"), "既有日誌不可覆寫")
 
     def test_dialog_can_be_created_with_question_data(self):
         dialog = InteractiveQuizDialog(
