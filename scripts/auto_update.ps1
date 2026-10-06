@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][string]$InstallRoot,
     [Parameter(Mandatory = $true)][string]$StagedCurrent,
     [Parameter(Mandatory = $true)][string]$ArchivePath,
@@ -43,7 +43,7 @@ function Start-HiddenPython(
     # UseShellExecute 直接由 Windows 繼承環境，避開該重建流程。
     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
     $startInfo.FileName = $PythonPath
-    $startInfo.Arguments = '-B "' + $ScriptName.Replace('"', '\"') + '"'
+    $startInfo.Arguments = '-B -s "' + $ScriptName.Replace('"', '\"') + '"'
     $startInfo.WorkingDirectory = $WorkingDirectory
     $startInfo.UseShellExecute = $true
     $startInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
@@ -90,7 +90,7 @@ try {
     $smokeErr = Join-Path $dataLogs 'update_smoke_stderr.log'
     Set-Content -LiteralPath $smokeScript -Encoding ASCII -Value `
         'import PySide6,selenium,requests,cv2,numpy,ddddocr,psutil'
-    $smokeOutput = @(& $smokePython -B $smokeScript 2>&1)
+    $smokeOutput = @(& $smokePython -B -s $smokeScript 2>&1)
     $smokeExit = $LASTEXITCODE
     Set-Content -LiteralPath $smokeOut -Encoding UTF8 -Value $smokeOutput
     Remove-Item -LiteralPath $smokeScript -Force -ErrorAction SilentlyContinue
@@ -157,7 +157,7 @@ try {
             $wsh = New-Object -ComObject WScript.Shell
             $sc = $wsh.CreateShortcut($desktopShortcut)
             $sc.TargetPath = Join-Path $current 'runtime\pythonw.exe'
-            $sc.Arguments = '-B "ui.py"'
+            $sc.Arguments = '-B -s "ui.py"'
             $sc.WorkingDirectory = $current
             $sc.IconLocation = (Join-Path $current 'icons\app.ico') + ',0'
             $sc.Description = '行政效能領航員 - 公務數位研習輔助系統'

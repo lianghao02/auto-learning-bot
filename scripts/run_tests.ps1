@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -14,7 +14,7 @@ $embedPython = Join-Path $projectRoot 'python_embed\python.exe'
 $pythonCmd = if (Test-Path -LiteralPath $embedPython) {
     $embedPython
 } else {
-    'python'
+    throw '找不到專案 embedded runtime；不改用全域 Python。'
 }
 
 Write-Host "==========================================================" -ForegroundColor Cyan
@@ -46,7 +46,9 @@ result = runner.run(suite)
 sys.exit(0 if result.wasSuccessful() else 1)
 '@
 
-& $pythonCmd -c $testRunnerCode
+Push-Location $projectRoot
+try { & $pythonCmd -B -s -c $testRunnerCode; $testExit = $LASTEXITCODE } finally { Pop-Location }
+$LASTEXITCODE = $testExit
 if ($LASTEXITCODE -ne 0) {
     Write-Error "測試未全數通過，ExitCode=$LASTEXITCODE"
     exit $LASTEXITCODE
