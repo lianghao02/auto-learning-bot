@@ -640,12 +640,18 @@ def get_course_modules(driver, course_href):
         links = driver.find_elements(By.CSS_SELECTOR, 'a[href]')
         for lnk in links:
             href = lnk.get_attribute('href') or ''
+            txt = (lnk.text or lnk.get_attribute('title') or '').strip()
             if 'mod/quiz/view.php' in href and not result['quiz_url']:
                 result['quiz_url'] = href
             if 'mod/feedback/view.php' in href and not result['fb_url']:
                 result['fb_url'] = href
+            if ('mod/scorm/view.php' in href or 'mod/scorm/player.php' in href) and not result.get('scorm_url'):
+                # 排除補充教材、講義、簡報與 PDF 資源
+                if not any(bad in (txt + ' ' + href).lower() for bad in ['補充教材', '補充', '講義', '簡報', 'pdf', 'mod/resource']):
+                    result['scorm_url'] = href
 
-        print(f'  [模組] course_id={result["course_id"]} quiz={result["quiz_url"]} fb={result["fb_url"]}')
+        scorm_disp = result.get('scorm_url') or '無直連'
+        print(f'  [模組] course_id={result["course_id"]} scorm={scorm_disp} quiz={result["quiz_url"]} fb={result["fb_url"]}')
     except Exception as e:
         print(f'  [模組] 偵測失敗: {e}')
 
@@ -685,7 +691,7 @@ def recover_from_multi_window_lock(driver, wait, course_url, config=None):
         print(f'  ⚠️ 重新登入後無法回到課程頁: {e}')
         return False
 
-def get_scorm_player_url(driver, wait, course_url, config=None):
+def get_scorm_player_url(driver, wait, course_url, config=None, modules=None):
     driver.get(course_url)
     time.sleep(3)
     msgs = dismiss_alerts(driver)
@@ -705,8 +711,8 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
         if is_not_course_home:
             # 排除非學習與非 SCORM 模組（補充資源/問卷/測驗/討論區/作業）
             if not any(bad in clean_curr for bad in ['mod/resource', 'mod/feedback', 'mod/quiz', 'mod/forum', 'mod/assign']):
-                # 若已在新視窗，或是 mod/page、mod/scorm
-                if len(driver.window_handles) > 1 or any(k in clean_curr for k in ['mod/page', 'mod/scorm']):
+                # 若已在新視窗，或是 mod/page
+                if len(driver.window_handles) > 1 or 'mod/page' in clean_curr:
                     return True
         return False
 
@@ -731,7 +737,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
         def is_supplementary_or_resource(text_str, href_str):
             t = (text_str or '').lower()
             h = (href_str or '').lower()
-            if any(bad in t for bad in ['補充教材', '補充', 'pdf']):
+            if any(bad in t for bad in ['補充教材', '補充', '講義', '簡報', 'pdf', '下載', 'download']):
                 return True
             if 'mod/resource' in h or h.endswith('.pdf') or '.pdf?' in h:
                 return True
@@ -825,6 +831,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
             'a',
         ]
         seen = set()
+        ENTER_BTNS = ['進入', '開始', '繼續', '閱讀', '上課', '進入教室', '進入課程', '確定', 'start', 'enter', 'launch', 'play']
         for selector in selectors:
             try:
                 buttons = driver.find_elements(By.CSS_SELECTOR, selector)
@@ -840,10 +847,10 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                     value = btn.get_attribute('value') or ''
                     text = ((btn.text or '') + ' ' + value + ' ' + href).strip()
                     is_submit = (btn.get_attribute('type') or '').lower() == 'submit'
-                    # ⚠️ 嚴格過濾危險按鈕（退選、取消、刪除、登出、問卷、滿意度、補充教材、PDF 等）
-                    DANGER_KEYWORDS = ['退選', '取消', '刪除', 'Unenroll', 'Cancel', 'Delete', '登出', 'Logout', '搜尋', 'Search',
+                    # ⚠️ 嚴格過濾危險按鈕（退選、取消、刪除、登出、問卷、滿意度、補充教材、講義、簡報、PDF 等）
+                    DANGER_KEYWORDS = ['退選', '取消', '刪除', 'unenroll', 'cancel', 'delete', '登出', 'logout', '搜尋', 'search',
                                        '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire',
-                                       '補充教材', '補充', 'pdf']
+                                       '補充教材', '補充', '講義', '簡報', 'pdf', '下載', 'download']
                     if any(dk in text.lower() for dk in DANGER_KEYWORDS):
                         continue
                     # 同時過濾 href 指向 feedback、resource 或 pdf 的連結
@@ -853,10 +860,10 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
                     if href and 'mod/scorm/player.php' in href:
                         print(f'  ▶️ 進入 SCORM player (URL): {href}')
                         driver.get(href)
-                    elif any(k in text for k in ['進入', '開始', '繼續', 'Start', 'Enter', 'Launch', '閱讀', '上課', '進入教室', '進入課程', '確定']):
+                    elif any(k in text.lower() for k in ENTER_BTNS):
                         print(f'  ▶️ 點擊 SCORM 進入按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
-                    elif is_submit and any(k in text for k in ['scorm', 'player', 'lesson', 'class', '課程', '單元']):
+                    elif is_submit and any(k in text.lower() for k in ['scorm', 'player']):
                         print(f'  ▶️ 點擊 SCORM 提交按鈕: {text[:40]}')
                         driver.execute_script("arguments[0].click();", btn)
                     else:
@@ -890,14 +897,20 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
             pause_and_mute_media(driver)
             return driver.current_url
 
-        if enter_from_scorm_view():
-            pause_and_mute_media(driver)
-            return driver.current_url
+        curr_url = driver.current_url or ''
+        is_scorm_page = 'mod/scorm/' in curr_url
 
-        scorm_url, label = find_scorm_link()
+        # 若目前已處於 SCORM 活動頁（如 mod/scorm/view.php），直接提交表單進入播放器
+        if is_scorm_page:
+            if enter_from_scorm_view():
+                pause_and_mute_media(driver)
+                return driver.current_url
+
+        # 優先尋找 SCORM 課程連結
+        scorm_url = (modules.get('scorm_url') if modules and attempt == 1 else None)
+        label = ''
         if not scorm_url:
-            print('  找不到 SCORM 連結，跳過')
-            return None
+            scorm_url, label = find_scorm_link()
 
         print(f'  ▶️ 進入課程連結: {(label or scorm_url)[:40]}')
         try:
@@ -931,10 +944,45 @@ def get_scorm_player_url(driver, wait, course_url, config=None):
             pause_and_mute_media(driver)
             return driver.current_url
 
+        if current_is_player():
+            pause_and_mute_media(driver)
+            return driver.current_url
+
+        # 若當前未在播放器，且目前不在課程主頁，嘗試一次備用表單提交
+        if not current_is_player() and 'course/view.php' not in (driver.current_url or ''):
+            if enter_from_scorm_view():
+                pause_and_mute_media(driver)
+                return driver.current_url
+
+        if current_is_player():
+            pause_and_mute_media(driver)
+            return driver.current_url
+
         print(f'  ⚠️ 尚未進入播放器，重試 {attempt}/3，目前: {driver.current_url}')
-        driver.get(course_url)
-        time.sleep(2)
-        dismiss_alerts(driver)
+        try:
+            driver.get(course_url)
+            time.sleep(2)
+            dismiss_alerts(driver)
+        except Exception:
+            pass
+
+    # 3 次皆未成功，產生詳細診斷除錯快照
+    try:
+        debug_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'debug')
+        os.makedirs(debug_dir, exist_ok=True)
+        course_id_str = 'unknown'
+        if modules and modules.get('course_id'):
+            course_id_str = str(modules['course_id'])
+        elif 'id=' in (course_url or ''):
+            course_id_str = course_url.split('id=')[-1].split('&')[0]
+
+        screenshot_path = os.path.join(debug_dir, f'scorm_fail_{course_id_str}.png')
+        driver.save_screenshot(screenshot_path)
+        print(f'  📸 已儲存除錯截圖至: {screenshot_path}')
+        print(f'  🔍 當前頁面 URL: {driver.current_url}')
+        print(f'  🔍 當前頁面 Title: {driver.title}')
+    except Exception as _e:
+        print(f'  ⚠️ 儲存除錯快照失敗: {_e}')
 
     return None
 
@@ -1067,7 +1115,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
     else:
         print('目標: 無認證時數要求，僅檢查章節狀態')
 
-    scorm_view_url = get_scorm_player_url(driver, wait, href, config=config)
+    scorm_view_url = get_scorm_player_url(driver, wait, href, config=config, modules=modules)
     if not scorm_view_url:
         print('  找不到 SCORM 連結，跳過')
         return False

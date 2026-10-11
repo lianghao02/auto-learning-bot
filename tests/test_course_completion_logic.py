@@ -143,6 +143,29 @@ class CourseCompletionLogicTests(unittest.TestCase):
         self.assertFalse(self.pilot._is_exam_passed(course))
         self.assertFalse(self.pilot._is_course_completed(course))
 
+    def test_info_page_static_text_cannot_mark_course_completed(self):
+        """測試頁面僅含『無法重複取得時數』等靜態注意事項時，通過狀態為 -- 絕不可誤判為已完成。"""
+        mock_driver = MagicMock()
+        # 模擬 JS 回傳的 status_box_text（通過狀態為 --）
+        mock_driver.execute_script.side_effect = lambda script: (
+            "我的課程狀態\n閱讀時數：0\n測驗：--\n問卷：未填\n通過狀態：--"
+            if "我的課程狀態" in script
+            else ""
+        )
+        self.pilot.driver = mock_driver
+        self.assertFalse(self.pilot._is_course_already_completed_on_info_page())
+
+    def test_info_page_passed_status_marks_course_completed(self):
+        """測試頁面『我的課程狀態』明確為『通過狀態：已通過』時，正確判定為已完成。"""
+        mock_driver = MagicMock()
+        mock_driver.execute_script.side_effect = lambda script: (
+            "我的課程狀態\n閱讀時數：2:00:00\n測驗：100\n問卷：已填\n通過狀態：已通過"
+            if "我的課程狀態" in script
+            else ""
+        )
+        self.pilot.driver = mock_driver
+        self.assertTrue(self.pilot._is_course_already_completed_on_info_page())
+
 
 if __name__ == "__main__":
     unittest.main()

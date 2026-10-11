@@ -1249,9 +1249,7 @@ class AdminEfficiencyPilot:
                         "通過狀態" in info_text
                         and "已通過" in info_text
                         and ("測驗" in info_text and ("100" in info_text or "及格" in info_text))
-                    ) or (
-                        "您已完成此課程" in info_text and "無法重複取得時數" in info_text
-                    ):
+                    ) or self._is_course_already_completed_on_info_page():
                         logger.info(
                             f"   🎉 課程「{course.get('caption', '')}」平臺顯示測驗已通過／已完成，免再次測驗。"
                         )
@@ -3154,6 +3152,49 @@ class AdminEfficiencyPilot:
                     pass
         return False
 
+    def _is_course_already_completed_on_info_page(self):
+        """精準檢查當前 /info/ 頁面是否平臺已明確記錄為已通過/修畢。
+        嚴禁僅因課程介紹、注意事項中含有『無法重複取得時數』等靜態文字而誤判！
+        """
+        if not self.driver:
+            return False
+        try:
+            # 1. 優先檢查右側「我的課程狀態」區塊中的「通過狀態」
+            status_box_text = self.driver.execute_script("""
+                var all = document.querySelectorAll('*');
+                for (var i = 0; i < all.length; i++) {
+                    var t = (all[i].innerText || '').trim();
+                    if (t.indexOf('我的課程狀態') !== -1 && t.indexOf('通過狀態') !== -1) {
+                        return t;
+                    }
+                }
+                return '';
+            """) or ""
+
+            if status_box_text:
+                import re
+                if re.search(r'通過狀態\s*[:：]\s*(已通過|通過|及格)', status_box_text):
+                    return True
+                if "通過狀態" in status_box_text and any(k in status_box_text for k in ["--", "未通過", "未完成"]):
+                    return False
+
+            # 2. 檢查頁面彈窗或專屬通知（Alert / Dialog / Modal）
+            personal_alert = self.driver.execute_script("""
+                var modals = document.querySelectorAll('.modal, .alert-danger, .alert-warning, div[role="dialog"]');
+                for (var m = 0; m < modals.length; m++) {
+                    var mt = (modals[m].innerText || '').trim();
+                    if (mt.indexOf('您已完成此課程') !== -1 && mt.indexOf('無法重複取得時數') !== -1) {
+                        return mt;
+                    }
+                }
+                return '';
+            """) or ""
+            if personal_alert:
+                return True
+        except Exception:
+            pass
+        return False
+
     def find_classroom_window(self):
         """Return the browser window that owns the course frame tree or MOOCs/Hahow player."""
         if not self.driver:
@@ -3565,22 +3606,9 @@ class AdminEfficiencyPilot:
 
             # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
             if "/info/" in cur_u:
-                info_text = ""
-                try:
-                    info_text = (
-                        self.driver.execute_script(
-                            "return document.body ? document.body.innerText : '';"
-                        )
-                        or ""
-                    )
-                except Exception:
-                    pass
-                if any(
-                    kw in info_text
-                    for kw in ["您已完成此課程", "無法重複取得時數", "已完成此課程"]
-                ) or ("通過狀態" in info_text and "已通過" in info_text):
+                if self._is_course_already_completed_on_info_page():
                     logger.info(
-                        f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（無法重複取得時數），自動標記完成並略過。"
+                        f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（通過狀態已通過），自動標記完成並略過。"
                     )
                     self._completed_in_session.add(str(course.get("course_id", "")))
                     return "SKIP"
@@ -3598,9 +3626,16 @@ class AdminEfficiencyPilot:
                     var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                     for (var i = 0; i < btns.length; i++) {
                         var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                        if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '報名課程', '我要報名', '加入課程', '確認報名'].some(k => t.indexOf(k) !== -1)) {
+                        var cleanT = t.replace(/\\s+/g, '');
+                        var href = (btns[i].getAttribute('href') || '').toLowerCase();
+                        var onclick = (btns[i].getAttribute('onclick') || '').toLowerCase();
+                        if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '報名課程', '我要報名', '加入課程', '確認報名', '開始學習', '前往學習', '選課', '我要選課'].some(k => cleanT.indexOf(k) !== -1)) {
                             btns[i].click();
                             return t;
+                        }
+                        if (onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 || href.indexOf('action=learn') !== -1) {
+                            btns[i].click();
+                            return t || '課程連結';
                         }
                     }
                     return null;
@@ -3788,13 +3823,10 @@ class AdminEfficiencyPilot:
                         self._completed_in_session.add(str(course.get("course_id", "")))
                         return "SKIP"
 
-                    # 💡 檢查是否為已完成/無法重複取得時數之課程
-                    if any(
-                        kw in page_src
-                        for kw in ["您已完成此課程", "無法重複取得時數", "已完成此課程"]
-                    ) or ("通過狀態" in page_src and "已通過" in page_src):
+                    # 💡 檢查是否為已完成/無法重複取得時數之課程（僅在確認通過或彈窗阻擋時）
+                    if "/info/" in current_url and self._is_course_already_completed_on_info_page():
                         logger.info(
-                            f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（無法重複取得時數），自動標記完成並略過。"
+                            f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（通過狀態已通過），自動標記完成並略過。"
                         )
                         self._completed_in_session.add(str(course.get("course_id", "")))
                         return "SKIP"
@@ -3823,7 +3855,14 @@ class AdminEfficiencyPilot:
                             var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                             for (var i = 0; i < btns.length; i++) {
                                 var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                                if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                                var cleanT = t.replace(/\\s+/g, '');
+                                var href = (btns[i].getAttribute('href') || '').toLowerCase();
+                                var onclick = (btns[i].getAttribute('onclick') || '').toLowerCase();
+                                if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '開始學習', '前往學習', '選課', '我要選課'].some(k => cleanT.indexOf(k) !== -1)) {
+                                    btns[i].click();
+                                    break;
+                                }
+                                if (onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 || href.indexOf('action=learn') !== -1) {
                                     btns[i].click();
                                     break;
                                 }
@@ -4387,24 +4426,7 @@ class AdminEfficiencyPilot:
 
                                 # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
                                 if "/info/" in self.driver.current_url:
-                                    info_text = ""
-                                    try:
-                                        info_text = (
-                                            self.driver.execute_script(
-                                                "return document.body ? document.body.innerText : '';"
-                                            )
-                                            or ""
-                                        )
-                                    except Exception:
-                                        pass
-                                    if any(
-                                        kw in info_text
-                                        for kw in [
-                                            "您已完成此課程",
-                                            "無法重複取得時數",
-                                            "已完成此課程",
-                                        ]
-                                    ) or ("通過狀態" in info_text and "已通過" in info_text):
+                                    if self._is_course_already_completed_on_info_page():
                                         logger.info(
                                             f"   🎉 課程「{c.get('caption', '')}」平臺顯示已全數修畢（已通過），免重複執行。"
                                         )
@@ -4425,9 +4447,16 @@ class AdminEfficiencyPilot:
                                         var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
                                         for (var i = 0; i < btns.length; i++) {
                                             var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                                            if (['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗', '上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
+                                            var cleanT = t.replace(/\\s+/g, '');
+                                            var href = (btns[i].getAttribute('href') || '').toLowerCase();
+                                            var onclick = (btns[i].getAttribute('onclick') || '').toLowerCase();
+                                            if (['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗', '上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '開始學習', '前往學習'].some(k => cleanT.indexOf(k) !== -1)) {
                                                 btns[i].click();
                                                 return t;
+                                            }
+                                            if (onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 || href.indexOf('action=learn') !== -1) {
+                                                btns[i].click();
+                                                return t || '課程連結';
                                             }
                                         }
                                         return null;
@@ -4436,7 +4465,11 @@ class AdminEfficiencyPilot:
                                         logger.info(f"   📝 已點擊「{clicked_entry}」進入教室/測驗介面")
                                     if not self.safe_sleep(5):
                                         break
-                                    if len(self.driver.window_handles) > 1:
+                                    classroom_h = self.find_classroom_window()
+                                    if classroom_h:
+                                        self.driver.switch_to.window(classroom_h)
+                                        self._auto_hide_popups_if_needed(settle=True)
+                                    elif len(self.driver.window_handles) > 1:
                                         self.driver.switch_to.window(self.driver.window_handles[-1])
                                         self._auto_hide_popups_if_needed(settle=True)
                                 except Exception:
@@ -4444,6 +4477,13 @@ class AdminEfficiencyPilot:
                                 logger.info(
                                     f"   📝 目前頁面 URL: {self.driver.current_url}"
                                 )
+                                # 💡 若當前依然停留在 /info/ 介紹頁（未能進入教室），不執行無效的測驗掃描
+                                if "/info/" in self.driver.current_url:
+                                    logger.warning(
+                                        f"   ⚠️ 課程「{c.get('caption', '')}」尚未載入教室介面（仍在介紹頁），暫緩本次測驗。"
+                                    )
+                                    self._mark_exam_manual_review(c, "未能進入教室介面（停留在介紹頁）")
+                                    continue
                             except Exception as e:
                                 logger.debug(f"導航課程失敗: {e}")
 
