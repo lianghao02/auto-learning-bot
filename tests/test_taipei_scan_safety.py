@@ -131,6 +131,70 @@ class TaipeiScormPriorityTests(unittest.TestCase):
         self.assertIn('mod/scorm', player_url)
         self.assertNotIn('mod/resource', player_url)
 
+    def test_ignore_course_presentation_and_handout_submit_buttons(self):
+        """當課程目錄頁存在「課程簡報」或「課程講義」等 submit 按鈕時，不可誤判為 SCORM 播放器按鈕。"""
+        from taipei_eda_course import get_scorm_player_url
+        from selenium.webdriver.common.by import By
+
+        mock_driver = MagicMock()
+        mock_wait = MagicMock()
+        mock_driver.current_url = 'https://elearning.taipei/course/view.php?id=2734'
+        mock_driver.window_handles = ['win1']
+
+        scorm_link = MagicMock()
+        scorm_link.get_attribute.side_effect = lambda attr: {
+            'href': 'https://elearning.taipei/elearn/mod/scorm/view.php?id=7667',
+            'title': 'CRPD之工作與就業'
+        }.get(attr, '')
+        scorm_link.text = 'CRPD之工作與就業'
+
+        # 模擬容易引發誤觸的簡報按鈕
+        presentation_submit_btn = MagicMock()
+        presentation_submit_btn.get_attribute.side_effect = lambda attr: {
+            'type': 'submit',
+            'value': '課程簡報-CRPD之工作與就業',
+            'href': '',
+        }.get(attr, '')
+        presentation_submit_btn.text = '課程簡報-CRPD之工作與就業'
+
+        # 模擬容易引發誤觸的講義按鈕
+        handout_submit_btn = MagicMock()
+        handout_submit_btn.get_attribute.side_effect = lambda attr: {
+            'type': 'submit',
+            'value': '【課程講義】',
+            'href': '',
+        }.get(attr, '')
+        handout_submit_btn.text = '【課程講義】'
+
+        def fake_find_elements(by, selector):
+            if by == By.CSS_SELECTOR:
+                if 'mod/scorm/view.php' in selector:
+                    return [scorm_link]
+                elif 'form' in selector:
+                    return []
+                elif 'input[type=submit]' in selector or 'button' in selector:
+                    return [presentation_submit_btn, handout_submit_btn]
+                elif selector == 'a':
+                    return [scorm_link]
+            return []
+
+        mock_driver.find_elements.side_effect = fake_find_elements
+
+        def fake_get(url):
+            if 'mod/scorm/view.php?id=7667' in url:
+                mock_driver.current_url = 'https://elearning.taipei/mod/scorm/player.php?id=7667'
+
+        mock_driver.get.side_effect = fake_get
+
+        with patch("taipei_eda_course.time.sleep"), patch("taipei_eda_course.dismiss_alerts", return_value=[]):
+            player_url = get_scorm_player_url(mock_driver, mock_wait, 'https://elearning.taipei/course/view.php?id=2734')
+
+        # 簡報與講義 submit 按鈕不可被點擊
+        self.assertFalse(presentation_submit_btn.click.called)
+        self.assertFalse(handout_submit_btn.click.called)
+        self.assertIsNotNone(player_url)
+        self.assertIn('mod/scorm/player.php', player_url)
+
 
 class TaipeiRunQueueLoopTests(unittest.TestCase):
     def test_run_taipei_eda_work_queue_quota_tracker_integration(self):
