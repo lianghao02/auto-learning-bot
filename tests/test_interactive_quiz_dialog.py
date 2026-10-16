@@ -138,5 +138,70 @@ class InteractiveQuizDialogTests(unittest.TestCase):
         item2 = panel.course_table.item(1, 0)
         self.assertFalse(item2.text().startswith("▶ "))
         self.assertFalse(item2.font().bold())
+
+        # 3. 需人工確認 / 異常狀態色彩與背景高亮驗證
+        s3 = CourseState(
+            course_id="c3",
+            course_name="採購法實務",
+            platform="taipei_eda",
+            status=CourseStatus.MANUAL_REVIEW,
+            needs_manual=True,
+            reason="連續不及格達上限",
+            next_step="人工確認",
+        )
+        panel._handle_course_state_update(s3)
+        badge3 = panel.course_table.item(2, 1)
+        self.assertEqual(badge3.foreground().color().name().upper(), CourseStatus.MANUAL_REVIEW.color_hex.upper())
+        self.assertEqual(badge3.background().color().name().upper(), "#FDF2F2")
+        self.assertTrue(panel.empty_state_lbl.isHidden())
         panel.close()
+
+    def test_empty_state_banner_transitions(self):
+        panel = PlatformTabPanel("taipei_eda", "臺北E大", lambda *_: None, lambda *_: None, lambda *_: None)
+        self.addCleanup(panel.close)
+
+        self.assertIn("尚無課程資料", panel.empty_state_lbl.text())
+        panel.set_running_state(True)
+        self.assertIn("正在登入並掃描課程清單", panel.empty_state_lbl.text())
+        panel.set_running_state(False)
+        self.assertIn("尚無課程資料", panel.empty_state_lbl.text())
+
+    def test_account_settings_unsaved_changes_and_cloud_sync_toggle(self):
+        from ui import AccountSettingsTabPanel
+        from PySide6.QtWidgets import QLineEdit
+        import quiz_bank
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg_file = Path(tmp) / "config.json"
+            with patch("ui.CONFIG_PATH", str(cfg_file)):
+                settings_panel = AccountSettingsTabPanel()
+                self.addCleanup(settings_panel.close)
+
+                self.assertFalse(settings_panel.has_unsaved_changes())
+                self.assertEqual(settings_panel.pwd_input.echoMode(), QLineEdit.Password)
+
+                # 修改表單欄位後應偵測為有未儲存變更
+                settings_panel.acc_input.setText("user01")
+                settings_panel.pwd_input.setText("secret123")
+                settings_panel.cloud_sync_cb.setChecked(False)
+                self.assertTrue(settings_panel.has_unsaved_changes())
+
+                # 靜默儲存後應寫入檔案並清除未儲存狀態
+                saved_ok = settings_panel.save_settings(silent=True)
+                self.assertTrue(saved_ok)
+                self.assertFalse(settings_panel.has_unsaved_changes())
+
+                # 驗證 cloud_sync_enabled=False 時 quiz_bank 不發送外部 GAS 請求
+                with patch("quiz_bank.requests.get") as mock_get, patch("quiz_bank.requests.post") as mock_post:
+                    bank = quiz_bank.gas_fetch_bank("123", config={"cloud_sync_enabled": False})
+                    self.assertEqual(bank, {})
+                    mock_get.assert_not_called()
+
+                    quiz_bank.gas_save_questions(
+                        "123",
+                        [{"q_text": "測試題", "val": "0"}],
+                        config={"cloud_sync_enabled": False},
+                    )
+                    mock_post.assert_not_called()
+
 

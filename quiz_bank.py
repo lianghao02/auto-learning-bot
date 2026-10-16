@@ -58,7 +58,17 @@ def _click_js(driver, el):
 
 # ── GAS 題庫存取 ──────────────────────────────────────
 
-def gas_fetch_bank(course_id):
+def _is_cloud_sync_enabled(config=None) -> bool:
+    if isinstance(config, dict):
+        if "cloud_sync_enabled" in config:
+            return bool(config["cloud_sync_enabled"])
+        settings = config.get("settings")
+        if isinstance(settings, dict) and "cloud_sync_enabled" in settings:
+            return bool(settings["cloud_sync_enabled"])
+    return True
+
+
+def gas_fetch_bank(course_id, config=None):
     """
     從 GAS 取得該課程題庫。
     回傳 dict: {normalize(q_text): val_str}
@@ -66,6 +76,9 @@ def gas_fetch_bank(course_id):
       - 新格式：{status:'ok', data:[...]}
       - 舊/未支援：[] 或其他 list
     """
+    if not _is_cloud_sync_enabled(config):
+        print(f'  [題庫] 雲端共用題庫同步已停用，僅使用本機題庫與 AI（course_id={course_id}）')
+        return {}
     print(f'  [題庫] 正在從 GAS 載入 course_id={course_id}')
     try:
         r = requests.get(GAS_URL,
@@ -107,7 +120,7 @@ def _taipei_question_payload(course_id, q):
 
 def gas_report_missing_questions(course_id, questions, course_name='', username='', config=None):
     """Report Taipei E-da missing questions to GAS/TG without blocking the quiz."""
-    if not questions:
+    if not questions or not _is_cloud_sync_enabled(config):
         return
 
     seen = set()
@@ -145,12 +158,12 @@ def gas_report_missing_questions(course_id, questions, course_name='', username=
     threading.Thread(target=_post, daemon=True).start()
     print(f'  [缺題] 回報已背景送出（{len(missing)} 題）')
 
-def gas_save_questions(course_id, questions_with_answers, course_name='', username=''):
+def gas_save_questions(course_id, questions_with_answers, course_name='', username='', config=None):
     """
     把新答案存回 GAS/GitHub 共用題庫。
     questions_with_answers: [{q_text, val, opt0..opt3}, ...]
     """
-    if not questions_with_answers:
+    if not questions_with_answers or not _is_cloud_sync_enabled(config):
         return
     payload = {
         'action': 'taipei_quiz_save',
@@ -824,7 +837,7 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
             seen.add(key)
             deduped.append(item)
         if deduped:
-            gas_save_questions(course_id, deduped, course_name=course_name, username=username)
+            gas_save_questions(course_id, deduped, course_name=course_name, username=username, config=config)
             print(f'  [題庫] 本次同步共用題庫 {len(deduped)} 題')
 
     def _report_missing_once(missing_qs):
@@ -858,7 +871,7 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
     def _run_attempt(attempt_no, use_local_ai):
         print(f'\n  [測驗] 第 {attempt_no} 次作答：' + ('題庫 + 本機AI' if use_local_ai else '只用題庫'))
 
-        bank = gas_fetch_bank(course_id)
+        bank = gas_fetch_bank(course_id, config=config)
         attempt_url = _start_or_resume_quiz(driver, wait, quiz_view_url)
         if not attempt_url:
             print('  [測驗] ✗ 無法開始作答')

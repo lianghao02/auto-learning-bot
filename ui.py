@@ -169,68 +169,60 @@ def looks_like_legacy_taipei_account(account):
 
 
 # =========================
-# 共用樣式（簡約大氣）
+# 全域樣式（莫蘭迪視覺系統基準 Tokens）
 # =========================
 GLOBAL_QSS = """
 QWidget {
     background-color: transparent;
-    color: #111827;
+    color: #2F3B43;
+    font-family: "Microsoft JhengHei UI", "Microsoft JhengHei", "Segoe UI", sans-serif;
 }
 #card {
-    background-color: rgba(255, 255, 255, 0.1);  /* 半透明 */
-    border-radius: 20px;
-
-    border: 1px solid rgba(255, 255, 255, 0.2);  /* 淡白邊 */
-
-    padding: 16px;
+    background-color: #FAF9F6;
+    border-radius: 12px;
+    border: 1px solid #D6D3CC;
+    padding: 14px;
 }
 QPushButton {
-    background-color: rgba(255,255,255,0.8);
-    color: #111827;
-    border-radius: 16px;
-    padding: 16px;
-
-    font-size: 16px;
-    text-align: left;
-
-    border: none;
+    background-color: #E8E5DF;
+    color: #2F3B43;
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    border: 1px solid #C9C5BE;
 }
-
-/* ⭐ hover：不變色，只做浮動感 */
 QPushButton:hover {
-    background-color: #fef3c7;
-
-    border: 1px solid rgba(0,0,0,0.15);
+    background-color: #DCD8D0;
+    border: 1px solid #B5B0A8;
 }
-
-/* 點擊 */
 QPushButton:pressed {
-    background-color: #fef3c7;
-
-    border: 1px solid rgba(0,0,0,0.25);
-
-    padding-top: 18px;
-    padding-bottom: 14px;  /* 反向 → 壓下去 */
+    background-color: #CFCAC0;
+    border: 1px solid #9E9990;
 }
-
+QPushButton:disabled {
+    background-color: #E4E0DA;
+    color: #8A8782;
+    border: 1px solid #D4D0C8;
+}
 QPushButton#ghost {
     background-color: transparent;
-    border: 1px solid #E5E7EB;
-    color: #6B7280;
+    border: 1px solid #D6D3CC;
+    color: #55626D;
     border-radius: 8px;
     padding: 6px 12px;
 }
 QPushButton#ghost:hover {
-    border: 1px solid #D1D5DB;
-    color: #111827;
+    border: 1px solid #B9B5AE;
+    color: #2F3B43;
 }
-
 QComboBox {
-    background-color: #F9FAFB;
-    border: 1px solid #E5E7EB;
-    border-radius: 8px;
-    padding: 8px 10px;
-    color: #111827;
+    background-color: #F3F1ED;
+    border: 1px solid #B9B5AE;
+    border-radius: 6px;
+    padding: 6px 10px;
+    color: #2F3B43;
 }
 """
 
@@ -1513,7 +1505,30 @@ class PlatformTabPanel(QWidget):
             }
         """)
 
-        # 頁籤 1：課程佇列列表表格
+        # 頁籤 1：課程狀態工作台（含空狀態／掃描狀態提示與課程佇列表格）
+        table_container = QWidget()
+        table_layout = QVBoxLayout(table_container)
+        table_layout.setContentsMargins(6, 6, 6, 6)
+        table_layout.setSpacing(6)
+
+        self.empty_state_lbl = QLabel(
+            "📭 尚無課程資料 — 點擊上方「▶️ 開始此平台」後，系統將自動登入並掃描待研習課程清單"
+        )
+        self.empty_state_lbl.setAlignment(Qt.AlignCenter)
+        self.empty_state_lbl.setWordWrap(True)
+        self.empty_state_lbl.setStyleSheet("""
+            QLabel {
+                background: #F3F1ED;
+                color: #55626D;
+                border: 1px dashed #C9C5BE;
+                border-radius: 6px;
+                padding: 8px 12px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+        """)
+        table_layout.addWidget(self.empty_state_lbl)
+
         self.course_table = QTableWidget()
         self.course_table.setColumnCount(5)
         self.course_table.setHorizontalHeaderLabels(["課程名稱", "狀態", "研習時數", "原因", "下一步"])
@@ -1540,7 +1555,8 @@ class PlatformTabPanel(QWidget):
                 border: 1px solid #DCD8D0;
             }
         """)
-        self.workspace_tabs.addTab(self.course_table, "📋 課程狀態工作台")
+        table_layout.addWidget(self.course_table)
+        self.workspace_tabs.addTab(table_container, "📋 課程狀態工作台")
 
         # 頁籤 2：詳細 Log 視窗容器
         log_container = QWidget()
@@ -1689,9 +1705,17 @@ class PlatformTabPanel(QWidget):
         if is_running:
             text = message or "● 執行中：請留意下方日誌與進度"
             color = "#526F5C"
+            if hasattr(self, "empty_state_lbl") and self.course_table.rowCount() == 0:
+                self.empty_state_lbl.setText("⏳ 正在登入並掃描課程清單，請稍候...")
+                self.empty_state_lbl.show()
         else:
             text = message or "● 待命：尚未開始本次執行"
             color = "#66737D"
+            if hasattr(self, "empty_state_lbl") and self.course_table.rowCount() == 0:
+                self.empty_state_lbl.setText(
+                    "📭 尚無課程資料 — 點擊上方「▶️ 開始此平台」後，系統將自動登入並掃描待研習課程清單"
+                )
+                self.empty_state_lbl.show()
         self.execution_status_lbl.setText(text)
         self.execution_status_lbl.setStyleSheet(
             f"color: {color}; font-size: 12px; font-weight: 700; background: transparent;"
@@ -1751,6 +1775,9 @@ class PlatformTabPanel(QWidget):
             if not isinstance(state, CourseState):
                 return
 
+            if hasattr(self, "empty_state_lbl"):
+                self.empty_state_lbl.hide()
+
             # 1. 更新相容標籤（避免外部相依失效）
             self.focus_course_lbl.setText(f"📚 目前課程：【{state.course_name}】")
             self.focus_badge_lbl.setText(state.status.badge_text)
@@ -1766,15 +1793,21 @@ class PlatformTabPanel(QWidget):
             else:
                 row = self._course_rows[c_id]
 
-            # 3. 表格行內高亮 (In-Row Focus Highlight)
+            # 3. 表格行內高亮 (In-Row Focus Highlight) 與異常列警示色
             is_active = (state.status in (CourseStatus.LEARNING, CourseStatus.QUIZ, CourseStatus.SURVEY))
-            row_bg = QColor("#EAF1EE") if is_active else QColor("#FAF9F6" if row % 2 == 0 else "#F3F0EB")
+            is_alert = (state.status in (CourseStatus.MANUAL_REVIEW, CourseStatus.ERROR) or bool(state.needs_manual))
+            if is_alert:
+                row_bg = QColor("#FDF2F2")
+            elif is_active:
+                row_bg = QColor("#EAF1EE")
+            else:
+                row_bg = QColor("#FAF9F6" if row % 2 == 0 else "#F3F0EB")
             brush = QBrush(row_bg)
 
             prefix = "▶ " if is_active else ""
             name_item = QTableWidgetItem(f"{prefix}{state.course_name}")
             name_item.setBackground(brush)
-            if is_active:
+            if is_active or is_alert:
                 f = name_item.font()
                 f.setBold(True)
                 name_item.setFont(f)
@@ -1784,6 +1817,10 @@ class PlatformTabPanel(QWidget):
             badge_item = QTableWidgetItem(state.status.badge_text)
             badge_item.setTextAlignment(Qt.AlignCenter)
             badge_item.setBackground(brush)
+            badge_item.setForeground(QBrush(QColor(state.status.color_hex)))
+            badge_font = badge_item.font()
+            badge_font.setBold(True)
+            badge_item.setFont(badge_font)
             self.course_table.setItem(row, 1, badge_item)
 
             time_item = QTableWidgetItem(state.formatted_study_progress)
@@ -2004,9 +2041,7 @@ class AccountSettingsTabPanel(QWidget):
         self.egov_pwd_input.setPlaceholderText("eCPA 或我的 E 政府密碼")
         self.egov_pwd_input.setStyleSheet(input_style)
 
-        self.headless_cb = QCheckBox("隱藏瀏覽器視窗（背景執行）")
-        self.headless_cb.setToolTip("勾選後瀏覽器不顯示在桌面；課程仍會在背景執行。")
-        self.headless_cb.setStyleSheet("""
+        checkbox_style = """
             QCheckBox {
                 color: #2F3B43;
                 font-weight: bold;
@@ -2028,7 +2063,16 @@ class AccountSettingsTabPanel(QWidget):
                 background-color: #70889B;
                 border-color: #70889B;
             }
-        """)
+        """
+
+        self.headless_cb = QCheckBox("隱藏瀏覽器視窗（背景執行）")
+        self.headless_cb.setToolTip("勾選後瀏覽器不顯示在桌面；課程仍會在背景執行。")
+        self.headless_cb.setStyleSheet(checkbox_style)
+
+        self.cloud_sync_cb = QCheckBox("啟用雲端共用題庫同步與匿名統計（GAS 連線）")
+        self.cloud_sync_cb.setChecked(True)
+        self.cloud_sync_cb.setToolTip("取消勾選後，僅使用本機 SQLite 題庫與設定之 AI 服務，不連線外部 Google Apps Script。")
+        self.cloud_sync_cb.setStyleSheet(checkbox_style)
 
         self.ai_key_input = QLineEdit()
         self.ai_key_input.setEchoMode(QLineEdit.Password)
@@ -2056,7 +2100,7 @@ class AccountSettingsTabPanel(QWidget):
         taipei_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         taipei_form.addRow(QLabel("顯示名稱:"), self.name_input)
         taipei_form.addRow(QLabel("登入帳號:"), self.acc_input)
-        taipei_form.addRow(QLabel("登入密碼:"), self.pwd_input)
+        taipei_form.addRow(QLabel("登入密碼:"), self._wrap_secret_input(self.pwd_input))
         taipei_card_layout.addLayout(taipei_form)
         taipei_card_layout.addStretch(1)
 
@@ -2078,7 +2122,7 @@ class AccountSettingsTabPanel(QWidget):
         egov_form.addRow(QLabel("顯示名稱:"), self.egov_name_input)
         egov_form.addRow(QLabel("登入方式:"), self.egov_type_combo)
         egov_form.addRow(QLabel("登入帳號:"), self.egov_acc_input)
-        egov_form.addRow(QLabel("登入密碼:"), self.egov_pwd_input)
+        egov_form.addRow(QLabel("登入密碼:"), self._wrap_secret_input(self.egov_pwd_input))
         egov_card_layout.addLayout(egov_form)
         egov_card_layout.addStretch(1)
 
@@ -2102,7 +2146,8 @@ class AccountSettingsTabPanel(QWidget):
         global_form.setSpacing(10)
         global_form.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         global_form.addRow(QLabel("執行模式:"), self.headless_cb)
-        global_form.addRow(QLabel("Gemini API Key（選填）:"), self.ai_key_input)
+        global_form.addRow(QLabel("雲端題庫與統計:"), self.cloud_sync_cb)
+        global_form.addRow(QLabel("Gemini API Key（選填）:"), self._wrap_secret_input(self.ai_key_input))
         global_layout.addLayout(global_form)
 
         # 💡 Google Gemini API 免費申請與 0 元防扣款指南卡片
@@ -2171,7 +2216,7 @@ class AccountSettingsTabPanel(QWidget):
             }
             QPushButton:hover { background: #60798D; }
         """)
-        self.save_btn.clicked.connect(self.save_settings)
+        self.save_btn.clicked.connect(lambda: self.save_settings(silent=False))
         btn_bar.addStretch()
         btn_bar.addWidget(self.save_btn)
         global_layout.addLayout(btn_bar)
@@ -2183,7 +2228,58 @@ class AccountSettingsTabPanel(QWidget):
         scroll_area.setWidget(content_widget)
         outer_layout.addWidget(scroll_area)
 
+        self._saved_snapshot = {}
         self.load_settings()
+
+    def _wrap_secret_input(self, line_edit: QLineEdit) -> QWidget:
+        """為密碼或 API Key 欄位加上顯示／隱藏切換按鈕，方便使用者核對輸入內容。"""
+        row_widget = QWidget()
+        row_widget.setStyleSheet("background: transparent;")
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(6)
+
+        toggle_btn = QPushButton("👁️")
+        toggle_btn.setCheckable(True)
+        toggle_btn.setFixedWidth(36)
+        toggle_btn.setToolTip("點擊切換顯示／隱藏內容")
+        toggle_btn.setStyleSheet("""
+            QPushButton {
+                background: #E8E5DF;
+                color: #4B5962;
+                border: 1px solid #BDB9B2;
+                border-radius: 6px;
+                padding: 5px 4px;
+                font-size: 12px;
+            }
+            QPushButton:hover { background: #DCD8D0; }
+            QPushButton:checked { background: #70889B; color: #FFFFFF; border-color: #5F798E; }
+        """)
+
+        def _toggle(checked: bool):
+            line_edit.setEchoMode(QLineEdit.Normal if checked else QLineEdit.Password)
+
+        toggle_btn.toggled.connect(_toggle)
+        row_layout.addWidget(line_edit, 1)
+        row_layout.addWidget(toggle_btn)
+        return row_widget
+
+    def _snapshot_current_state(self) -> dict:
+        return {
+            "name": self.name_input.text().strip(),
+            "acc": self.acc_input.text().strip(),
+            "pwd": self.pwd_input.text(),
+            "egov_name": self.egov_name_input.text().strip(),
+            "egov_type": self.egov_type_combo.currentData() or "ecpa",
+            "egov_acc": self.egov_acc_input.text().strip(),
+            "egov_pwd": self.egov_pwd_input.text(),
+            "headless": self.headless_cb.isChecked(),
+            "cloud_sync_enabled": self.cloud_sync_cb.isChecked(),
+            "ai_api_key": self.ai_key_input.text().strip(),
+        }
+
+    def has_unsaved_changes(self) -> bool:
+        return self._snapshot_current_state() != getattr(self, "_saved_snapshot", {})
 
     def load_settings(self):
         try:
@@ -2217,11 +2313,13 @@ class AccountSettingsTabPanel(QWidget):
                         self.egov_type_combo.setCurrentIndex(idx)
                 settings = data.get("settings", {})
                 self.headless_cb.setChecked(settings.get("headless", False))
+                self.cloud_sync_cb.setChecked(settings.get("cloud_sync_enabled", True))
                 self.ai_key_input.setText(settings.get("ai_api_key", ""))
         except Exception:
             pass
+        self._saved_snapshot = self._snapshot_current_state()
 
-    def save_settings(self):
+    def save_settings(self, silent: bool = False) -> bool:
         try:
             if os.path.exists(CONFIG_PATH):
                 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -2236,10 +2334,10 @@ class AccountSettingsTabPanel(QWidget):
 
             if bool(taipei_account) != bool(taipei_password):
                 QMessageBox.warning(self, "設定未完成", "臺北E大帳號與密碼必須同時填寫。")
-                return
+                return False
             if bool(egov_account) != bool(egov_password):
                 QMessageBox.warning(self, "設定未完成", "e等公務員帳號與密碼必須同時填寫。")
-                return
+                return False
 
             accounts = []
             if taipei_account:
@@ -2257,12 +2355,14 @@ class AccountSettingsTabPanel(QWidget):
                     "password": egov_password,
                 })
             if not accounts:
-                QMessageBox.warning(self, "設定未完成", "請至少設定一個平台的帳號與密碼。")
-                return
+                if not silent:
+                    QMessageBox.warning(self, "設定未完成", "請至少設定一個平台的帳號與密碼。")
+                return False
             data["accounts"] = accounts
 
             settings = data.get("settings", {})
             settings["headless"] = self.headless_cb.isChecked()
+            settings["cloud_sync_enabled"] = self.cloud_sync_cb.isChecked()
             ai_key = self.ai_key_input.text().strip()
             if ai_key:
                 settings["ai_api_key"] = ai_key
@@ -2273,13 +2373,18 @@ class AccountSettingsTabPanel(QWidget):
             data["settings"] = settings
 
             write_json_atomically(CONFIG_PATH, data)
+            self._saved_snapshot = self._snapshot_current_state()
 
             if hasattr(self, "on_settings_saved") and callable(self.on_settings_saved):
                 self.on_settings_saved()
 
-            QMessageBox.information(self, "成功", "✅ 帳號與系統設定已成功儲存並套用！")
+            if not silent:
+                QMessageBox.information(self, "成功", "✅ 帳號與系統設定已成功儲存並套用！")
+            return True
         except Exception as e:
-            QMessageBox.critical(self, "錯誤", f"❌ 儲存失敗：{e}")
+            if not silent:
+                QMessageBox.critical(self, "錯誤", f"❌ 儲存失敗：{e}")
+            return False
 
     def _open_url_native(self, url: str):
         """使用系統原生機制開啟網頁"""
@@ -2628,11 +2733,7 @@ class MainWindow(QWidget):
             self.quit_app()
 
     def changeEvent(self, event):
-        """最小化視窗時，自動隱藏視窗縮至右下角系統列"""
-        if event.type() == event.Type.WindowStateChange:
-            if self.isMinimized():
-                if hasattr(self, "tray_icon") and self.tray_icon.isVisible():
-                    QTimer.singleShot(0, self.hide)
+        """最小化視窗時維持於 Windows 工作列，僅在點擊右上角 X (closeEvent) 時隱藏至系統列。"""
         super().changeEvent(event)
 
     def quit_app(self):
@@ -2643,6 +2744,11 @@ class MainWindow(QWidget):
         QApplication.quit()
 
     def _start_single_platform(self, key):
+        # 🛡️ 若使用者在設定分頁修改了帳密或 API Key 卻忘記按儲存，啟動前自動驗證並儲存套用
+        if hasattr(self.immersive, "settings_panel") and self.immersive.settings_panel.has_unsaved_changes():
+            if not self.immersive.settings_panel.save_settings(silent=True):
+                return
+
         config_from_entry = load_config_data()
         accounts = config_from_entry.get("accounts", [])
         
@@ -2664,8 +2770,9 @@ class MainWindow(QWidget):
 
         full_config = acc_data.copy()
         full_config.update(config_from_entry.get("settings", {}))
-        # 🔒 即時讀取 UI 最新『背景執行』勾選狀態，避免設定未寫入檔案導致網頁視窗彈出！
+        # 🔒 即時讀取 UI 最新『背景執行』與『雲端同步』勾選狀態
         full_config["headless"] = self.immersive.settings_panel.headless_cb.isChecked()
+        full_config["cloud_sync_enabled"] = self.immersive.settings_panel.cloud_sync_cb.isChecked()
         panel = self.immersive.taipei_panel if key == "taipei_eda" else self.immersive.egov_panel
         exam_mode = panel.exam_mode_combo.currentData() or "sqlite"
         full_config["skip_exam_for_session"] = (exam_mode == "skip")

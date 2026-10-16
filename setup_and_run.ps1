@@ -137,12 +137,17 @@ if (-not $isEnvironmentReady) {
 
     $targetSqlitePyd = Join-Path $embedDir '_sqlite3.pyd'
     if (-not (Test-Path -LiteralPath $targetSqlitePyd)) {
-        $sqliteSources = @(
-
-            (Join-Path (Split-Path -Parent $projectDir) "01_AG-MONITOR-Smart-Video-Screening\python_embed\_sqlite3.pyd"),
-
-            (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313\DLLs\_sqlite3.pyd")
-        )
+        $sqliteSources = @()
+        $parentDir = Split-Path -Parent $projectDir
+        if ($parentDir -and (Test-Path -LiteralPath $parentDir)) {
+            $neighborPyds = Get-ChildItem -LiteralPath $parentDir -Directory -ErrorAction SilentlyContinue |
+                ForEach-Object { Join-Path $_.FullName 'python_embed\_sqlite3.pyd' } |
+                Where-Object { Test-Path -LiteralPath $_ -PathType Leaf }
+            if ($neighborPyds) {
+                $sqliteSources += $neighborPyds
+            }
+        }
+        $sqliteSources += (Join-Path $env:LOCALAPPDATA "Programs\Python\Python313\DLLs\_sqlite3.pyd")
         foreach ($src in $sqliteSources) {
             if ($src -and (Test-Path -LiteralPath $src)) {
                 Copy-Item -LiteralPath $src -Destination $targetSqlitePyd -Force
