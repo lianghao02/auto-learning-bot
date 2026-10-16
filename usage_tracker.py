@@ -56,7 +56,24 @@ def get_device_id() -> str:
     return device_id
 
 
+def is_cloud_sync_enabled() -> bool:
+    path = _config_path()
+    try:
+        if path.exists():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            settings = data.get("settings", {})
+            if isinstance(settings, dict) and "cloud_sync_enabled" in settings:
+                return bool(settings["cloud_sync_enabled"])
+            if "cloud_sync_enabled" in data:
+                return bool(data["cloud_sync_enabled"])
+    except Exception:
+        pass
+    return True
+
+
 def _post(payload: dict) -> dict | None:
+    if not is_cloud_sync_enabled():
+        return None
     try:
         resp = requests.post(GAS_URL, json=payload, timeout=6)
         if resp.status_code == 200:

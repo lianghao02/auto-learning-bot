@@ -5,7 +5,7 @@
 ---
 
 ## 1. 技術棧與環境邊界
-- **主力架構**：Python 3.13 + Selenium + ChromeDriver + Tkinter。
+- **主力架構**：Python 3.13 + Selenium + ChromeDriver + PySide6 (Qt)。
 - **自動化引擎邊界**：
   - 目前 Selenium 流程針對公務平台（臺北 E 大、e 等公務園）之 Session 維護、動態 DOM 與 Alert 彈窗攔截已經過長期穩定實戰檢驗，**嚴禁僅因 Playwright 較新穎而隨意更換底層自動化引擎**。
   - 主程式漸大時應優先進行模組化重構、抽離業務模型與補強單元測試，不因規模擴增更換語言。
