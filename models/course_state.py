@@ -37,16 +37,16 @@ class CourseStatus(Enum):
 
     @property
     def color_hex(self) -> str:
-        """莫蘭迪視覺語意色彩"""
+        """狀態語意色彩；於任務板白、奶黃、淡綠、淡紅列底上皆達 WCAG 4.5:1 以上。"""
         colors = {
-            CourseStatus.WAITING: "#6B777F",        # 灰色
-            CourseStatus.LEARNING: "#527582",       # 莫蘭迪石板青
-            CourseStatus.QUIZ: "#B88E56",           # 莫蘭迪琥珀金
-            CourseStatus.SURVEY: "#7D8C68",         # 莫蘭迪灰綠
-            CourseStatus.COMPLETED: "#547A65",      # 莫蘭迪深綠
-            CourseStatus.SKIPPED: "#8A847B",        # 暖灰
-            CourseStatus.MANUAL_REVIEW: "#C96D63",  # 莫蘭迪珊瑚橘紅
-            CourseStatus.ERROR: "#B85450",          # 柔和磚紅
+            CourseStatus.WAITING: "#4E5A62",        # 石板灰
+            CourseStatus.LEARNING: "#2F5866",       # 深石板青
+            CourseStatus.QUIZ: "#8A5A12",           # 深琥珀
+            CourseStatus.SURVEY: "#4F5E3A",         # 深灰綠
+            CourseStatus.COMPLETED: "#2F5E42",      # 深森林綠
+            CourseStatus.SKIPPED: "#5F5A52",        # 深暖灰
+            CourseStatus.MANUAL_REVIEW: "#A2402F",  # 深珊瑚紅
+            CourseStatus.ERROR: "#9E2F2A",          # 深磚紅
         }
         return colors.get(self, "#6B777F")
 

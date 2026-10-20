@@ -90,6 +90,7 @@ from utils.app_paths import (
 )
 from utils.portable_update import stage_portable_zip
 from usage_tracker import UsageHeartbeat
+from utils.office_theme import apply_office_theme, assistant_label, button_qss
 
 
 BASE_DIR = str(app_dir())
@@ -1333,6 +1334,7 @@ class PlatformTabPanel(QWidget):
         self.on_toggle_browser = on_toggle_browser
         self.browser_visible = False
         self._course_rows = {}  # course_id -> row_index
+        self._summary_states = {}  # 僅供已載入課程的介面摘要使用
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
@@ -1358,16 +1360,21 @@ class PlatformTabPanel(QWidget):
         top_ctrl_row.setSpacing(8)
 
         self.info_lbl = QLabel(f"{platform_title}控制台")
+        self.info_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.info_lbl.setMinimumWidth(120)
         self.info_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 14px; background: transparent; border: none;")
 
         self.execution_status_lbl = QLabel("● 待命")
+        self.execution_status_lbl.setWordWrap(True)
+        self.execution_status_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.execution_status_lbl.setStyleSheet("color: #66737D; font-size: 12px; font-weight: 700; background: transparent; border: none;")
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFixedHeight(14)
+        self.progress_bar.setFixedHeight(20)
+        self.progress_bar.setToolTip("目前研習進度；各課程累計時數與百分比請見表格")
         self.progress_bar.setMinimumWidth(120)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
@@ -1417,13 +1424,17 @@ class PlatformTabPanel(QWidget):
         """)
         self.toggle_browser_btn.clicked.connect(self._handle_toggle_browser)
 
-        top_ctrl_row.addWidget(self.info_lbl)
-        top_ctrl_row.addWidget(self.execution_status_lbl)
-        top_ctrl_row.addStretch()
+        self.assistant_art = assistant_label(resource_path("icons/office/office_assistant.png"))
+        top_ctrl_row.addWidget(self.assistant_art)
+        identity = QVBoxLayout()
+        identity.setSpacing(2)
+        identity.addWidget(self.info_lbl)
+        identity.addWidget(self.execution_status_lbl)
+        top_ctrl_row.addLayout(identity, 1)
         top_ctrl_row.addWidget(self.progress_bar)
-        top_ctrl_row.addWidget(self.start_btn)
-        top_ctrl_row.addWidget(self.stop_btn)
-        top_ctrl_row.addWidget(self.toggle_browser_btn)
+        self.total_progress_lbl = QLabel("已載入課程：0 門｜完成 0 門")
+        self.total_progress_lbl.setStyleSheet("color: #514333; font-size: 12px; border: none;")
+        top_ctrl_row.addWidget(self.total_progress_lbl)
         ctrl_layout.addLayout(top_ctrl_row)
 
         # 第二排：測驗模式選擇與即時研習摘要
@@ -1445,7 +1456,8 @@ class PlatformTabPanel(QWidget):
             "• 3. 跳過測驗：跳過測驗並嘗試完成滿意度問卷調查\n"
             "• 4. Gemini 批次作答：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
         )
-        self.exam_mode_combo.setMinimumWidth(270)
+        self.exam_mode_combo.setMinimumWidth(200)
+        self.exam_mode_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.exam_mode_combo.setStyleSheet("""
             QComboBox {
                 background: #F3F1ED; color: #2F3B43;
@@ -1466,10 +1478,14 @@ class PlatformTabPanel(QWidget):
 
         bottom_ctrl_row.addWidget(mode_label)
         bottom_ctrl_row.addWidget(self.exam_mode_combo)
-        bottom_ctrl_row.addSpacing(10)
-        bottom_ctrl_row.addWidget(self.stats_lbl)
         bottom_ctrl_row.addStretch()
+        bottom_ctrl_row.addWidget(self.start_btn)
+        bottom_ctrl_row.addWidget(self.stop_btn)
+        bottom_ctrl_row.addWidget(self.toggle_browser_btn)
+        self.stats_lbl.setWordWrap(False)
+        self.stats_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         ctrl_layout.addLayout(bottom_ctrl_row)
+        identity.addWidget(self.stats_lbl)
 
         layout.addWidget(ctrl_card)
 
@@ -1537,6 +1553,7 @@ class PlatformTabPanel(QWidget):
         self.course_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
         self.course_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
         self.course_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.course_table.verticalHeader().setDefaultSectionSize(26)
         self.course_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.course_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.course_table.setStyleSheet("""
@@ -1556,7 +1573,7 @@ class PlatformTabPanel(QWidget):
             }
         """)
         table_layout.addWidget(self.course_table)
-        self.workspace_tabs.addTab(table_container, "📋 課程狀態工作台")
+        self.workspace_tabs.addTab(table_container, "📋 課程任務告示板")
 
         # 頁籤 2：詳細 Log 視窗容器
         log_container = QWidget()
@@ -1673,8 +1690,8 @@ class PlatformTabPanel(QWidget):
     def update_account_info(self, name: str, account: str):
         """動態更新控制台頂部的暱稱與帳號資訊"""
         display_name = name.strip() if name and name.strip() else "預設使用者"
-        display_acc = f" / {account.strip()}" if account and account.strip() else ""
-        self.info_lbl.setText(f"{self.platform_title}控制台（使用者：{display_name}{display_acc}）")
+        self.info_lbl.setText(f"{self.platform_title}｜{display_name}")
+        self.info_lbl.setToolTip(f"目前使用者：{display_name}")
 
     def update_progress(self, current: int, total: int, status_text: str = None):
         """更新視覺化進度條與統計數字（防除零保護）"""
@@ -1725,22 +1742,9 @@ class PlatformTabPanel(QWidget):
         self.browser_visible = not self.browser_visible
         if self.browser_visible:
             self.toggle_browser_btn.setText("🙈 隱藏瀏覽器")
-            self.toggle_browser_btn.setStyleSheet("""
-                QPushButton {
-                    background: #8A8076; color: #FFFFFF; border-radius: 8px;
-                    padding: 8px 16px; font-weight: bold; font-size: 13px; border: none;
-                }
-                QPushButton:hover { background: #746A61; }
-            """)
         else:
             self.toggle_browser_btn.setText("👁️ 顯示瀏覽器")
-            self.toggle_browser_btn.setStyleSheet("""
-                QPushButton {
-                    background: #78869A; color: #FFFFFF; border-radius: 8px;
-                    padding: 8px 16px; font-weight: bold; font-size: 13px; border: none;
-                }
-                QPushButton:hover { background: #657489; }
-            """)
+        self.toggle_browser_btn.setStyleSheet(button_qss("browser"))
         if self.on_toggle_browser:
             self.on_toggle_browser(self.platform_key, self.browser_visible)
 
@@ -1801,12 +1805,14 @@ class PlatformTabPanel(QWidget):
             elif is_active:
                 row_bg = QColor("#EAF1EE")
             else:
-                row_bg = QColor("#FAF9F6" if row % 2 == 0 else "#F3F0EB")
+                row_bg = QColor("#FFFDF8" if row % 2 == 0 else "#F7EEDC")
             brush = QBrush(row_bg)
+            text_brush = QBrush(QColor("#24150B"))
 
             prefix = "▶ " if is_active else ""
             name_item = QTableWidgetItem(f"{prefix}{state.course_name}")
             name_item.setBackground(brush)
+            name_item.setForeground(text_brush)
             if is_active or is_alert:
                 f = name_item.font()
                 f.setBold(True)
@@ -1826,25 +1832,35 @@ class PlatformTabPanel(QWidget):
             time_item = QTableWidgetItem(state.formatted_study_progress)
             time_item.setTextAlignment(Qt.AlignCenter)
             time_item.setBackground(brush)
+            time_item.setForeground(text_brush)
             self.course_table.setItem(row, 2, time_item)
 
             reason_str = state.reason or "-"
             reason_item = QTableWidgetItem(reason_str)
             reason_item.setBackground(brush)
+            reason_item.setForeground(text_brush)
             reason_item.setToolTip(f"原因：{reason_str}")
             self.course_table.setItem(row, 3, reason_item)
 
             next_str = state.next_step or "-"
             next_item = QTableWidgetItem(next_str)
             next_item.setBackground(brush)
+            next_item.setForeground(text_brush)
             next_item.setToolTip(f"下一步：{next_str}")
             self.course_table.setItem(row, 4, next_item)
 
-            # 4. 同步頂部狀態列摘要與進度條
+            # 已載入課程摘要，不推測未掃描課程，也不回寫業務模型。
+            self._summary_states[c_id] = state.status
+            total = len(self._summary_states)
+            completed = sum(status == CourseStatus.COMPLETED for status in self._summary_states.values())
+            self.total_progress_lbl.setText(f"已載入課程：{total} 門｜完成 {completed} 門（{round(completed * 100 / total)}%）")
+
+            # 4. 同步頂部狀態列摘要
             if is_active:
                 self.stats_lbl.setText(f"📚 目前課程：{state.course_name} ({state.formatted_study_progress})")
                 if state.progress_pct > 0:
                     self.progress_bar.setValue(int(state.progress_pct))
+
             elif state.status == CourseStatus.COMPLETED:
                 self.stats_lbl.setText(f"✅ 已完成：{state.course_name}")
         except Exception as e:
@@ -1922,27 +1938,28 @@ class PlatformTabPanel(QWidget):
         except Exception:
             pass
 
+        # 羊皮紙日誌高對比色彩（適配 2D 遊戲工作台淺色底，徹底根除白底白字問題）
         level_colors = {
-            "INFO": "#8DB7C6",
-            "WARNING": "#D7AD75",
-            "WARN": "#D7AD75",
-            "ERROR": "#D8918C",
-            "CRITICAL": "#D67F82",
-            "DEBUG": "#B1B7BA",
+            "INFO": "#1565C0",      # 深曜石藍 (對比度 > 6.8:1)
+            "WARNING": "#B45309",   # 深焦糖琥珀橘 (對比度 > 5.5:1)
+            "WARN": "#B45309",
+            "ERROR": "#C62828",     # 深酒紅 (對比度 > 7.2:1)
+            "CRITICAL": "#880E4F",  # 深紫紅 (對比度 > 8.0:1)
+            "DEBUG": "#4B5563",     # 深石板灰 (對比度 > 6.0:1)
         }
-        level_color = level_colors.get(level_part, "#B1B7BA")
+        level_color = level_colors.get(level_part, "#4B5563")
 
-        # 動態判斷訊息內容高亮顏色
-        msg_color = "#F4F1EB"
+        # 動態判斷訊息內容高對比墨水顏色（嚴禁使用白色或淺黃色）
+        msg_color = "#21150C"       # 預設極致深黑墨水木色 (在 #FAF5E8 上對比度達 15.2:1)
         if any(k in msg_part for k in ["✅", "🏆", "成功", "圓滿達成", "完成"]):
-            msg_color = "#9CC4A8"
+            msg_color = "#1B5E20"   # 深森林翠綠 (對比度 > 7.5:1)
         elif any(k in msg_part for k in ["⚠️", "警告", "重試", "失敗", "跳過"]):
-            msg_color = "#DFC184"
+            msg_color = "#9A3412"   # 深赤赭色 (對比度 > 6.5:1)
         elif "研習進度" in msg_part or "時數" in msg_part:
-            msg_color = "#A5BDD3"
+            msg_color = "#0D47A1"   # 深海軍藍 (對比度 > 9.0:1)
 
         html = (
-            f'<span style="color:#D8B576; font-weight:600; font-family:\'Consolas\',monospace;">{esc(time_part)}</span> '
+            f'<span style="color:#795548; font-weight:700; font-family:\'Consolas\',monospace;">{esc(time_part)}</span> '
             f'<span style="color:{level_color}; font-weight:bold;">[{esc(level_part)}]</span> '
             f'<span style="color:{msg_color}; font-family:\'Consolas\',monospace;">{esc(msg_part)}</span>'
         )
@@ -2417,13 +2434,13 @@ class ImmersivePage(QWidget):
         self.setStyleSheet("background-color: #F2F0EC;")
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 16, 16, 16)
-        root.setSpacing(12)
+        root.setContentsMargins(10, 10, 10, 10)
+        root.setSpacing(8)
 
         # 頂部控制列
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
-        title_lbl = QLabel("行政效能領航員 - 控制中心")
+        title_lbl = QLabel("行政效能領航員")
         title_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 18px; background: transparent; border: none;")
 
         from app import AdminEfficiencyPilot as _AEP
@@ -2469,12 +2486,20 @@ class ImmersivePage(QWidget):
         top_bar.addWidget(self.start_all_btn)
         top_bar.addWidget(self.stop_all_btn)
         top_bar.addWidget(self.check_update_btn)
-        root.addLayout(top_bar)
+        # 原生工具列保留單列資訊密度，由 Qt Layout 分配寬度。
+        header_card = QFrame()
+        header_card.setObjectName("officeHeader")
+        header_card.setStyleSheet("#officeHeader { background: #FFF2DA; border: 2px solid #BD9871; border-radius: 10px; }")
+        header_layout = QVBoxLayout(header_card)
+        header_layout.setContentsMargins(10, 6, 10, 6)
+        header_layout.addLayout(top_bar)
+        root.addWidget(header_card)
 
         # 💡 初次使用引導橫幅（當尚未配置任何帳號時友善提醒）
         self.onboarding_banner = QFrame()
+        self.onboarding_banner.setObjectName("onboardingBanner")
         self.onboarding_banner.setStyleSheet("""
-            QFrame {
+            QFrame#onboardingBanner {
                 background: #FFF8E1;
                 border: 1px solid #FFE082;
                 border-radius: 8px;
@@ -2502,6 +2527,9 @@ class ImmersivePage(QWidget):
         banner_icon = QLabel("💡")
         banner_icon.setStyleSheet("font-size: 16px;")
         banner_text = QLabel("歡迎使用！目前尚未設定任何研習平台帳號，請先至「⚙️ 帳號與系統設定」填寫帳密以開始自動化學習。")
+        banner_text.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        banner_text.setWordWrap(True)
+        banner_text.setMinimumWidth(0)
         banner_btn = QPushButton("立即前往設定")
         banner_btn.clicked.connect(lambda: self.tabs.setCurrentIndex(2))
         banner_layout.addWidget(banner_icon)
@@ -2550,6 +2578,7 @@ class ImmersivePage(QWidget):
         root.addWidget(self.tabs)
 
         self.load_accounts_into_tabs()
+        apply_office_theme(self)
 
     def load_accounts_into_tabs(self):
         """讀取 config.json 自動動態將使用者名稱與帳號帶入各頁籤標題中"""
@@ -2629,8 +2658,9 @@ class MainWindow(QWidget):
         self.immersive.on_start_all = self._start_all_platforms
         self.immersive.on_check_update = self._handle_manual_check_update
 
-        self.resize(1000, 670)
-        self.setMinimumSize(950, 620)
+        self.setMinimumSize(760, 440)
+        available = QApplication.primaryScreen().availableGeometry()
+        self.resize(min(1120, available.width()), min(720, available.height()))
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
