@@ -43,7 +43,7 @@ class CourseStateModelTests(unittest.TestCase):
         )
         self.assertTrue(state.needs_manual)
         self.assertEqual(state.status.badge_text, "⚠️ 需人工確認")
-        self.assertEqual(state.status.color_hex, "#C96D63")
+        self.assertEqual(state.status.color_hex, "#A2402F")
 
     def test_formatted_study_progress(self):
         state = CourseState(
