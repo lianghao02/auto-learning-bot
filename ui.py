@@ -21,6 +21,7 @@ if script_dir not in sys.path:
 from app import AdminEfficiencyPilot
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -70,6 +71,7 @@ from PySide6.QtGui import (
     QPainter,
     QPalette,
     QPixmap,
+    QTextCursor,
 )
 from utils.helpers import (
     get_logger,
@@ -90,7 +92,10 @@ from utils.app_paths import (
 )
 from utils.portable_update import stage_portable_zip
 from usage_tracker import UsageHeartbeat
-from utils.office_theme import apply_office_theme, assistant_label, button_qss
+from utils.office_theme import INK as THEME_INK, ROW_COLORS, apply_office_theme, assistant_label, button_qss, render_log_entry
+from utils.log_feed import FILTERS as LOG_FILTERS, LogFeed, matches_filter as log_matches_filter
+
+LOG_MAX_ENTRIES = 1500
 
 
 BASE_DIR = str(app_dir())
@@ -1431,10 +1436,10 @@ class PlatformTabPanel(QWidget):
         identity.addWidget(self.info_lbl)
         identity.addWidget(self.execution_status_lbl)
         top_ctrl_row.addLayout(identity, 1)
-        top_ctrl_row.addWidget(self.progress_bar)
+        top_ctrl_row.addWidget(self.progress_bar, 0, Qt.AlignVCenter)
         self.total_progress_lbl = QLabel("已載入課程：0 門｜完成 0 門")
         self.total_progress_lbl.setStyleSheet("color: #514333; font-size: 12px; border: none;")
-        top_ctrl_row.addWidget(self.total_progress_lbl)
+        top_ctrl_row.addWidget(self.total_progress_lbl, 0, Qt.AlignVCenter)
         ctrl_layout.addLayout(top_ctrl_row)
 
         # 第二排：測驗模式選擇與即時研習摘要
@@ -1575,87 +1580,87 @@ class PlatformTabPanel(QWidget):
         table_layout.addWidget(self.course_table)
         self.workspace_tabs.addTab(table_container, "📋 課程任務告示板")
 
-        # 頁籤 2：詳細 Log 視窗容器
+        # 頁籤 2：冒險日誌（篩選 + 目前研習即時卡片 + 整理後的事件流）
+        self.log_feed = LogFeed(max_entries=LOG_MAX_ENTRIES)
+        self.log_filter = "all"
         log_container = QWidget()
         log_layout = QVBoxLayout(log_container)
         log_layout.setContentsMargins(6, 6, 6, 6)
         log_layout.setSpacing(6)
 
-        # Log 工具列（複製、開啟資料夾、清空）
         log_bar = QHBoxLayout()
-        log_bar.setSpacing(6)
-        log_tip = QLabel("💡 即時除錯日誌（發生異常或需排查進度時檢視）：")
-        log_tip.setStyleSheet("color: #71848E; font-size: 12px; font-weight: 500; background: transparent;")
-
-        copy_btn = QPushButton("📋 複製紀錄")
-        copy_btn.setStyleSheet("""
-            QPushButton {
-                background: #E8E5DF; color: #2F3B43; border-radius: 5px;
-                padding: 4px 10px; font-size: 12px; font-weight: 600; border: 1px solid #C9C5BE;
-            }
-            QPushButton:hover { background: #DCD8D0; }
-        """)
-        copy_btn.clicked.connect(self._copy_log_to_clipboard)
-
-        open_dir_btn = QPushButton("📁 開啟日誌資料夾")
-        open_dir_btn.setStyleSheet("""
-            QPushButton {
-                background: #E8E5DF; color: #2F3B43; border-radius: 5px;
-                padding: 4px 10px; font-size: 12px; font-weight: 600; border: 1px solid #C9C5BE;
-            }
-            QPushButton:hover { background: #DCD8D0; }
-        """)
-        open_dir_btn.clicked.connect(self._open_log_dir)
-
-        clear_btn = QPushButton("🧹 清空畫面")
-        clear_btn.setStyleSheet("""
-            QPushButton {
-                background: #E8E5DF; color: #71848E; border-radius: 5px;
-                padding: 4px 8px; font-size: 12px; border: 1px solid #C9C5BE;
-            }
-            QPushButton:hover { background: #DCD8D0; }
-        """)
-        clear_btn.clicked.connect(lambda: self.log_view.clear())
-
-        log_bar.addWidget(log_tip)
+        log_bar.setSpacing(4)
+        self.log_filter_group = QButtonGroup(self)
+        self.log_filter_group.setExclusive(True)
+        self.log_filter_buttons = {}
+        for key, (label, tip) in LOG_FILTERS.items():
+            chip = QPushButton(label)
+            chip.setObjectName("logFilterChip")
+            chip.setCheckable(True)
+            chip.setChecked(key == self.log_filter)
+            chip.setToolTip(tip)
+            chip.setCursor(Qt.PointingHandCursor)
+            chip.clicked.connect(lambda _=False, k=key: self._set_log_filter(k))
+            self.log_filter_group.addButton(chip)
+            self.log_filter_buttons[key] = chip
+            log_bar.addWidget(chip)
         log_bar.addStretch()
-        log_bar.addWidget(copy_btn)
-        log_bar.addWidget(open_dir_btn)
-        log_bar.addWidget(clear_btn)
+
+        self.log_issue_btn = QPushButton("⚠ 0")
+        self.log_issue_btn.setObjectName("logIssueBadge")
+        self.log_issue_btn.setToolTip("本次警告與錯誤數；點擊只看重點")
+        self.log_issue_btn.clicked.connect(lambda: self._set_log_filter("key"))
+        self.log_issue_btn.hide()
+        log_bar.addWidget(self.log_issue_btn)
+
+        copy_btn = QPushButton("📋 複製")
+        copy_btn.setToolTip("複製目前篩選中的紀錄")
+        copy_btn.clicked.connect(self._copy_log_to_clipboard)
+        open_dir_btn = QPushButton("📁 開啟日誌資料夾")
+        open_dir_btn.clicked.connect(self._open_log_dir)
+        clear_btn = QPushButton("🧹 清空")
+        clear_btn.setToolTip("只清空畫面，不影響日誌檔")
+        clear_btn.clicked.connect(self._clear_log_view)
+        for btn in (copy_btn, open_dir_btn, clear_btn):
+            btn.setObjectName("logToolButton")
+            log_bar.addWidget(btn)
         log_layout.addLayout(log_bar)
+
+        # 目前研習即時卡片：研習進度／進入單元原地更新，不再每 77 秒堆一行
+        self.live_card = QFrame()
+        self.live_card.setObjectName("liveCard")
+        live_layout = QHBoxLayout(self.live_card)
+        live_layout.setContentsMargins(10, 6, 10, 6)
+        live_layout.setSpacing(10)
+        self.live_icon_lbl = QLabel("⏱")
+        self.live_icon_lbl.setObjectName("liveIcon")
+        live_text = QVBoxLayout()
+        live_text.setSpacing(0)
+        self.live_course_lbl = QLabel("目前沒有研習中的課程")
+        self.live_course_lbl.setObjectName("liveCourse")
+        self.live_course_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.live_detail_lbl = QLabel("開始執行後，研習時數與目前單元會在這裡即時更新")
+        self.live_detail_lbl.setObjectName("liveDetail")
+        self.live_detail_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        live_text.addWidget(self.live_course_lbl)
+        live_text.addWidget(self.live_detail_lbl)
+        self.live_progress = QProgressBar()
+        self.live_progress.setObjectName("liveProgress")
+        self.live_progress.setRange(0, 1000)
+        self.live_progress.setValue(0)
+        self.live_progress.setFormat("--")
+        self.live_progress.setFixedWidth(200)
+        self.live_progress.setFixedHeight(18)
+        live_layout.addWidget(self.live_icon_lbl)
+        live_layout.addLayout(live_text, 1)
+        live_layout.addWidget(self.live_progress)
+        log_layout.addWidget(self.live_card)
 
         self.log_view = QTextEdit()
         self.log_view.setReadOnly(True)
-        self.log_view.document().setMaximumBlockCount(300)
-        self.log_view.setStyleSheet("""
-            QTextEdit {
-                background-color: #26333B;
-                border: none;
-                border-radius: 6px;
-                color: #F7F4EE;
-                font-family: 'Cascadia Mono', 'Microsoft JhengHei UI', 'Segoe UI', monospace;
-                font-size: 13px;
-                padding: 10px;
-            }
-            QScrollBar:vertical {
-                background: #26333B;
-                width: 8px;
-                border-radius: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: #596A73;
-                border-radius: 4px;
-                min-height: 24px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #71848E;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
-        log_layout.addWidget(self.log_view)
-        self.workspace_tabs.addTab(log_container, "📜 詳細執行紀錄 (Debug Log)")
+        self.log_view.document().setMaximumBlockCount(LOG_MAX_ENTRIES)
+        log_layout.addWidget(self.log_view, 1)
+        self.workspace_tabs.addTab(log_container, "📜 冒險日誌")
         layout.addWidget(self.workspace_tabs)
 
         self.log_signal.connect(self._append_text_safe)
@@ -1749,12 +1754,12 @@ class PlatformTabPanel(QWidget):
             self.on_toggle_browser(self.platform_key, self.browser_visible)
 
     def _copy_log_to_clipboard(self):
-        """將目前日誌視窗文字複製至系統剪貼簿"""
+        """將目前篩選中的日誌複製至系統剪貼簿"""
         clipboard = QApplication.clipboard()
-        if clipboard and self.log_view:
-            text = self.log_view.toPlainText()
-            clipboard.setText(text)
-            QMessageBox.information(self, "複製完成", "✅ 已將目前的執行紀錄複製至剪貼簿！")
+        if clipboard:
+            lines = [e.plain for e in self.log_feed.entries if log_matches_filter(e, self.log_filter)]
+            clipboard.setText("\n".join(lines))
+            QMessageBox.information(self, "複製完成", f"✅ 已複製 {len(lines)} 筆執行紀錄至剪貼簿！")
 
     def _open_log_dir(self):
         """開啟應用程式日誌所在的本機資料夾"""
@@ -1801,13 +1806,13 @@ class PlatformTabPanel(QWidget):
             is_active = (state.status in (CourseStatus.LEARNING, CourseStatus.QUIZ, CourseStatus.SURVEY))
             is_alert = (state.status in (CourseStatus.MANUAL_REVIEW, CourseStatus.ERROR) or bool(state.needs_manual))
             if is_alert:
-                row_bg = QColor("#FDF2F2")
+                row_bg = QColor(ROW_COLORS["alert"])
             elif is_active:
-                row_bg = QColor("#EAF1EE")
+                row_bg = QColor(ROW_COLORS["active"])
             else:
-                row_bg = QColor("#FFFDF8" if row % 2 == 0 else "#F7EEDC")
+                row_bg = QColor(ROW_COLORS["even"] if row % 2 == 0 else ROW_COLORS["odd"])
             brush = QBrush(row_bg)
-            text_brush = QBrush(QColor("#24150B"))
+            text_brush = QBrush(QColor(THEME_INK))
 
             prefix = "▶ " if is_active else ""
             name_item = QTableWidgetItem(f"{prefix}{state.course_name}")
@@ -1869,41 +1874,60 @@ class PlatformTabPanel(QWidget):
     def append_text(self, text):
         self.log_signal.emit(text)
 
-    def _format_taipei_log_line(self, text):
-        raw = (text or "").strip()
-        if not raw or re.fullmatch(r"[-=─\s]{8,}", raw) or raw.startswith("SCORM URL:") or raw.startswith("Player URL:"):
-            return None
-        replacements = [
-            (r"^===\s*登入\s*===$", "INFO", "🔑 正在登入臺北E大..."),
-            (r"^===\s*掃描課程清單\s*===$", "INFO", "📋 正在掃描課程清單..."),
-            (r"^===\s*最終課程狀態\s*===$", "INFO", "📋 最終課程狀態"),
-            (r"^Login OK\b.*", "INFO", "✅ 臺北E大登入成功"),
-            (r"^登入失敗$", "ERROR", "❌ 臺北E大登入失敗"),
-            (r"^沒有未完成課程！$", "INFO", "✅ 沒有未完成課程"),
-            (r"^完成！$", "INFO", "🏆 臺北E大所有任務完成！"),
-        ]
-        for pattern, level, msg in replacements:
-            if re.match(pattern, raw):
-                return level, msg
-        if "⚠️" in raw:
-            return "WARNING", raw
-        return "INFO", raw
+    def _set_log_filter(self, key):
+        self.log_filter = key
+        chip = self.log_filter_buttons.get(key)
+        if chip and not chip.isChecked():
+            chip.setChecked(True)
+        self._rerender_log()
+
+    def _clear_log_view(self):
+        self.log_feed.clear()
+        self.log_view.clear()
+        self._refresh_live_card()
+        self._refresh_issue_badge()
+
+    def _rerender_log(self):
+        self.log_view.setUpdatesEnabled(False)
+        self.log_view.clear()
+        for entry in self.log_feed.entries:
+            if log_matches_filter(entry, self.log_filter):
+                self.log_view.append(render_log_entry(entry))
+        self.log_view.setUpdatesEnabled(True)
+        bar = self.log_view.verticalScrollBar()
+        bar.setValue(bar.maximum())
+
+    def _refresh_issue_badge(self):
+        count = self.log_feed.issue_count
+        self.log_issue_btn.setText(f"⚠ {count} 則需留意")
+        self.log_issue_btn.setVisible(count > 0)
+
+    def _refresh_live_card(self):
+        live = self.log_feed.live
+        if live.course:
+            self.live_course_lbl.setText(f"目前課程：{live.course}")
+            self.live_course_lbl.setToolTip(live.course)
+        elif not live.active:
+            self.live_course_lbl.setText("目前沒有研習中的課程")
+        if live.active:
+            parts = [f"{live.elapsed} / {live.target}"]
+            if live.unit:
+                parts.append(f"單元：{live.unit}")
+            parts.append(f"{live.updated} 更新")
+            self.live_detail_lbl.setText("｜".join(parts))
+            self.live_detail_lbl.setToolTip("\n".join(parts))
+            self.live_progress.setValue(int(min(live.pct, 100) * 10))
+            self.live_progress.setFormat(f"{live.pct:.1f}%")
+        else:
+            self.live_detail_lbl.setText("等待進入教室後回報研習時數" if live.course else "開始執行後，研習時數與目前單元會在這裡即時更新")
+            self.live_progress.setValue(0)
+            self.live_progress.setFormat("--")
 
     def _append_text_safe(self, text):
-        text = re.sub(r"\x1b\[[0-9;]*m", "", text)
-        m = re.match(r"(\d{2}:\d{2}:\d{2}) \[(.*?)\] (.*)", text)
-
-        def esc(s):
-            return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-        if m:
-            time_part, level_part, msg_part = m.groups()
-        else:
-            formatted = self._format_taipei_log_line(text)
-            if not formatted:
-                return
-            level_part, msg_part = formatted
-            time_part = datetime.now().strftime("%H:%M:%S")
+        update = self.log_feed.add(text)
+        if update is None:
+            return
+        msg_part = update.message
 
         if any(k in msg_part for k in ["所有任務圓滿達成", "所有任務完成", "流程未完整完成"]):
             self.set_running_state(False, "● 本次流程已結束，可再次開始執行")
@@ -1911,7 +1935,7 @@ class PlatformTabPanel(QWidget):
         # 🧠 Log 智慧進度攔截器 (Auto Progress Interceptor)
         try:
             # 1. 攔截總課程門數進度：例如 "[3/10] 正在協助研習：..."
-            m_course = re.search(r"\[(\d+)/(\d+)\]\s*(.*)", msg_part)
+            m_course = re.search(r"\[(\d+)/(\d+)\]\s*正在協助研習\s*[:：]?\s*(.*)", msg_part)
             if m_course:
                 c_curr, c_tot, c_name = int(m_course.group(1)), int(m_course.group(2)), m_course.group(3).strip()
                 pct = int((c_curr / c_tot) * 100) if c_tot > 0 else 0
@@ -1922,51 +1946,32 @@ class PlatformTabPanel(QWidget):
             m_time = re.search(r"研習進度\s*[:：]\s*(\d{2}:\d{2}:\d{2}\s*/\s*\d{2}:\d{2}:\d{2}).*?([\d\.]+)%", msg_part)
             if m_time:
                 time_str, pct_float = m_time.group(1), float(m_time.group(2))
-                pct_int = min(100, max(0, int(pct_float)))
-                # 即時無條件動態驅動右側進度條！
-                self.progress_bar.setValue(pct_int)
+                self.progress_bar.setValue(min(100, max(0, int(pct_float))))
                 self.stats_lbl.setText(f"📊 本課程研習時數：{time_str} ({pct_float:.1f}%)")
-
-            # 3. 攔截「進入單元...」
-            m_unit = re.search(r"進入單元\s*[:：]\s*(.*)", msg_part)
-            if m_unit:
-                unit_name = m_unit.group(1).strip()
-                cur_text = self.stats_lbl.text()
-                if "研習進度" in cur_text:
-                    prefix = cur_text.split(" - ")[0]
-                    self.stats_lbl.setText(f"{prefix} - 單元: {unit_name[:10]}...")
         except Exception:
             pass
 
-        # 羊皮紙日誌高對比色彩（適配 2D 遊戲工作台淺色底，徹底根除白底白字問題）
-        level_colors = {
-            "INFO": "#1565C0",      # 深曜石藍 (對比度 > 6.8:1)
-            "WARNING": "#B45309",   # 深焦糖琥珀橘 (對比度 > 5.5:1)
-            "WARN": "#B45309",
-            "ERROR": "#C62828",     # 深酒紅 (對比度 > 7.2:1)
-            "CRITICAL": "#880E4F",  # 深紫紅 (對比度 > 8.0:1)
-            "DEBUG": "#4B5563",     # 深石板灰 (對比度 > 6.0:1)
-        }
-        level_color = level_colors.get(level_part, "#4B5563")
+        if update.live_changed:
+            self._refresh_live_card()
+        entry = update.entry
+        if entry is None:
+            return
+        self._refresh_issue_badge()
+        if not log_matches_filter(entry, self.log_filter):
+            return
 
-        # 動態判斷訊息內容高對比墨水顏色（嚴禁使用白色或淺黃色）
-        msg_color = "#21150C"       # 預設極致深黑墨水木色 (在 #FAF5E8 上對比度達 15.2:1)
-        if any(k in msg_part for k in ["✅", "🏆", "成功", "圓滿達成", "完成"]):
-            msg_color = "#1B5E20"   # 深森林翠綠 (對比度 > 7.5:1)
-        elif any(k in msg_part for k in ["⚠️", "警告", "重試", "失敗", "跳過"]):
-            msg_color = "#9A3412"   # 深赤赭色 (對比度 > 6.5:1)
-        elif "研習進度" in msg_part or "時數" in msg_part:
-            msg_color = "#0D47A1"   # 深海軍藍 (對比度 > 9.0:1)
-
-        html = (
-            f'<span style="color:#795548; font-weight:700; font-family:\'Consolas\',monospace;">{esc(time_part)}</span> '
-            f'<span style="color:{level_color}; font-weight:bold;">[{esc(level_part)}]</span> '
-            f'<span style="color:{msg_color}; font-family:\'Consolas\',monospace;">{esc(msg_part)}</span>'
-        )
-
-        self.log_view.append(html)
         bar = self.log_view.verticalScrollBar()
-        bar.setValue(bar.maximum())
+        at_bottom = bar.value() >= bar.maximum() - 4
+        if update.merged:
+            doc = self.log_view.document()
+            cursor = QTextCursor(doc.lastBlock())
+            cursor.select(QTextCursor.BlockUnderCursor)
+            cursor.removeSelectedText()
+            if doc.blockCount() == 1 and not doc.firstBlock().text():
+                self.log_view.clear()
+        self.log_view.append(render_log_entry(entry))
+        if at_bottom:
+            bar.setValue(bar.maximum())
 
 
 class AccountSettingsTabPanel(QWidget):
@@ -2440,7 +2445,8 @@ class ImmersivePage(QWidget):
         # 頂部控制列
         top_bar = QHBoxLayout()
         top_bar.setSpacing(8)
-        title_lbl = QLabel("行政效能領航員")
+        title_lbl = QLabel("🎮 行政效能領航員")
+        self.title_lbl = title_lbl
         title_lbl.setStyleSheet("color: #2F3B43; font-weight: 700; font-size: 18px; background: transparent; border: none;")
 
         from app import AdminEfficiencyPilot as _AEP
