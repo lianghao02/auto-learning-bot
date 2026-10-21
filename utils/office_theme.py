@@ -1,12 +1,17 @@
-"""2D 遊戲 Q 版工作台主題（高對比度木質與羊皮紙風格）。
+"""2D 遊戲 Q 版工作台主題（晴空糖果風：粗墨線外框、厚底按鈕、深色冒險日誌）。
 
 維護介面視覺與元件樣式，不介入自動化與業務模型。
+所有文字色彩組合皆維持 WCAG AA 4.5:1 以上（見 tests/test_office_theme.py）。
 """
-from PySide6.QtWidgets import QPushButton, QFrame, QLabel, QTableWidget, QTextEdit, QProgressBar, QComboBox, QLineEdit, QCheckBox, QScrollArea
-from PySide6.QtGui import QPixmap
-from PySide6.QtCore import Qt
+from html import escape
 import os
 import sys
+
+from PySide6.QtWidgets import QPushButton, QFrame, QLabel, QLineEdit, QCheckBox, QComboBox, QScrollArea
+from PySide6.QtGui import QPixmap
+from PySide6.QtCore import Qt
+
+from utils.log_feed import CATEGORIES
 
 
 def _office_asset(name):
@@ -14,470 +19,586 @@ def _office_asset(name):
     base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(base, "icons", "office", name).replace("\\", "/")
 
-# ── 1. 2D 遊戲卡匣／書籤式分頁樣式 ──────────────────────────────
-TABS_QSS = """
-QTabWidget::pane {
-    background: #FFFDF8;
-    border: 2px solid #5C3D24;
-    border-radius: 10px;
-    top: -2px;
+
+# ── 0. 色票（單一來源） ─────────────────────────────────────
+INK = "#26304A"            # 卡通墨線：外框、標題文字
+INK_DEEP = "#171E31"       # 厚底陰影
+SKY_TOP = "#8FD3F4"        # 背景天空漸層
+SKY_BOTTOM = "#D4EFFA"
+CARD = "#FFFFFF"
+CREAM = "#FFF8E6"
+BUTTER = "#FFE38A"         # 次要按鈕、徽章
+SUN = "#FFC93C"            # 選中分頁、焦點
+ICE = "#E8F4FC"            # 未選中分頁、輸入框底
+MINT = "#3DBE5A"
+
+# 任務板列底色：一般、斑馬、進行中、需注意
+ROW_COLORS = {
+    "even": "#FFFFFF",
+    "odd": "#F1F7FC",
+    "active": "#E2F6E6",
+    "alert": "#FDECEC",
 }
-QTabBar::tab {
-    background: #E8D6BC;
-    color: #382415;
-    border: 2px solid #7D5737;
-    border-bottom: 2px solid #5C3D24;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    padding: 6px 14px;
+
+# 冒險日誌（深色夜空底）
+LOG_BG = "#1E2440"
+LOG_TEXT = "#EEF1FF"
+LOG_TIME = "#93A4D6"
+LOG_DETAIL = "#9AA5CC"
+LOG_LEVEL_COLORS = {"ERROR": "#FF8F8F", "CRITICAL": "#FF8F8F", "WARNING": "#FFD166"}
+LOG_SUCCESS = "#8DF0A8"
+LOG_HEADER = "#FFE38A"
+LOG_MILESTONE = "#7FE0FF"
+LOG_CARD_BG = "#2F3A6B"
+LOG_CHIP_COLORS = {
+    "login": "#FFD166",
+    "course": "#7FD8F0",
+    "study": "#8EE3A5",
+    "quiz": "#FFB4A2",
+    "survey": "#D2B8FF",
+    "bank": "#F7E08F",
+    "system": "#C9D1E8",
+}
+
+
+# ── 1. 卡匣式分頁 ─────────────────────────────────────────
+TABS_QSS = f"""
+QTabWidget::pane {{
+    background: {CARD};
+    border: 2px solid {INK};
+    border-radius: 14px;
+    top: -2px;
+}}
+QTabBar::tab {{
+    background: {ICE};
+    color: {INK};
+    border: 2px solid {INK};
+    border-bottom: 2px solid {INK};
+    border-top-left-radius: 12px;
+    border-top-right-radius: 12px;
+    padding: 6px 16px;
     margin-right: 4px;
     font-size: 13px;
-    font-weight: 700;
-}
-QTabBar::tab:!selected {
-    background: #E8D6BC;
-    color: #382415;
-}
-QTabBar::tab:selected {
-    background: #3B7449;
-    color: #FFFFFF;
-    border: 2px solid #5C3D24;
-    border-bottom: 2px solid #3B7449;
-}
-QTabBar::tab:hover:!selected {
-    background: #F4E7D4;
-    color: #1A0F06;
-}
-QTabBar::tab:focus {
+    font-weight: 800;
+}}
+QTabBar::tab:selected {{
+    background: {SUN};
+    color: {INK};
+    border-bottom: 2px solid {SUN};
+}}
+QTabBar::tab:hover:!selected {{
+    background: #FFF1C2;
+}}
+QTabBar::tab:focus {{
     border: 2px solid #2563EB;
-}
+}}
 """
 
-# ── 2. Q 彈厚底遊戲按鈕樣式 ──────────────────────────────────
+
+# ── 2. Q 彈厚底遊戲按鈕 ─────────────────────────────────────
 def button_qss(role="normal"):
     """
-    產生具備微立體厚下巴（Chunky Bevel）與按壓回饋的 2D Q 版遊戲按鈕 QSS。
-    roles: 'start' (綠), 'stop' (紅), 'browser' (藍), 'normal' (米金)
+    卡通厚底按鈕：統一墨線外框＋5px 底部陰影，按下時陰影收合產生下壓感。
+    roles: 'start' (綠), 'stop' (紅), 'browser' (藍), 'normal' (奶油黃)
     """
     colors = {
-        # 白字按鈕面色皆 ≥ 4.5:1（start 5.0、stop 5.3、browser 5.2）；滑過改深色，避免變淺後對比不足。
-        "start":   ("#1B7F47", "#16703E", "#FFFFFF", "#145C34", "#0F4527"),
-        "stop":    ("#C8323F", "#B02A36", "#FFFFFF", "#8C1C2A", "#6E1520"),
-        "browser": ("#2563EB", "#1D4ED8", "#FFFFFF", "#1A44B8", "#14348C"),
-        "normal":  ("#FCE8C3", "#FFF0D4", "#2E1C0F", "#8E623B", "#6C492A"),
+        # 面色、滑過色、文字色；白字面色皆 ≥ 4.5:1（start 5.0、stop 5.3、browser 5.2）
+        "start":   ("#1B7F47", "#146B3B", "#FFFFFF"),
+        "stop":    ("#C8323F", "#A92A35", "#FFFFFF"),
+        "browser": ("#2563EB", "#1D4ED8", "#FFFFFF"),
+        "normal":  (BUTTER, "#FFD75E", INK),
     }
-    bg, hover, fg, edge, shadow = colors.get(role, colors["normal"])
+    bg, hover, fg = colors.get(role, colors["normal"])
     return f"""
     QPushButton {{
         background: {bg};
         color: {fg};
-        border: 2px solid {edge};
-        border-bottom: 4px solid {shadow};
-        border-radius: 8px;
-        padding: 4px 10px;
+        border: 2px solid {INK};
+        border-bottom: 5px solid {INK_DEEP};
+        border-radius: 12px;
+        padding: 4px 12px;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
     }}
     QPushButton:hover {{
         background: {hover};
     }}
     QPushButton:pressed {{
-        border-bottom: 2px solid {shadow};
-        padding-top: 6px;
+        border-bottom: 2px solid {INK_DEEP};
+        padding-top: 7px;
     }}
     QPushButton:disabled {{
-        background: #DDD4C6;
-        color: #5E5548;
-        border: 2px solid #B4AA9C;
-        border-bottom: 2px solid #B4AA9C;
+        background: #DCE3EA;
+        color: #4F5B6B;
+        border: 2px solid #9AA6B5;
+        border-bottom: 3px solid #9AA6B5;
     }}
     QPushButton:focus {{
-        border-color: #F2B705;
+        border-color: #E09B00;
     }}
     """
 
-# ── 3. 2D 任務看板表格樣式 (高對比羊皮紙 + 木刻銘牌) ─────────────
-TABLE_QSS = """
-QTableWidget {
-    background-color: #FFFDF8;
-    color: #24150B;
-    border: 2px solid #5C3D24;
-    border-radius: 8px;
-    gridline-color: #DFCBB0;
+
+# ── 3. 任務告示板表格 ──────────────────────────────────────
+_SCROLLBAR_QSS = f"""
+QScrollBar:vertical {{
+    background: {ICE};
+    width: 12px;
+    border: 1px solid #B9CFE0;
+    border-radius: 6px;
+    margin: 0px;
+}}
+QScrollBar::handle:vertical {{
+    background: #8AB4D8;
+    border: 1px solid {INK};
+    border-radius: 5px;
+    min-height: 24px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background: #6E9FCB;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+    height: 0px;
+}}
+QScrollBar:horizontal {{
+    background: {ICE};
+    height: 12px;
+    border: 1px solid #B9CFE0;
+    border-radius: 6px;
+    margin: 0px;
+}}
+QScrollBar::handle:horizontal {{
+    background: #8AB4D8;
+    border: 1px solid {INK};
+    border-radius: 5px;
+    min-width: 24px;
+}}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0px;
+}}
+"""
+
+TABLE_QSS = f"""
+QTableWidget {{
+    background-color: {CARD};
+    color: {INK};
+    border: 2px solid {INK};
+    border-radius: 10px;
+    gridline-color: #D5E3EF;
     font-size: 12px;
     font-weight: 500;
     selection-background-color: #CFE4F9;
     selection-color: #0B253E;
-}
-QHeaderView::section {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #EAD7BA, stop:1 #DCBD93);
-    color: #2A1709;
+}}
+QHeaderView::section {{
+    background: {INK};
+    color: {BUTTER};
     font-size: 12px;
     font-weight: 800;
-    padding: 5px 6px;
-    border: 1px solid #9D764A;
-    border-bottom: 2px solid #5C3D24;
-}
-QScrollBar:vertical {
-    background: #EFE3D0;
+    padding: 6px 6px;
+    border: none;
+    border-right: 1px solid #3A4666;
+}}
+QTableCornerButton::section {{
+    background: {INK};
+    border: none;
+}}
+""" + _SCROLLBAR_QSS
+
+
+# ── 4. 冒險日誌（深色夜空底，事件色彩見 render_log_entry） ─────────
+LOG_VIEW_QSS = f"""
+QTextEdit {{
+    background-color: {LOG_BG};
+    color: {LOG_TEXT};
+    selection-background-color: #4C6FFF;
+    selection-color: #FFFFFF;
+    border: 2px solid {INK};
+    border-radius: 12px;
+    font-family: 'Microsoft JhengHei UI', 'Segoe UI', sans-serif;
+    font-size: 12px;
+    padding: 8px 10px;
+}}
+QScrollBar:vertical {{
+    background: #283055;
     width: 12px;
-    border: 1px solid #C4B094;
+    border: none;
     border-radius: 6px;
-    margin: 0px;
-}
-QScrollBar::handle:vertical {
-    background: #A07952;
-    border: 1px solid #5C3D24;
-    border-radius: 5px;
+}}
+QScrollBar::handle:vertical {{
+    background: #56629A;
+    border-radius: 6px;
     min-height: 24px;
-}
-QScrollBar::handle:vertical:hover {
-    background: #BD946A;
-}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+}}
+QScrollBar::handle:vertical:hover {{
+    background: #7180C2;
+}}
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
-}
-QScrollBar:horizontal {
-    background: #EFE3D0;
-    height: 12px;
-    border: 1px solid #C4B094;
-    border-radius: 6px;
-    margin: 0px;
-}
-QScrollBar::handle:horizontal {
-    background: #A07952;
-    border: 1px solid #5C3D24;
-    border-radius: 5px;
-    min-width: 24px;
-}
-QScrollBar::handle:horizontal:hover {
-    background: #BD946A;
-}
-QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
-    width: 0px;
-}
+}}
 """
 
-# ── 4. 冒險日誌樣式 (羊皮紙高對比文字) ──────────────────────────
-LOG_VIEW_QSS = """
-QTextEdit {
-    background-color: #FAF5E8;
-    color: #21150C;
-    selection-background-color: #2563EB;
-    selection-color: #FFFFFF;
-    border: 2px solid #5C3D24;
-    border-radius: 8px;
-    font-family: 'Cascadia Mono', 'Consolas', 'Microsoft JhengHei UI', monospace;
+LOG_CHIP_QSS = f"""
+QPushButton#logFilterChip {{
+    background: {ICE};
+    color: {INK};
+    border: 2px solid {INK};
+    border-radius: 13px;
+    padding: 3px 12px;
+    font-size: 12px;
+    font-weight: 800;
+}}
+QPushButton#logFilterChip:hover {{
+    background: #FFF1C2;
+}}
+QPushButton#logFilterChip:checked {{
+    background: {SUN};
+}}
+QPushButton#logIssueBadge {{
+    background: #FDECEC;
+    color: #9E2F2A;
+    border: 2px solid #9E2F2A;
+    border-radius: 13px;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 800;
+}}
+"""
+
+LIVE_CARD_QSS = f"""
+QFrame#liveCard {{
+    background: {LOG_CARD_BG};
+    border: 2px solid {INK};
+    border-bottom: 5px solid {INK_DEEP};
+    border-radius: 12px;
+}}
+QLabel#liveIcon {{
+    background: {SUN};
+    color: {INK};
+    border: 2px solid {INK};
+    border-radius: 15px;
+    min-width: 26px; max-width: 26px;
+    min-height: 26px; max-height: 26px;
+    font-size: 14px;
+    qproperty-alignment: AlignCenter;
+}}
+QLabel#liveCourse {{
+    color: #FFFFFF;
+    font-size: 13px;
+    font-weight: 800;
+    background: transparent;
+    border: none;
+}}
+QLabel#liveDetail {{
+    color: #C9D3F5;
     font-size: 12px;
     font-weight: 600;
-    padding: 8px 10px;
-    line-height: 1.4;
-}
-QScrollBar:vertical {
-    background: #EFE3D0;
-    width: 12px;
-    border: 1px solid #C4B094;
-    border-radius: 6px;
-}
-QScrollBar::handle:vertical {
-    background: #A07952;
-    border: 1px solid #5C3D24;
-    border-radius: 5px;
-    min-height: 24px;
-}
-QScrollBar::handle:vertical:hover {
-    background: #BD946A;
-}
-QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-    height: 0px;
-}
-"""
-
-# ── 5. EXP 經驗值進度條樣式 ────────────────────────────────────
-PROGRESS_BAR_QSS = """
-QProgressBar {
-    background-color: #E5D5BD;
-    color: #1A0F06;
-    border: 2px solid #5C3D24;
-    border-radius: 8px;
+    background: transparent;
+    border: none;
+}}
+QProgressBar#liveProgress {{
+    background: #1B2140;
+    color: #FFFFFF;
+    border: 2px solid {INK_DEEP};
+    border-radius: 9px;
     text-align: center;
-    font-weight: 800;
     font-size: 11px;
-}
-QProgressBar::chunk {
-    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #74D645, stop:1 #43A047);
-    border-radius: 5px;
-}
+    font-weight: 800;
+}}
+QProgressBar#liveProgress::chunk {{
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #1F8A3E, stop:1 #176E31);
+    border-radius: 7px;
+}}
 """
 
-# ── 6. 下拉選單樣式 ──────────────────────────────────────────
-COMBO_BOX_QSS = """
-QComboBox {
-    background: #FFFDF8;
-    color: #26160B;
-    border: 2px solid #7E5B3E;
+
+def render_log_entry(entry):
+    """把 LogEntry 轉成 QTextEdit 可顯示的 HTML（單一段落）。"""
+    label, icon = CATEGORIES.get(entry.category, ("系統", "⚙"))
+    chip_bg = LOG_CHIP_COLORS.get(entry.category, LOG_CHIP_COLORS["system"])
+    text = escape(entry.text)
+    time_html = f'<span style="color:{LOG_TIME}; font-family:Consolas,monospace;">{escape(entry.time)}</span>'
+    chip = f'<span style="background-color:{chip_bg}; color:{LOG_BG}; font-weight:800;">&nbsp;{icon} {label}&nbsp;</span>'
+    repeat = f' <span style="color:{LOG_HEADER}; font-weight:800;">×{entry.repeat}</span>' if entry.repeat > 1 else ""
+
+    if entry.kind == "header":
+        body = f'<span style="color:{LOG_HEADER}; font-size:13px; font-weight:800;">◆ {text}</span>'
+        return f'<p style="margin-top:8px;">{time_html}&nbsp; {chip}&nbsp; {body}{repeat}</p>'
+    if entry.kind == "card":
+        color = LOG_LEVEL_COLORS.get(entry.level, "#FFFFFF")
+        body = f'<span style="background-color:{LOG_CARD_BG}; color:{color}; font-weight:700;">&nbsp;{text}&nbsp;</span>'
+        return f'<p>{time_html}&nbsp; {chip}&nbsp; {body}{repeat}</p>'
+    if entry.kind == "detail":
+        body = f'<span style="color:{LOG_DETAIL}; font-size:11px;">　· {text}</span>'
+        return f'<p>{time_html}&nbsp; {body}{repeat}</p>'
+
+    if entry.level in LOG_LEVEL_COLORS:
+        color, weight = LOG_LEVEL_COLORS[entry.level], 800
+    elif entry.kind == "milestone":
+        color, weight = LOG_MILESTONE, 700
+    elif entry.is_success:
+        color, weight = LOG_SUCCESS, 700
+    else:
+        color, weight = LOG_TEXT, 500
+    body = f'<span style="color:{color}; font-weight:{weight};">{text}</span>'
+    return f'<p>{time_html}&nbsp; {chip}&nbsp; {body}{repeat}</p>'
+
+
+# ── 5. 進度條（血條風） ─────────────────────────────────────
+PROGRESS_BAR_QSS = f"""
+QProgressBar {{
+    background-color: {ICE};
+    color: {INK};
+    border: 2px solid {INK};
+    border-radius: 10px;
+    text-align: center;
+    font-weight: 900;
+    font-size: 11px;
+}}
+QProgressBar::chunk {{
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #8BE88A, stop:1 {MINT});
     border-radius: 7px;
+}}
+"""
+
+# ── 6. 下拉選單 ──────────────────────────────────────────
+COMBO_BOX_QSS = f"""
+QComboBox {{
+    background: {CARD};
+    color: {INK};
+    border: 2px solid {INK};
+    border-radius: 10px;
     padding: 4px 8px;
     font-size: 12px;
-    font-weight: 600;
+    font-weight: 700;
     min-height: 22px;
-}
-QComboBox:hover {
-    border-color: #5C3D24;
-    background: #FFFFFF;
-}
-QComboBox:focus {
+}}
+QComboBox:hover {{
+    background: #FFFDF2;
+}}
+QComboBox:focus {{
     border: 2px solid #2563EB;
-}
-QComboBox::drop-down {
+}}
+QComboBox::drop-down {{
     subcontrol-origin: padding;
     subcontrol-position: top right;
-    width: 22px;
-    border-left: 1px solid #BA9B7F;
-    background: #F3E4CD;
-    border-top-right-radius: 5px;
-    border-bottom-right-radius: 5px;
-}
-QComboBox::down-arrow {
+    width: 24px;
+    border-left: 2px solid {INK};
+    background: {BUTTER};
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}}
+QComboBox::down-arrow {{
     image: url(__COMBO_ARROW__);
     width: 10px;
     height: 7px;
-}
-QComboBox::down-arrow:on {
+}}
+QComboBox::down-arrow:on {{
     top: 1px;
-}
-QComboBox QAbstractItemView {
-    background: #FFFDF8;
-    color: #26160B;
-    border: 2px solid #5C3D24;
-    selection-background-color: #CFE4F9;
-    selection-color: #0B253E;
+}}
+QComboBox QAbstractItemView {{
+    background: {CARD};
+    color: {INK};
+    border: 2px solid {INK};
+    selection-background-color: {SUN};
+    selection-color: {INK};
     font-weight: 600;
-}
+}}
 """
 
-# ── 7. 輸入框樣式 ────────────────────────────────────────────
-LINE_EDIT_QSS = """
-QLineEdit {
-    background: #FFFDF8;
-    color: #26160B;
-    border: 2px solid #7E5B3E;
-    border-radius: 7px;
+# ── 7. 輸入框 ────────────────────────────────────────────
+LINE_EDIT_QSS = f"""
+QLineEdit {{
+    background: {CARD};
+    color: {INK};
+    border: 2px solid {INK};
+    border-radius: 10px;
     padding: 5px 8px;
     font-size: 13px;
     font-weight: 600;
     min-height: 22px;
-}
-QLineEdit:focus {
+}}
+QLineEdit:focus {{
     border: 2px solid #2563EB;
-    background: #FFFFFF;
-}
+    background: #FFFDF2;
+}}
 """
 
-# ── 8. 複選框樣式 ────────────────────────────────────────────
-CHECK_BOX_QSS = """
-QCheckBox {
-    color: #241409;
+# ── 8. 複選框 ────────────────────────────────────────────
+CHECK_BOX_QSS = f"""
+QCheckBox {{
+    color: {INK};
     font-size: 13px;
     font-weight: 700;
     spacing: 8px;
     background: transparent;
-}
-QCheckBox::indicator {
+}}
+QCheckBox::indicator {{
     width: 18px;
     height: 18px;
-    background: #FFFDF8;
-    border: 2px solid #5C3D24;
-    border-radius: 5px;
-}
-QCheckBox::indicator:hover {
-    background: #FFFFFF;
-    border-color: #3B7449;
-}
-QCheckBox::indicator:checked {
-    background: #3B7449;
-    border: 2px solid #23522E;
+    background: {CARD};
+    border: 2px solid {INK};
+    border-radius: 6px;
+}}
+QCheckBox::indicator:hover {{
+    background: #FFF1C2;
+}}
+QCheckBox::indicator:checked {{
+    background: #1B7F47;
+    border: 2px solid {INK};
     image: url(__CHECK_MARK__);
-}
+}}
 """
 
-# 勾選標記與下拉箭頭使用 SVG 素材，讓「已勾選」與「可展開」狀態不只靠顏色辨識。
+# 勾選標記與下拉箭頭使用 SVG 素材，讓「已勾選／可展開」狀態不只靠顏色辨識。
 COMBO_BOX_QSS = COMBO_BOX_QSS.replace("__COMBO_ARROW__", _office_asset("combo-arrow.svg"))
 CHECK_BOX_QSS = CHECK_BOX_QSS.replace("__CHECK_MARK__", _office_asset("check.svg"))
 
-# ── 9. 滾動區域 QSS ──────────────────────────────────────────
+# ── 9. 滾動區域 ──────────────────────────────────────────
 SCROLL_AREA_QSS = """
 QScrollArea {
     background: transparent;
     border: none;
 }
-QScrollBar:vertical {
-    background: #EFE3D0;
-    width: 12px;
-    border: 1px solid #C4B094;
-    border-radius: 6px;
-}
-QScrollBar::handle:vertical {
-    background: #A07952;
-    border: 1px solid #5C3D24;
-    border-radius: 5px;
-    min-height: 24px;
-}
-QScrollBar::handle:vertical:hover {
-    background: #BD946A;
-}
+""" + _SCROLLBAR_QSS
+
+CARD_QSS = f"""
+    background: {CARD};
+    border: 2px solid {INK};
+    border-bottom: 5px solid {INK_DEEP};
+    border-radius: 16px;
 """
 
 
 def assistant_label(path, parent=None):
-    """建立 Q 版角色助理裝飾圖示。"""
+    """建立 Q 版角色助理頭像（圓形徽章框）。"""
     label = QLabel(parent)
     label.setObjectName("officeAssistant")
-    label.setFixedSize(66, 58)
+    label.setFixedSize(64, 64)
     label.setAlignment(Qt.AlignCenter)
-    label.setStyleSheet("background: transparent; border: none; padding: 0;")
+    label.setStyleSheet(f"background: {BUTTER}; border: 2px solid {INK}; border-radius: 32px; padding: 2px;")
     pixmap = QPixmap(path)
     if not pixmap.isNull():
-        label.setPixmap(pixmap.scaled(66, 58, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        label.setPixmap(pixmap.scaled(56, 56, Qt.KeepAspectRatio, Qt.SmoothTransformation))
     label.setAccessibleName("辦公室研習助理裝飾插畫")
     return label
 
 
 def apply_office_theme(page):
-    """將 2D 遊戲 Q 版高對比度主題套用至主視窗與子元件。"""
-    # 1. 最外層視窗背景（暖木書桌色調）
+    """將 2D 遊戲 Q 版主題套用至主視窗與子元件。"""
+    # 1. 最外層視窗背景（晴空漸層）
     page.setObjectName("officePage")
     page.setAttribute(Qt.WA_StyledBackground, True)
-    page.setStyleSheet("#officePage { background: #DFCAAE; }")
+    page.setStyleSheet(
+        f"#officePage {{ background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 {SKY_TOP}, stop:1 {SKY_BOTTOM}); }}"
+    )
 
-    # 2. 頂部大分頁與工作台內部分頁
+    # 2. 頂部大分頁
     page.tabs.setStyleSheet(TABS_QSS)
 
-    # 3. 頂部標題面板 (銘牌立體木框)
+    # 3. 頂部標題面板
     header = page.findChild(QFrame, "officeHeader")
     if header:
-        header.setStyleSheet("""
-            QFrame#officeHeader {
-                background: #FFFBF2;
-                border: 2px solid #5C3D24;
-                border-bottom: 4px solid #432A17;
-                border-radius: 12px;
-            }
-        """)
+        header.setStyleSheet(f"QFrame#officeHeader {{ {CARD_QSS} }}")
+    if hasattr(page, "title_lbl"):
+        page.title_lbl.setStyleSheet(f"color: {INK}; font-weight: 900; font-size: 20px; background: transparent; border: none;")
 
     # 4. 初次使用橫幅
     banner = page.findChild(QFrame, "onboardingBanner")
     if banner:
-        banner.setStyleSheet("""
-            QFrame#onboardingBanner {
-                background: #FFF8E1;
-                border: 2px solid #E0A800;
-                border-bottom: 3px solid #B28500;
-                border-radius: 10px;
+        banner.setStyleSheet(f"""
+            QFrame#onboardingBanner {{
+                background: #FFF4C7;
+                border: 2px solid {INK};
+                border-bottom: 4px solid {INK_DEEP};
+                border-radius: 12px;
                 padding: 4px 10px;
-            }
-            QLabel {
-                color: #4E342E;
+            }}
+            QLabel {{
+                color: {INK};
                 font-weight: 700;
                 background: transparent;
                 border: none;
-            }
-        """)
+            }}
+        """ + button_qss("browser"))
 
-    # 5. 雙平台面板樣式深度客製
+    # 5. 雙平台面板
     for panel in (page.taipei_panel, page.egov_panel):
         panel.setAttribute(Qt.WA_StyledBackground, True)
         panel.setObjectName("officePlatform")
-        panel.setStyleSheet("#officePlatform { background: #FFFDF8; border-radius: 8px; }")
-
-        # 內層分頁
+        panel.setStyleSheet(f"#officePlatform {{ background: {CREAM}; border-radius: 12px; }}")
         panel.workspace_tabs.setStyleSheet(TABS_QSS)
 
-        # 操作卡片 (立體 2D 邊框)
         ctrl_card = panel.findChild(QFrame, "ctrlRibbonCard")
         if ctrl_card:
-            ctrl_card.setStyleSheet("""
-                QFrame#ctrlRibbonCard {
-                    background: #FFFBF2;
-                    border: 2px solid #5C3D24;
-                    border-bottom: 4px solid #432A17;
-                    border-radius: 12px;
-                    padding: 4px 10px;
-                }
-            """)
+            ctrl_card.setStyleSheet(f"QFrame#ctrlRibbonCard {{ {CARD_QSS} padding: 4px 10px; }}")
 
-        # 頂部控制按鈕
         panel.start_btn.setStyleSheet(button_qss("start"))
         panel.stop_btn.setStyleSheet(button_qss("stop"))
         panel.toggle_browser_btn.setStyleSheet(button_qss("browser"))
-
-        # 下拉選單與進度條
         panel.exam_mode_combo.setStyleSheet(COMBO_BOX_QSS)
         panel.progress_bar.setStyleSheet(PROGRESS_BAR_QSS)
 
-        # 標籤文字顏色加深，保證高對比清晰度
-        panel.info_lbl.setStyleSheet("color: #241409; font-weight: 800; font-size: 14px; background: transparent; border: none;")
-        panel.execution_status_lbl.setStyleSheet("color: #4A3322; font-size: 12px; font-weight: 700; background: transparent; border: none;")
-        panel.total_progress_lbl.setStyleSheet("color: #382415; font-size: 12px; font-weight: 700; border: none; background: transparent;")
-        panel.stats_lbl.setStyleSheet("color: #241409; font-size: 12px; font-weight: 700; border: none; background: transparent;")
+        panel.info_lbl.setStyleSheet(f"color: {INK}; font-weight: 900; font-size: 15px; background: transparent; border: none;")
+        panel.execution_status_lbl.setStyleSheet(f"color: {INK}; font-size: 12px; font-weight: 700; background: transparent; border: none;")
+        panel.total_progress_lbl.setStyleSheet(f"""
+            color: {INK}; font-size: 12px; font-weight: 800;
+            background: {BUTTER}; border: 2px solid {INK}; border-radius: 11px; padding: 2px 10px;
+        """)
+        panel.stats_lbl.setStyleSheet(f"color: {INK}; font-size: 12px; font-weight: 700; border: none; background: transparent;")
 
-        # 空狀態標籤 (任務板尚未開展)
         if hasattr(panel, "empty_state_lbl"):
-            panel.empty_state_lbl.setStyleSheet("""
-                QLabel {
-                    background: #FFFDF8;
-                    color: #5C3D24;
-                    border: 2px dashed #9E7955;
-                    border-radius: 8px;
+            panel.empty_state_lbl.setStyleSheet(f"""
+                QLabel {{
+                    background: {CREAM};
+                    color: {INK};
+                    border: 2px dashed {INK};
+                    border-radius: 12px;
                     padding: 10px 14px;
                     font-size: 12px;
                     font-weight: 700;
-                }
+                }}
             """)
 
-        # 任務告示板表格
         panel.course_table.setStyleSheet(TABLE_QSS)
 
-        # 冒險日誌 (Debug Log)
+        # 冒險日誌：篩選膠囊、即時卡片與事件流
         panel.log_view.setStyleSheet(LOG_VIEW_QSS)
-
-        # 工作台內部其他標籤與按鈕 (複製日誌、開啟資料夾、清空畫面等)
-        for lbl in panel.workspace_tabs.findChildren(QLabel):
-            if "即時除錯日誌" in lbl.text():
-                lbl.setStyleSheet("color: #382415; font-size: 12px; font-weight: 700; background: transparent;")
+        if hasattr(panel, "live_card"):
+            panel.live_card.setStyleSheet(LIVE_CARD_QSS)
         for btn in panel.workspace_tabs.findChildren(QPushButton):
-            btn.setStyleSheet(button_qss("normal"))
+            if btn.objectName() in ("logFilterChip", "logIssueBadge"):
+                btn.setStyleSheet(LOG_CHIP_QSS)
+            else:
+                btn.setStyleSheet(button_qss("normal"))
 
     # 6. 頂部通用控制按鈕與標題
     page.start_all_btn.setStyleSheet(button_qss("start"))
     page.stop_all_btn.setStyleSheet(button_qss("stop"))
     page.check_update_btn.setStyleSheet(button_qss("normal"))
-    page.ver_badge.setStyleSheet("""
-        background: #5C3D24;
-        color: #FFFDF8;
-        border: 1px solid #3E2718;
-        border-radius: 6px;
-        padding: 3px 8px;
-        font-weight: 800;
+    page.ver_badge.setStyleSheet(f"""
+        background: {SUN};
+        color: {INK};
+        border: 2px solid {INK};
+        border-radius: 10px;
+        padding: 2px 9px;
+        font-weight: 900;
     """)
 
-    # 7. 系統設定面板深度客製
+    # 7. 系統設定面板
     for frame in page.settings_panel.findChildren(QFrame):
         if frame.property("class") == "settingSectionCard":
-            frame.setStyleSheet("""
-                QFrame.settingSectionCard {
-                    background: #FFFBF2;
-                    border: 2px solid #5C3D24;
-                    border-bottom: 4px solid #432A17;
-                    border-radius: 12px;
+            frame.setStyleSheet(f"""
+                QFrame.settingSectionCard {{
+                    {CARD_QSS}
                     padding: 12px 14px;
-                }
-                QFrame.settingSectionCard QLabel {
+                }}
+                QFrame.settingSectionCard QLabel {{
                     background: transparent;
                     border: none;
-                    color: #241409;
+                    color: {INK};
                     font-weight: 700;
-                }
+                }}
             """)
     for line_edit in page.settings_panel.findChildren(QLineEdit):
         line_edit.setStyleSheet(LINE_EDIT_QSS)
@@ -491,4 +612,4 @@ def apply_office_theme(page):
         scroll.setStyleSheet(SCROLL_AREA_QSS)
     for lbl in page.settings_panel.findChildren(QLabel):
         if "帳號管理與系統設定" in lbl.text():
-            lbl.setStyleSheet("color: #241409; font-weight: 800; font-size: 16px; background: transparent;")
+            lbl.setStyleSheet(f"color: {INK}; font-weight: 900; font-size: 16px; background: transparent;")

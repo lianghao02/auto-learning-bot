@@ -81,7 +81,8 @@ def _contrast(fg, bg):
 class OfficeThemeContrastTests(unittest.TestCase):
     """主題色彩須達 WCAG AA 一般文字 4.5:1，避免改色時再出現低對比。"""
 
-    ROW_BACKGROUNDS = ("#FFFDF8", "#F7EEDC", "#EAF1EE", "#FDF2F2")
+    from utils.office_theme import ROW_COLORS
+    ROW_BACKGROUNDS = tuple(ROW_COLORS.values())
 
     def test_status_colors_readable_on_every_row_background(self):
         for status in CourseStatus:

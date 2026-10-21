@@ -1430,18 +1430,18 @@ class AdminEfficiencyPilot:
             try:
                 iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
                 frames = self.driver.find_elements(By.TAG_NAME, "frame")
-                logger.info(
+                logger.debug(
                     f"   [DOM] iframe 數量: {len(iframes)}, frame 數量: {len(frames)}"
                 )
-                logger.info(
+                logger.debug(
                     f"   [DOM] iframe names: {[f.get_attribute('name') or f.get_attribute('id') or '?' for f in iframes]}"
                 )
-                logger.info(f"   [DOM] rows 數量: {len(rows)}")
+                logger.debug(f"   [DOM] rows 數量: {len(rows)}")
                 if rows:
                     first_html = self.driver.execute_script(
                         "return arguments[0].outerHTML;", rows[0]
                     )
-                    logger.info(
+                    logger.debug(
                         f"   [DOM] 第一個row HTML (前1000字): {first_html[:1000]}"
                     )
                 else:
@@ -1449,11 +1449,11 @@ class AdminEfficiencyPilot:
                     page_sample = self.driver.execute_script(
                         "var t = document.querySelector('table'); return t ? t.outerHTML.substring(0,2000) : document.body.innerHTML.substring(0,2000);"
                     )
-                    logger.info(
+                    logger.debug(
                         f"   [DOM] rows 為空，頁面 table HTML (前2000字): {page_sample}"
                     )
             except Exception as _dom_e:
-                logger.info(f"   [DOM] 診斷略過: {_dom_e}")
+                logger.debug(f"   [DOM] 診斷略過: {_dom_e}")
 
             # ── 6a. 檢查是否啟用人機協同作答助理（彈窗複製題目／回貼答案） ──
             if self.config.get("interactive_quiz_for_session") and self.quiz_interactive_callback:
@@ -4126,6 +4126,10 @@ class AdminEfficiencyPilot:
             elif any(kw in alert_text for kw in ["平臺", "平台", "閱讀", "磨課師", "提醒", "另開", "視窗", "即將進入"]):
                 logger.info(f"   ℹ️ 外部平臺通知已自動確認（{alert_text}），重新進入教室...")
                 return "RELOGIN"
+            elif "登入" in alert_text:
+                # 平臺閒置逾時登出：需真的重新登入，單純重進教室只會讓 API 回 0 筆
+                logger.warning(f"   ⚠️ 研習期間被平臺登出（{alert_text}）")
+                return "LOGGED_OUT"
             else:
                 logger.warning(f"   ⚠️ 研習期間 Alert（{alert_text}），自動確認並重試...")
                 return "RELOGIN"
@@ -4191,6 +4195,8 @@ class AdminEfficiencyPilot:
         if ai_key:
             base_url = self.config.get("ai_base_url", "https://api.openai.com/v1")
             model = self.config.get("ai_model", "gpt-4o-mini")
+            if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5")):
+                model = "gemini-3.1-flash-lite"
             logger.info(f"🤖 AI 補答已啟用（model: {model}，endpoint: {base_url}）")
         else:
             logger.info("📖 AI 補答未啟用，僅使用本地題庫作答")
@@ -4639,6 +4645,24 @@ class AdminEfficiencyPilot:
                             logger.info("🛑 使用者已停止程式")
                             break
 
+                        if res == "LOGGED_OUT":
+                            c_id = str(pending[0].get("course_id", ""))
+                            logout_counts = self.__dict__.setdefault("_course_logout_counts", {})
+                            logout_counts[c_id] = logout_counts.get(c_id, 0) + 1
+                            if logout_counts[c_id] > 3:
+                                reason = "同一門課研習中反覆被平臺登出"
+                                logger.warning(f"⚠️ 課程「{pending[0].get('caption', c_id)}」{reason}，自動略過以避免無限循環。")
+                                self._mark_exam_manual_review(pending[0], reason)
+                                self._completed_in_session.add(c_id)
+                                from models.course_state import CourseStatus
+                                _emit_course_state(pending[0], CourseStatus.MANUAL_REVIEW, reason, "請確認帳號登入狀態後再重新執行", needs_man=True)
+                                continue
+                            if not self.recover_login_session("研習期間被平臺登出（閒置逾時）"):
+                                break
+                            logger.info("🔄 已重新登入，重試當前課程...")
+                            self.current_idx -= 1
+                            continue
+
                         if res == "RELOGIN":
                             c_id = str(pending[0].get("course_id", ""))
                             self._course_relogin_counts[c_id] = self._course_relogin_counts.get(c_id, 0) + 1
@@ -4652,7 +4676,7 @@ class AdminEfficiencyPilot:
                                 _emit_course_state(pending[0], CourseStatus.MANUAL_REVIEW, "連續觸發重登異常（平臺頁面跳轉失敗）", "請檢查登入狀態與課程頁面權限", needs_man=True)
                                 continue
                             # 閒置登出後已重新登入，重試當前課程（退回 index）
-                            logger.info("🔄 閒置登出重新登入成功，重試當前課程...")
+                            logger.info("🔄 重新進入教室，重試當前課程...")
                             self.sync_session()  # 確保 http_session 用最新 cookie
                             self.current_idx -= 1
                             continue

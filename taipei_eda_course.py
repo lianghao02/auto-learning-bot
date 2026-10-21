@@ -1,4 +1,4 @@
-import sys, io
+import sys, io, os
 from utils.app_paths import log_path, user_data_path
 
 # Send Taipei E-da console output to both the UI/log and a console when one exists.
@@ -29,7 +29,21 @@ if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-_logfile = open(log_path("taipei_eda_course.log"), "a", encoding="utf-8")
+_LOG_ROTATE_BYTES = 5 * 1024 * 1024
+
+
+def _open_rotating_logfile(name):
+    """超過 5MB 時保留一份 .1 舊檔再重新開始，避免日誌無限制成長。"""
+    path = log_path(name)
+    try:
+        if os.path.getsize(path) > _LOG_ROTATE_BYTES:
+            os.replace(path, f"{path}.1")
+    except OSError:
+        pass
+    return open(path, "a", encoding="utf-8")
+
+
+_logfile = _open_rotating_logfile("taipei_eda_course.log")
 # ⚠️ 保留原始 sys.stdout，讓 run_taipei_eda 的 _UILog 作為唯一 UI 路由
 # 不在模組載入時替換 sys.stdout，避免 _Tee 疊套造成訊息重複
 
@@ -1105,6 +1119,9 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
 
     already_sec = parse_study_time(course.get('study', ''))
     remain_sec = max(target_sec - already_sec, 0)
+    # 單次研習上限：預設 2 小時，但不得短於本課剩餘時數（例如 120 分鐘課程加成後需 126 分鐘），
+    # 否則會永遠在達標前被切走並提早進入測驗。
+    max_session_sec = max(7200, remain_sec + 900)
 
     print(f'課程: {name[:60]}')
     if target_sec > 0:
@@ -1146,8 +1163,8 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
                 pause_and_mute_media(driver)
                 deep_commit(driver)
                 time.sleep(2)
-                if elapsed_sec > 7200:
-                    print('  ⚠️ 單一教材閱讀已達 2 小時，切換下一門課')
+                if elapsed_sec > max_session_sec:
+                    print(f'  ⚠️ 單一教材閱讀已達本次上限 {max_session_sec // 60} 分鐘，切換下一門課')
                     break
         else:
             print('  ⚠️ SCORM 頁面沒有讀到任何章節且無剩餘時數要求，完成教材開啟確認')
@@ -1165,6 +1182,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
     scoid_order = [ch['scoid'] for ch in chapters]
     start_time = time.time()
     round_num = 0
+    failed_rounds = 0  # 整輪章節都點不到的連續次數（播放器被關閉或 session 失效）
 
     while should_continue():
         _auto_hide_taipei_popups_if_needed(driver)
@@ -1185,6 +1203,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
             break
 
         to_visit = pending if pending else list(scoid_order)
+        click_failures = 0
 
         for scoid in to_visit:
             if not should_continue():
@@ -1202,7 +1221,10 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
             print(f'  📍 進入單元：{ch_info["name"][:40]}...')
 
             if not click_chapter_by_scoid(driver, scoid):
+                click_failures += 1
                 print('      ⚠️ 點擊失敗，跳過')
+                if not chapters:
+                    break  # 章節樹已消失，逐一點擊只會刷屏
                 continue
             time.sleep(1)
             dismiss_alerts(driver)
@@ -1217,8 +1239,17 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
             if is_chapter_done(driver, scoid):
                 print('      ✅ 單元已完成')
 
-        if time.time() - start_time > 7200:
-            print('  ⚠️ 單一課程研習已達 2 小時，先切換下一門課')
+        if click_failures and (not chapters or click_failures >= len(to_visit)):
+            failed_rounds += 1
+            if failed_rounds >= 3:
+                print('  ⚠️ 章節連續 3 輪無法點擊（播放器可能已關閉或 session 失效），結束本課研習')
+                return False
+            time.sleep(10)
+        else:
+            failed_rounds = 0
+
+        if time.time() - start_time > max_session_sec:
+            print(f'  ⚠️ 單一課程研習已達本次上限 {max_session_sec // 60} 分鐘，先切換下一門課')
             break
 
     if not should_continue():
@@ -1460,6 +1491,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
             skip_exam_for_session = bool(config.get('skip_exam_for_session', False))
             quiz_url = modules.get('quiz_url')
+            quiz_stats = {}
             quiz_passed = is_quiz_passed(course, req_score=req_score)
 
             if quiz_url and course_id and not quiz_passed and skip_exam_for_session:
@@ -1479,12 +1511,13 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     username=config.get('name', '') or config.get('account', ''),
                     quiz_interactive_callback=quiz_interactive_callback or config.get('quiz_interactive_callback'),
                     min_pass_score=req_score,
+                    stats=quiz_stats,
                 )
                 if score_text == 'SKIPPED':
                     print('  ⏩ 測驗已跳過，繼續檢查並自動填寫課程問卷...')
                     _report_state(CourseStatus.SKIPPED, "測驗已手動或自動跳過", "檢查課程滿意度問卷")
                 else:
-                    print(f'  測驗結果: {score_text} | 達標: {is_100 or is_quiz_passed(course, req_score=req_score)}')
+                    print(f'  測驗結果: {score_text or "無法判讀"} | 達標: {"是" if quiz_stats.get("passed") else "否"}')
 
             elif quiz_url and course_id:
                 print('  ✅ 測驗已完成/通過，跳過')
@@ -1519,7 +1552,8 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             has_quiz = bool(quiz_url and course_id)
             if has_quiz:
                 session_quiz_total_taipei += 1
-                is_c_passed = is_quiz_passed(course, req_score=req_score)
+                # 課程清單的成績是本輪開始前的快照；本輪剛考過的結果以 quiz_stats 為準
+                is_c_passed = is_quiz_passed(course, req_score=req_score) or bool(quiz_stats.get("passed"))
                 quiz_passed_state = True if is_c_passed else False
                 if is_c_passed:
                     session_quiz_passed_taipei += 1
@@ -1540,7 +1574,8 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 solve_mode = None
             elif skip_exam_for_session:
                 solve_mode = "skipped"
-            elif course_api_calls > 0:
+            elif quiz_stats.get("ai_used"):
+                # API 計數為全域共用（雙平臺同時執行時會互相影響），作答方式以本卷實際行為判定
                 solve_mode = "ai"
             else:
                 solve_mode = "quiz_bank"
@@ -1573,7 +1608,10 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             elif skip_exam_for_session:
                 _report_state(CourseStatus.SKIPPED, "時數達標但已跳過測驗（問卷已處理）", "後續請手動補考即可認證完課", is_comp=False)
             else:
-                _report_state(CourseStatus.MANUAL_REVIEW, "測驗成績未達門檻", "請檢查題庫或手動補測", is_comp=False, needs_man=True)
+                if quiz_stats.get("score_unknown"):
+                    _report_state(CourseStatus.MANUAL_REVIEW, "已交卷但審閱頁未顯示成績，無法判定是否及格", "請至平臺確認成績，未及格再手動補測", is_comp=False, needs_man=True)
+                else:
+                    _report_state(CourseStatus.MANUAL_REVIEW, "測驗成績未達門檻", "請檢查題庫或手動補測", is_comp=False, needs_man=True)
 
 
 

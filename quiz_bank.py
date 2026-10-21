@@ -421,6 +421,8 @@ def ai_guess_answer(q_text, options, config):
         print(f'  [AI] API 網址遭安全規則拒絕：{exc}')
         return None
     model    = config.get('ai_model', 'gpt-4o-mini')
+    if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5")):
+        model = "gemini-3.1-flash-lite"  # 舊版 Gemini 模型已下架（API 回 404）
 
     # 建立選項文字清單（去掉編號前綴如 "1. "）
     opts_clean = {}
@@ -701,6 +703,8 @@ def _read_correct_from_review(driver):
     """
     result = driver.execute_script("""
         var out = {};
+        var hasGrading = !!document.querySelector(
+            '.que.correct, .que.incorrect, .que.partiallycorrect, .answer .correct');
         document.querySelectorAll('.que').forEach(function(q) {
             var name   = null;
             var val    = null;
@@ -738,8 +742,9 @@ def _read_correct_from_review(driver):
                 }
             }
 
-            // 4. 最後 fallback：checked radio，只在頁面沒有標示 incorrect 時保底
-            if (!name && !isIncorrect) {
+            // 4. 最後 fallback：checked radio，只在審閱頁有公布對錯且本題未標示 incorrect 時保底；
+            //    審閱頁完全隱藏對錯時不得把自己的作答當成正解回寫題庫
+            if (!name && !isIncorrect && hasGrading) {
                 radios.forEach(function(r){ if (r.checked) { name=r.name; val=r.value; } });
             }
 
@@ -749,37 +754,79 @@ def _read_correct_from_review(driver):
     """)
     return result
 
+_SCORE_LINE_KEYWORDS = ('分數', '成績', '評分', '得分')
+
+
 def _get_score_from_review(driver):
-    """從 review 頁讀成績，回傳 (score_text, is_100)"""
+    """從 review 頁讀成績文字；找不到回傳空字串。"""
     try:
         body = driver.find_element(By.TAG_NAME, 'body').text
-        for line in body.split('\n'):
-            if '分' in line and ('得' in line or '滿分' in line):
-                return line.strip()
-    except: pass
+    except Exception:
+        return ''
+    for line in body.split('\n'):
+        line = line.strip()
+        if not re.search(r'\d', line):
+            continue
+        if any(k in line for k in _SCORE_LINE_KEYWORDS) or ('分' in line and ('得' in line or '滿分' in line)):
+            if _extract_score_num(line) is not None:
+                return line
     return ''
 
+
+def _review_grade_counts(driver):
+    """審閱頁有標示對錯時，回傳 (答對題數, 總題數)；未公布對錯回傳 None。"""
+    try:
+        counts = driver.execute_script("""
+            var qs = document.querySelectorAll('.que');
+            var graded = 0, correct = 0;
+            qs.forEach(function(q) {
+                if (q.classList.contains('correct')) { graded++; correct++; }
+                else if (q.classList.contains('incorrect') || q.classList.contains('partiallycorrect')) { graded++; }
+            });
+            return [correct, qs.length, graded];
+        """)
+        correct, total, graded = (int(x) for x in counts)
+    except Exception:
+        return None
+    if total <= 0 or graded != total:
+        return None
+    return correct, total
+
+
 def _extract_score_num(score_text):
-    """解析分數數值（支援 80分、80.0分、80/100 等格式）"""
-    m = re.search(r'得\s*([\d.]+)\s*分', str(score_text or ''))
+    """解析百分制分數；支援「得80.00分(滿分為100.00分)」「8.00/10.00」「80 滿分 100」「(80%)」「80 分」。"""
+    text = str(score_text or '')
+    def _ratio(got, total):
+        try:
+            return float(got) / max(1e-9, float(total)) * 100.0
+        except Exception:
+            return None
+    m = re.search(r'得\s*([\d.]+)\s*分.*?滿分為?\s*([\d.]+)', text)
+    if m:
+        return _ratio(m.group(1), m.group(2))
+    m = re.search(r'得\s*([\d.]+)\s*分', text)
     if m:
         try:
             return float(m.group(1))
-        except:
+        except Exception:
             pass
-    m2 = re.search(r'(\d+)\s*/\s*(\d+)', str(score_text or ''))
-    if m2:
+    m = re.search(r'([\d.]+)\s*/\s*([\d.]+)', text)
+    if m:
+        return _ratio(m.group(1), m.group(2))
+    m = re.search(r'([\d.]+)\s*滿分為?\s*([\d.]+)', text)
+    if m:
+        return _ratio(m.group(1), m.group(2))
+    m = re.search(r'([\d.]+)\s*%', text)
+    if m:
         try:
-            got = float(m2.group(1))
-            total = float(m2.group(2))
-            return (got / max(1.0, total)) * 100.0
-        except:
+            return float(m.group(1))
+        except Exception:
             pass
-    m3 = re.search(r'([\d.]+)\s*分', str(score_text or ''))
-    if m3:
+    m = re.search(r'([\d.]+)\s*分', text)
+    if m:
         try:
-            return float(m3.group(1))
-        except:
+            return float(m.group(1))
+        except Exception:
             pass
     return None
 
@@ -793,16 +840,19 @@ def _is_100(score_text):
 # ── 主函式 ──────────────────────────────────────────
 
 
-def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, course_name='', username='', quiz_interactive_callback=None, min_pass_score=60.0):
+def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, course_name='', username='', quiz_interactive_callback=None, min_pass_score=60.0, stats=None):
     """
     臺北E大測驗流程：
-    1. 第一次只用 GAS 題庫作答。
-    2. 不及格才第二次啟用本機 AI 補答。
-    3. 若本機無 AI 或仍未通過，最多跑 3 次；缺題背景回報 GAS/TG，由 GAS 端 AI 補 JSON DB。
-    回傳 (score_text, is_100: bool)
+    1. 每次都先用 GAS 題庫作答；缺題時依測驗模式使用 AI（每卷最多 1 次）或人機協同。
+    2. 未及格最多作答 3 次；缺題背景回報 GAS/TG，由 GAS 端 AI 補 JSON DB。
+    3. 已送出但成績無法判讀（審閱頁未公布分數與對錯）時不盲目重考，交由人工確認。
+    回傳 (score_text, is_100: bool)；stats 若提供 dict，會寫入 passed / score_num / score_unknown / ai_used。
     """
     if config is None:
         config = {}
+    if stats is None:
+        stats = {}
+    stats.update({'passed': False, 'score_num': None, 'score_unknown': False, 'ai_used': False})
 
     provider = config.get('ai_provider', 'OpenAI')
     ai_keys = config.get('ai_keys', {}) or {}
@@ -810,13 +860,13 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
 
     print(f'\n=== 測驗 (course_id={course_id}) ===')
     print('  [題庫] 使用臺北E大 GAS/GitHub 共用題庫')
-    print('  [測驗] 第一次只用題庫；未通過才啟用本機 AI')
+    print('  [測驗] 題庫優先作答；缺題時依測驗模式補答（AI 每卷最多 1 次）')
 
     best_score_text = ''
     best_is_100 = False
     reported_missing_keys = set()
     pending_ai_batch = None
-
+    submitted = False
 
     def _question_record(q, val):
         return {
@@ -857,19 +907,10 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                 config=config,
             )
 
-    def _is_score_passed(score_str, min_score=60.0):
-        m = re.search(r'得\s*([\d.]+)\s*分', score_str)
-        if m:
-            try: return float(m.group(1)) >= min_score
-            except Exception: pass
-        m2 = re.search(r'(\d+)\s*/\s*\d+', score_str)
-        if m2:
-            try: return int(m2.group(1)) >= min_score
-            except Exception: pass
-        return False
-
     def _run_attempt(attempt_no, use_local_ai):
-        print(f'\n  [測驗] 第 {attempt_no} 次作答：' + ('題庫 + 本機AI' if use_local_ai else '只用題庫'))
+        nonlocal pending_ai_batch, submitted
+        submitted = False
+        print(f'\n  [測驗] 第 {attempt_no} 次作答')
 
         bank = gas_fetch_bank(course_id, config=config)
         attempt_url = _start_or_resume_quiz(driver, wait, quiz_view_url)
@@ -929,6 +970,7 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                 print('  ⚡ 啟用 AI 全自動背景極速作答（Gemini 批次模式，每卷限 1 次）...')
                 batch_res = ai_batch_solve_quiz(course_name or f"課程 {course_id}", questions_data, config)
                 if batch_res.get("success") and batch_res.get("parsed_answers"):
+                    stats['ai_used'] = True
                     pending_ai_batch = (batch_res.get("questions_data", []), batch_res.get("answers", {}))
                     for q_name, q_val in batch_res["parsed_answers"].items():
                         answers[q_name] = q_val
@@ -972,14 +1014,23 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
 
         _fill_answers(driver, answers, questions=questions)
         _submit_quiz(driver, wait)
+        submitted = True
         time.sleep(2)
 
         correct_by_name = _read_correct_from_review(driver)
         score_text = _get_score_from_review(driver)
+        if not score_text:
+            # 審閱頁沒有分數列時，改以每題對錯標示推算，避免已及格仍被判為未及格而重考
+            counts = _review_grade_counts(driver)
+            if counts:
+                score_text = f'審閱頁推算 {counts[0]}/{counts[1]} 題正確'
         is_100 = _is_100(score_text)
         score_num = _extract_score_num(score_text)
         is_passed = is_100 or (score_num is not None and score_num >= min_pass_score)
-        print(f'  [成績{attempt_no}] {score_text}  (及格: {is_passed} / 滿分: {is_100})')
+        if score_num is None:
+            print(f'  ⚠️ [成績{attempt_no}] 審閱頁未顯示分數與對錯，無法判定是否及格')
+        else:
+            print(f'  [成績{attempt_no}] {score_text}（{score_num:.0f} 分｜及格：{"是" if is_passed else "否"}）')
 
         # 🛡️ 只有「第 1 次嘗試」且確認為 100 分滿分時，才將該輪 AI 批次作答結果寫入本機題庫
         # 若非滿分或進入後續重試輪次，立即清空 pending_ai_batch，徹底杜絕跨輪次題目置換污染
@@ -1009,12 +1060,21 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
 
     for idx, use_ai in enumerate(attempt_plan, start=1):
         score_text, is_100, _, _ = _run_attempt(idx, use_ai)
+        if score_text == 'SKIPPED':
+            return score_text, False
+        score_num = _extract_score_num(score_text)
         if score_text:
             best_score_text = score_text
             best_is_100 = is_100
-        if is_100 or _is_score_passed(score_text, min_score=min_pass_score):
+            stats['score_num'] = score_num
+        if is_100 or (score_num is not None and score_num >= min_pass_score):
+            stats['passed'] = True
             print(f'  🎉 測驗達標通過！【{score_text}】（門檻: {int(min_pass_score)} 分）')
             return score_text, is_100
+        if submitted and score_num is None:
+            stats['score_unknown'] = True
+            print('  ⚠️ [測驗] 成績無法判讀，不再盲目重考；請至平臺確認成績')
+            break
         if idx == 1:
             print('  [測驗] 第一次未達及格標準，準備第二次補答')
         elif idx < len(attempt_plan):

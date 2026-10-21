@@ -152,7 +152,8 @@ class InteractiveQuizDialogTests(unittest.TestCase):
         panel._handle_course_state_update(s3)
         badge3 = panel.course_table.item(2, 1)
         self.assertEqual(badge3.foreground().color().name().upper(), CourseStatus.MANUAL_REVIEW.color_hex.upper())
-        self.assertEqual(badge3.background().color().name().upper(), "#FDF2F2")
+        from utils.office_theme import ROW_COLORS
+        self.assertEqual(badge3.background().color().name().upper(), ROW_COLORS["alert"])
         self.assertTrue(panel.empty_state_lbl.isHidden())
         panel.close()
 
