@@ -5,7 +5,7 @@
 - AI 失敗 fallback：猜 val=0 送出 → review 讀正解 → 存 GAS → 再考一次
 """
 
-import re, json, time, requests, difflib, threading, sys
+import re, json, time, requests, difflib, threading, sys, logging
 from utils.security import validate_ai_base_url
 from utils.helpers import match_radio_option_index
 from selenium.webdriver.common.by import By
@@ -19,7 +19,15 @@ GAS_URL = 'https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1
 # ── 工具 ─────────────────────────────────────────────
 
 def _safe_print(text):
-    """安全輸出字串，防範 Windows CP950/Big5 控制台拋出 UnicodeEncodeError。"""
+    """安全輸出字串，防範 Windows CP950/Big5 控制台拋出 UnicodeEncodeError。
+
+    臺北E大流程會把全域 sys.stdout 換成自己的 UI 管道；其他執行緒（e等公務園）呼叫時改走
+    logging，由 ThreadBoundUILogHandler 送到正確的平臺面板，避免訊息跑錯面板或遺失。
+    """
+    owner = getattr(sys.stdout, "owner_thread", None)
+    if owner != threading.get_ident() and (owner is not None or sys.stdout is None):
+        logging.getLogger("LearningPilot").info(str(text).strip())
+        return
     try:
         print(text)
     except UnicodeEncodeError:
@@ -232,6 +240,43 @@ def save_ai_answers_to_sqlite(questions_data: list, answers_by_idx: dict):
         print(f"  [題庫] 存入本機 SQLite 異常: {e}")
 
 
+AI_BATCH_TIMEOUT = 45                 # 單次請求逾時秒數（整卷 10 題，尖峰時段 25 秒常不夠）
+AI_RETRY_DELAYS = (5, 15)             # 暫時性錯誤的重試間隔（秒）
+AI_FALLBACK_MODELS = {"Gemini": "gemini-3.5-flash"}  # 主模型過載時改用的備援模型
+_TRANSIENT_HTTP = {500, 502, 503, 504}
+
+
+class _AIRateLimited(Exception):
+    pass
+
+
+def _is_transient_ai_error(exc):
+    if isinstance(exc, (requests.exceptions.Timeout, requests.exceptions.ConnectionError, _AIRateLimited)):
+        return True
+    if isinstance(exc, requests.exceptions.HTTPError):
+        return getattr(exc.response, "status_code", None) in _TRANSIENT_HTTP
+    return False
+
+
+def _describe_ai_error(exc):
+    if isinstance(exc, requests.exceptions.HTTPError):
+        code = getattr(exc.response, "status_code", None)
+        if code == 429:
+            return "Google API 速率受限 (429 Resource Exhausted)，已自動防護"
+        if code == 401:
+            return "API Key 無效或授權失敗 (401 Unauthorized)"
+        if code == 503:
+            return "API 呼叫失敗 (HTTP 503 模型過載)"
+        return f"API 呼叫失敗 (HTTP {code})"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return f"API 回應逾時（{AI_BATCH_TIMEOUT} 秒）"
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return "無法連線至 AI 服務"
+    if isinstance(exc, _AIRateLimited):
+        return str(exc)
+    return f"AI 解析過程異常: {exc}"
+
+
 def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) -> dict:
     """
     呼叫 AI API 批次解析整份考卷題目（支援單選、多選、是非題），回傳結構化答案與對應之內部 val。
@@ -259,19 +304,7 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
 
 
     from utils.security import global_ai_rate_limiter, mask_api_key
-    if not global_ai_rate_limiter.acquire(timeout=15.0):
-        return {"success": False, "error": "超出每分鐘請求速率上限（5 RPM），請稍候重試", "answers": {}, "parsed_answers": {}}
-
     masked_key = mask_api_key(api_key)
-    _safe_print(f"  [AI批次] 正在呼叫 {provider} ({model}) 端點: {base_url} (Key: {masked_key})")
-
-    # 記錄一次 API 發送嘗試（無論成功、逾時或 429 皆精確計數）
-    try:
-        from utils.security import global_quota_tracker
-        global_quota_tracker.record_usage(1)
-    except Exception:
-        pass
-
 
 
     prompt_lines = [
@@ -320,22 +353,54 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
         "temperature": 0.0
     }
 
-    try:
+    def _request_once(use_model):
+        if not global_ai_rate_limiter.acquire(timeout=15.0):
+            raise _AIRateLimited("超出每分鐘請求速率上限（5 RPM），請稍候重試")
+        _safe_print(f"  [AI批次] 正在呼叫 {provider} ({use_model}) 端點: {base_url} (Key: {masked_key})")
+        # 記錄一次 API 發送嘗試（無論成功、逾時或 429 皆精確計數）
+        try:
+            from utils.security import global_quota_tracker
+            global_quota_tracker.record_usage(1)
+        except Exception:
+            pass
         if provider == "Claude":
-            url = f"{base_url}/messages"
             claude_payload = {
-                "model": model,
+                "model": use_model,
                 "max_tokens": 1000,
                 "messages": [{"role": "user", "content": prompt}]
             }
-            resp = requests.post(url, headers=headers, json=claude_payload, timeout=25)
+            resp = requests.post(f"{base_url}/messages", headers=headers, json=claude_payload, timeout=AI_BATCH_TIMEOUT)
             resp.raise_for_status()
-            raw_text = resp.json()["content"][0]["text"].strip()
-        else:
-            url = f"{base_url}/chat/completions"
-            resp = requests.post(url, headers=headers, json=payload, timeout=25)
-            resp.raise_for_status()
-            raw_text = resp.json()["choices"][0]["message"]["content"].strip()
+            return resp.json()["content"][0]["text"].strip()
+        resp = requests.post(f"{base_url}/chat/completions", headers=headers, json={**payload, "model": use_model}, timeout=AI_BATCH_TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+
+    # 暫時性錯誤（503 過載、逾時、連線中斷）才重試；401／429 等不重試，避免浪費額度
+    plan = [(model, 0)] + [(model, AI_RETRY_DELAYS[0])]
+    fallback = AI_FALLBACK_MODELS.get(provider)
+    if fallback and fallback != model:
+        plan.append((fallback, AI_RETRY_DELAYS[1]))
+    else:
+        plan.append((model, AI_RETRY_DELAYS[1]))
+
+    try:
+        raw_text = None
+        last_exc = None
+        for attempt_no, (use_model, delay) in enumerate(plan, start=1):
+            if delay:
+                _safe_print(f"  ⏳ [AI批次] {delay} 秒後重試（第 {attempt_no}/{len(plan)} 次，模型 {use_model}）")
+                time.sleep(delay)
+            try:
+                raw_text = _request_once(use_model)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if not _is_transient_ai_error(exc):
+                    raise
+                _safe_print(f"  ⚠️ [AI批次] 暫時性錯誤：{_describe_ai_error(exc)}")
+        if raw_text is None:
+            raise last_exc
 
         # 解析 JSON
         clean_json_str = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE)
@@ -381,20 +446,13 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
         }
 
 
-    except requests.exceptions.HTTPError as e:
-        status_code = getattr(e.response, "status_code", None)
-        if status_code == 429:
-            err_msg = "Google API 速率受限 (429 Resource Exhausted)，已自動防護"
-        elif status_code == 401:
-            err_msg = "API Key 無效或授權失敗 (401 Unauthorized)"
-        else:
-            err_msg = f"API 呼叫失敗 (HTTP {status_code})"
-        _safe_print(f"  ❌ [AI批次] {err_msg}")
-        return {"success": False, "error": err_msg, "answers": {}, "parsed_answers": {}}
     except Exception as e:
-        err_msg = f"AI 解析過程異常: {e}"
+        err_msg = _describe_ai_error(e)
+        transient = _is_transient_ai_error(e)
+        if transient:
+            err_msg += f"（已重試 {len(plan)} 次仍失敗，Google 服務暫時不穩）"
         _safe_print(f"  ❌ [AI批次] {err_msg}")
-        return {"success": False, "error": err_msg, "answers": {}, "parsed_answers": {}}
+        return {"success": False, "error": err_msg, "transient": transient, "answers": {}, "parsed_answers": {}}
 
 
 

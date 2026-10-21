@@ -1924,9 +1924,10 @@ class PlatformTabPanel(QWidget):
             self.live_progress.setFormat("--")
 
     def _append_text_safe(self, text):
-        update = self.log_feed.add(text)
-        if update is None:
-            return
+        for update in self.log_feed.add_text(text):
+            self._apply_log_update(update)
+
+    def _apply_log_update(self, update):
         msg_part = update.message
 
         if any(k in msg_part for k in ["所有任務圓滿達成", "所有任務完成", "流程未完整完成"]):
