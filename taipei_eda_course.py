@@ -1,4 +1,4 @@
-import sys, io, os
+import sys, io, os, logging
 from utils.app_paths import log_path, user_data_path
 
 # Send Taipei E-da console output to both the UI/log and a console when one exists.
@@ -1327,8 +1327,21 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
     original_stdout = sys.stdout
     if log_callback:
         class _UILog(io.TextIOBase):
+            # sys.stdout 是全域的；只有臺北E大執行緒的輸出屬於本面板
+            owner_thread = threading.get_ident()
+            _rerouting = threading.local()
+
             def write(self, s):
                 text = str(s)
+                if threading.get_ident() != self.owner_thread:
+                    # 其他執行緒（e等公務園）的 print 改走 logging，由執行緒路由送回各自面板
+                    if text.strip() and not getattr(self._rerouting, "active", False):
+                        self._rerouting.active = True
+                        try:
+                            logging.getLogger("LearningPilot").info(text.strip())
+                        finally:
+                            self._rerouting.active = False
+                    return len(text)
                 if text.strip():
                     for line in text.rstrip().splitlines():
                         log_callback(line)

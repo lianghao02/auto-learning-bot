@@ -41,7 +41,7 @@ _COURSE_START = (
     re.compile(r"^處理\s*[:：]\s*(.+)$"),
     re.compile(r"^📖\s*\[(\d+)/(\d+)\]\s*正在協助研習\s*[:：]\s*(.+)$"),
 )
-_QUIZ_DETAIL = re.compile(r"^(✓ \[|\? \[猜\]|📝 作答進度|\[DOM\])")
+_QUIZ_DETAIL = re.compile(r"^(✓ \[|\? \[猜\]|📝 作答進度|🎲 |\[DOM\])")
 _DETAIL = re.compile(r"^(SCORM URL:|Player URL:|captcha \[|▶️ (進入|點擊|正式提交)|✅ 單元已完成|\(No symbol\)|Stacktrace|GetHandleVerifier|0x[0-9a-f]+|\w+ \[0x)")
 _TAG_CATEGORY = {
     "題庫": "bank", "測驗": "quiz", "成績": "quiz", "模組": "course", "掃描": "course",
@@ -50,10 +50,10 @@ _TAG_CATEGORY = {
 }
 _KEYWORDS = (
     ("survey", ("問卷", "滿意度")),
-    ("quiz", ("測驗", "作答", "成績", "及格", "考試", "交卷", "繳交", "Gemini", "AI ")),
+    ("quiz", ("測驗", "作答", "成績", "及格", "考試", "交卷", "繳交", "Gemini", "AI ", "AI批次", "猜答", "缺題", "答案", "預期=")),
     ("bank", ("題庫", "GAS")),
-    ("login", ("登入", "session", "Session", "SSO", "驗證碼", "Cookie")),
-    ("study", ("研習", "單元", "時數", "SCORM", "教材", "上課", "教室", "章節", "點擊失敗")),
+    ("login", ("登入", "Login", "session", "Session", "SSO", "驗證碼", "Cookie")),
+    ("study", ("研習", "單元", "時數", "目標:", "SCORM", "教材", "上課", "教室", "章節", "點擊失敗")),
     ("course", ("課程", "待上", "API 回傳")),
 )
 _SUCCESS_MARKS = ("✅", "🎉", "🏆", "成功", "通過", "已完成", "完成！")
@@ -151,14 +151,23 @@ class LogFeed:
         self._milestone = -1
         self.issue_count = 0
 
-    def add(self, raw):
-        """解析一行原始日誌；回傳 FeedUpdate，空白或分隔線回傳 None。"""
+    def add_text(self, raw):
+        """解析一筆原始日誌（可能含多行，例如 e等 的方框儀表板），回傳 FeedUpdate 清單。"""
         text = _ANSI.sub("", str(raw or "")).rstrip()
         m = _STAMPED.match(text)
         if m:
             stamp, level, msg = m.group(1), m.group(2).upper(), m.group(3)
         else:
             stamp, level, msg = datetime.now().strftime("%H:%M:%S"), "", text
+        updates = (self._add_line(stamp, level, line) for line in msg.splitlines() or [""])
+        return [u for u in updates if u is not None]
+
+    def add(self, raw):
+        """解析單行原始日誌；回傳 FeedUpdate，空白或分隔線回傳 None。"""
+        updates = self.add_text(raw)
+        return updates[-1] if updates else None
+
+    def _add_line(self, stamp, level, msg):
         msg = msg.strip()
         if not msg or _SEPARATOR.match(msg):
             return None
@@ -166,6 +175,12 @@ class LogFeed:
             level = "WARNING"
 
         entry = self._classify(stamp, level, msg)
+        if entry is not None and entry.level == "INFO":
+            # e等 部分異常以 logger.info 輸出，依訊息內的符號補正等級
+            if "❌" in entry.text:
+                entry.level = "ERROR"
+            elif "⚠️" in entry.text:
+                entry.level = "WARNING"
         live_changed = False
 
         progress = _PROGRESS.search(msg)

@@ -135,6 +135,10 @@ def _read_local_version() -> str:
         return "V0.0.0"
 
 
+EXAM_AI_OUTAGE_DEFER_SECONDS = 600  # AI 服務中斷後延後重考的冷卻時間
+EXAM_AI_OUTAGE_MAX_DEFERS = 3        # 每門課最多寬限幾次，避免 AI 長時間中斷時無限延後
+
+
 class AdminEfficiencyPilot:
     VERSION = _read_local_version()
     CHANGELOG = (
@@ -1188,6 +1192,29 @@ class AdminEfficiencyPilot:
 
         return passed
 
+    def _count_session_quiz_course(self, course_id):
+        courses = self.__dict__.setdefault("_session_quiz_courses", set())
+        courses.add(course_id)
+        self._session_quiz_total_count = len(courses)
+
+    def _defer_exam_after_ai_outage(self, course):
+        """AI 服務暫時中斷（503／逾時）造成的不及格：不計入 3 次上限，冷卻後再考；每門最多寬限 3 次。"""
+        if not getattr(self, "_last_exam_ai_outage", False):
+            return False
+        c_id = str(course.get("course_id", ""))
+        outages = self.__dict__.setdefault("_exam_ai_outages", {})
+        if outages.get(c_id, 0) >= EXAM_AI_OUTAGE_MAX_DEFERS:
+            return False
+        outages[c_id] = outages.get(c_id, 0) + 1
+        if self._exam_fail_counts.get(c_id, 0) > 0:
+            self._exam_fail_counts[c_id] -= 1
+        self.__dict__.setdefault("_exam_retry_after", {})[c_id] = time.time() + EXAM_AI_OUTAGE_DEFER_SECONDS
+        logger.warning(
+            f"   ⏸️ 「{course.get('caption', c_id)}」因 AI 服務暫時無法回應而未及格，不計入 3 次上限；"
+            f"{EXAM_AI_OUTAGE_DEFER_SECONDS // 60} 分鐘後再重考（寬限 {outages[c_id]}/{EXAM_AI_OUTAGE_MAX_DEFERS}）"
+        )
+        return True
+
     def auto_exam(self, course):
         """時數達標後，自動進入測驗並作答。回傳 True=通過, False=未通過/失敗"""
         ai_keys = self.config.get("ai_keys", {})
@@ -1217,6 +1244,7 @@ class AdminEfficiencyPilot:
             return False
 
         logger.info("   📝 開始自動作答流程...")
+        self._last_exam_ai_outage = False
         # 收集本場 AI 補答的題目，考試通過後寫入 db
         _ai_answered = {}
         # 僅在已啟用 AI 且重測時才以 AI 覆核；否則維持純題庫模式。
@@ -1905,7 +1933,8 @@ class AdminEfficiencyPilot:
                                 item["ans_source"] = "AI"
                                 logger.info(f"   🤖 AI 批次解答 [{q_num}/{len(rows)} 題]：{item['ans']!r}")
                     else:
-                        logger.warning(f"   ⚠️ AI 批次作答未取得有效答案：{batch_res.get('error')}，其餘題目以本地安全猜答處理（不重試 API，保證 1 卷 1 次）")
+                        self._last_exam_ai_outage = bool(batch_res.get("transient"))
+                        logger.warning(f"   ⚠️ AI 批次作答未取得有效答案：{batch_res.get('error')}，其餘題目以本地猜答處理")
                 except Exception as batch_err:
                     logger.warning(f"   ⚠️ AI 批次作答異常：{batch_err}，其餘題目以本地安全猜答處理（不重試 API，保證 1 卷 1 次）")
 
@@ -4034,8 +4063,10 @@ class AdminEfficiencyPilot:
                         except Exception as e:
                             logger.warning(f"⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
                 else:
-                    self._session_quiz_total_count = getattr(self, "_session_quiz_total_count", 0) + 1
+                    self._count_session_quiz_course(str(course.get("course_id", "")))
                     exam_passed = self.auto_exam(course)
+                    if self.running and not exam_passed:
+                        self._defer_exam_after_ai_outage(course)
                     if self.running and exam_passed:
                         q_ok = True
                         if str(course.get("fill", "0")) != "1":
@@ -4326,6 +4357,9 @@ class AdminEfficiencyPilot:
                         # 本次曾無法開啟測驗的課程，不重複卡住；最後會明確列為待處理。
                         if c_id in self._exam_manual_review:
                             return False
+                        # AI 服務中斷後的冷卻期間先不重考
+                        if getattr(self, "_exam_retry_after", {}).get(c_id, 0) > time.time():
+                            return False
                         hours_done = to_sec(c.get("rss", "00:00:00")) >= to_sec(
                             c.get("criteria_content_hour", "00:00:00")
                         )
@@ -4532,7 +4566,7 @@ class AdminEfficiencyPilot:
                                     _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "問卷填寫失敗，尚未確認完成", "請手動前往網站填寫問卷", needs_man=True)
                                 continue
 
-                            self._session_quiz_total_count = getattr(self, "_session_quiz_total_count", 0) + 1
+                            self._count_session_quiz_course(c_id)
                             passed = self.auto_exam(c)
                             if passed and self.running:
                                 q_ok = True
@@ -4576,6 +4610,10 @@ class AdminEfficiencyPilot:
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "問卷填寫失敗，尚未確認完成", "請手動前往網站填寫問卷", needs_man=True)
                             elif not passed:
+                                if self._defer_exam_after_ai_outage(c):
+                                    from models.course_state import CourseStatus
+                                    _emit_course_state(c, CourseStatus.QUIZ, "AI 服務暫時無法回應，本次不及格不計入上限", f"{EXAM_AI_OUTAGE_DEFER_SECONDS // 60} 分鐘後自動重考")
+                                    continue
                                 # 若不及格次數未達上限，跳回迴圈頂部繼續重考
                                 if self._exam_fail_counts.get(c_id, 0) < 3:
                                     all_exam_done = False
