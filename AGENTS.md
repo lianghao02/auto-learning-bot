@@ -53,3 +53,6 @@
   5. 再讀目前 `HANDOFF.md` / `IMPLEMENTATION_PLAN.md`
   6. 專案、Git、測試與建置實際狀態優先於文件歷史
 - 跨 Agent HANDOFF 一律使用 `lianghao-development` 標準範本，以 `Repository Full Name`、`Branch`、`Commit SHA`、`Task Type` 為主要識別，嚴禁複製 Skill 到本專案。
+
+## 6. 上游與模組維護
+- 模組分工、測試對應與上游差異查核見 `docs/upstream-maintenance.md`。先查現有等效修正，再按具體問題挑選上游變更；不因行數整批拆分或覆蓋本地流程。文件中的提交與測試數為查核基準，現況仍以 Git 與實測為準。
