@@ -3,14 +3,18 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/auto-learning-bot
 - **Branch**：main
-- **Commit SHA**：434f87507d6fa9b635e5074e1daf2351a92eada0（本輪提交前基準；最新提交以 `git log -1` 為準）
+- **Commit SHA**：52569e10e（本輪文件修改前基準；本輪尚未提交）
 - **Skill Version**：v1.0.0
-- **Task Type**：AUDIT + IMPROVE + FIX
+- **Task Type**：AUDIT / HANDOFF
 - **Local Path Hint**：07_auto-learning-bot
 
 ---
 
 ## 目前狀態
+
+使用者已於本輪授權依專案／分支分開提交與推送；下列未提交描述為提交前斷點，最終提交與遠端同步結果見控制中心本輪計畫及 Git。
+2026-10-22：本輪上游查核與模組地圖已完成，僅文件修改，尚未提交推送；未大拆 app.py。先前功能成果繼承，下列 UI／平台驗證為前輪紀錄。
+
 可交付（已提交本機，未推送、未發布）
 
 ## 本輪目標
@@ -29,6 +33,7 @@
 - 日誌中 e等「API 回傳 0 筆」是平臺閒置登出所致，第二次重新登入後恢復 682 筆。
 
 ## 已完成 (Completed)
+- 本輪 fetch upstream 至 9360d7c0a；本地仍為 52569e10e，未合併。新增 docs/upstream-maintenance.md 與 AGENTS.md 指引，記錄等效修正核對、候選提交與模組測試地圖。
 - **冒險日誌**：新增 `utils/log_feed.py` 統一解析兩平臺格式；研習心跳改為即時卡片，只留 25% 里程碑；分類膠囊、5 種篩選、重複訊息合併 ×N、警告徽章、捲動時不強制拉回底部。
 - **配色與遊戲感**：`utils/office_theme.py` 改為晴空糖果配色（色票集中為常數），墨藍粗外框、厚底按鈕、陽光黃選中分頁、深色日誌。
 - **修正**（細節見 CHANGELOG 未發布區塊）：
@@ -42,6 +47,8 @@
   - `[DOM]` 診斷訊息降為 DEBUG，並修正舊 Gemini 模型名稱。
 
 ## 異動檔案 (Changed Files)
+本輪僅 docs/upstream-maintenance.md、AGENTS.md、HANDOFF.md；以下為前輪功能修改。
+
 - `quiz_bank.py`、`taipei_eda_course.py`、`app.py`
 - `ui.py`、`utils/office_theme.py`、`utils/log_feed.py`（新）、`icons/office/combo-arrow.svg`
 - `tests/test_log_feed.py`（新，11 項）、`tests/test_office_theme.py`、`tests/test_interactive_quiz_dialog.py`、`tools/office_ui_qa.py`
@@ -76,6 +83,8 @@
 - 本機的 `data/logs/taipei_eda_course.log` 已在本輪輪替為 `.log.1`（43MB 舊檔保留，未刪除）。
 
 ## Git 狀態
+本輪（2026-10-22）：main／52569e10e，Modified（僅上述文件）、未提交推送；fetch 只更新 upstream 參照。以下原記錄為前輪狀態，不代表本輪已驗證。
+
 - Commit：見 `git log -1`（fix: 修正臺北E大成績判定並改版冒險日誌與 Q 版配色）
 - Push：否
 - Working Tree：Clean
