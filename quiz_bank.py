@@ -800,11 +800,7 @@ def _read_correct_from_review(driver):
                 }
             }
 
-            // 4. 最後 fallback：checked radio，只在審閱頁有公布對錯且本題未標示 incorrect 時保底；
-            //    審閱頁完全隱藏對錯時不得把自己的作答當成正解回寫題庫
-            if (!name && !isIncorrect && hasGrading) {
-                radios.forEach(function(r){ if (r.checked) { name=r.name; val=r.value; } });
-            }
+            // 不以其他題目的評分狀態推定本題正確；未經本題驗證的勾選值不得同步題庫。
 
             if (name && val !== null) out[name] = val;
         });

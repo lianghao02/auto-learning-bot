@@ -926,6 +926,11 @@ def get_scorm_player_url(driver, wait, course_url, config=None, modules=None):
         if not scorm_url:
             scorm_url, label = find_scorm_link()
 
+        # 避免把空值或非 HTTP(S) 位址傳給 Selenium，造成 invalid argument。
+        if not isinstance(scorm_url, str) or not scorm_url.strip().lower().startswith(('https://', 'http://')):
+            print('  ⚠️ 未找到有效的 SCORM／閱讀活動網址，略過本課程；請人工確認課程活動。')
+            return None
+
         print(f'  ▶️ 進入課程連結: {(label or scorm_url)[:40]}')
         try:
             # Use same-window navigation. Taipei E-da blocks multiple course windows.
@@ -1643,8 +1648,11 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             suffix = '...' if len(final_incomplete) > 5 else ''
             print(f'  尚未完成: {preview}{suffix}')
 
-        print('\n完成！')
-        return not stopped
+        if final_incomplete:
+            print(f'\n⚠️ 本次流程已結束，但仍有 {len(final_incomplete)} 門課程未完成。')
+        else:
+            print('\n✅ 已確認所有課程完成。')
+        return not stopped and not final_incomplete
     finally:
         force_close_active_driver()
         _release_taipei_run_lock(lock_path)
