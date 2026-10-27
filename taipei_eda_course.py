@@ -59,6 +59,7 @@ from quiz_bank import do_quiz_with_bank, do_feedback
 
 from utils.helpers import maintain_driver_windows_hidden, set_driver_window_visibility
 from utils.security import global_quota_tracker
+from utils.quiz_policy import course_completed, grade_passed
 
 # ── DOM 語意彈性相容防護網 (Resilient Selector Fallback) ──────────────────────
 def find_element_resilient(driver, css_selector=None, text_keywords=None, tag_names=None, timeout=5):
@@ -185,6 +186,10 @@ def load_config(path=None):
 
 def parse_study_time(study_str):
     s = study_str or ''
+    clock = re.fullmatch(r'\s*(\d+):([0-5]\d):([0-5]\d)\s*', s)
+    if clock:
+        hours, minutes, seconds = map(int, clock.groups())
+        return hours * 3600 + minutes * 60 + seconds
     hrs  = int(re.search(r'(\d+)時', s).group(1)) if re.search(r'(\d+)時', s) else 0
     mins = int(re.search(r'(\d+)分', s).group(1)) if re.search(r'(\d+)分', s) else 0
     secs = int(re.search(r'(\d+)秒', s).group(1)) if re.search(r'(\d+)秒', s) else 0
@@ -528,6 +533,8 @@ def is_quiz_passed(course, req_score=None):
     score = _clean_status(course.get('score')).replace(' ', '')
     if not score or score == '-':
         return False
+    if grade_passed(None, 60, score) is False:
+        return False
     if any(word in score for word in ['通過', '合格', '已完成', '及格']):
         return True
     nums = []
@@ -638,6 +645,9 @@ def get_course_modules(driver, course_href):
         # 掃描頁面上的特定完成條件（例如「閱讀時間達36分鐘以上」、「測驗分數達80分以上」）
         try:
             body_txt = driver.find_element(By.TAG_NAME, 'body').text
+            recorded = re.search(r'修課時間\s*[:：]\s*(\d+:\d{2}:\d{2})', body_txt)
+            if recorded:
+                result['study'] = recorded.group(1)
             m_time = re.search(r'閱讀時間達\s*(\d+(?:\.\d+)?)\s*分鐘', body_txt)
             if m_time:
                 result['req_minutes'] = float(m_time.group(1))
@@ -660,8 +670,8 @@ def get_course_modules(driver, course_href):
             if 'mod/feedback/view.php' in href and not result['fb_url']:
                 result['fb_url'] = href
             if ('mod/scorm/view.php' in href or 'mod/scorm/player.php' in href) and not result.get('scorm_url'):
-                # 排除補充教材、講義、簡報與 PDF 資源
-                if not any(bad in (txt + ' ' + href).lower() for bad in ['補充教材', '補充', '講義', '簡報', 'pdf', 'mod/resource']):
+                # 已確認為 SCORM，僅排除明確標示補充教材者，不以課名「簡報」誤擋。
+                if '補充教材' not in txt:
                     result['scorm_url'] = href
 
         scorm_disp = result.get('scorm_url') or '無直連'
@@ -751,6 +761,8 @@ def get_scorm_player_url(driver, wait, course_url, config=None, modules=None):
         def is_supplementary_or_resource(text_str, href_str):
             t = (text_str or '').lower()
             h = (href_str or '').lower()
+            if 'mod/scorm/' in h:
+                return '補充教材' in t
             if any(bad in t for bad in ['補充教材', '補充', '講義', '簡報', 'pdf', '下載', 'download']):
                 return True
             if 'mod/resource' in h or h.endswith('.pdf') or '.pdf?' in h:
@@ -865,7 +877,7 @@ def get_scorm_player_url(driver, wait, course_url, config=None, modules=None):
                     DANGER_KEYWORDS = ['退選', '取消', '刪除', 'unenroll', 'cancel', 'delete', '登出', 'logout', '搜尋', 'search',
                                        '問卷', '滿意度', '填寫', '回答', 'feedback', 'survey', 'questionnaire',
                                        '補充教材', '補充', '講義', '簡報', 'pdf', '下載', 'download']
-                    if any(dk in text.lower() for dk in DANGER_KEYWORDS):
+                    if any(dk in text.lower() for dk in DANGER_KEYWORDS) and 'mod/scorm/' not in href.lower():
                         continue
                     # 同時過濾 href 指向 feedback、resource 或 pdf 的連結
                     if href and any(bad in href.lower() for bad in ['mod/feedback', 'mod/resource', '.pdf']):
@@ -1157,10 +1169,13 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
             start_time = time.time()
             last_report = 0
             while should_continue():
+                if has_multi_window_alert(dismiss_alerts(driver)):
+                    print('  ⚠️ 平台禁止多重視窗，停止本課研習，不能累計後續等待時間。')
+                    return False
                 _auto_hide_taipei_popups_if_needed(driver)
                 elapsed_sec = time.time() - start_time
                 if elapsed_sec >= remain_sec:
-                    print(f'  ✅ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，結束教材閱讀！')
+                    print(f'  ⏱️ 本機預估研習時間達標（待平台確認）(已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，結束教材閱讀！')
                     break
                 if elapsed_sec - last_report >= 30:
                     last_report = elapsed_sec
@@ -1200,7 +1215,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
         time_ok = elapsed_sec >= remain_sec
 
         if remain_sec > 0 and elapsed_sec >= remain_sec:
-            print(f'  ✅ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，結束課程研習！')
+            print(f'  ⏱️ 本機預估研習時間達標（待平台確認）(已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，結束課程研習！')
             break
 
         if all_done and (time_ok or remain_sec == 0):
@@ -1217,7 +1232,7 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
 
             elapsed_sec = time.time() - start_time
             if remain_sec > 0 and elapsed_sec >= remain_sec:
-                print(f'  ✨ 研習時數已 100% 達標 (已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，跳出學習！')
+                print(f'  ⏱️ 本機預估研習時間達標（待平台確認）(已有: {sec_to_hms(already_sec + elapsed_sec)} / 目標: {sec_to_hms(target_sec)})，跳出學習！')
                 break
 
             elapsed_sec = time.time() - start_time
@@ -1232,12 +1247,17 @@ def do_scorm_course(driver, wait, course, config=None, should_continue=None, mod
                     break  # 章節樹已消失，逐一點擊只會刷屏
                 continue
             time.sleep(1)
-            dismiss_alerts(driver)
+            if has_multi_window_alert(dismiss_alerts(driver)):
+                print("  ⚠️ 平台禁止多重視窗，停止本課研習，不能累計後續等待時間。")
+                return False
             pause_and_mute_media(driver)
 
             st = time.time()
             while should_continue() and time.time() - st < RESIDENCE_TIME:
                 time.sleep(1)
+                if has_multi_window_alert(dismiss_alerts(driver)):
+                    print("  ⚠️ 平台禁止多重視窗，停止本課研習，不能累計後續等待時間。")
+                    return False
                 pause_and_mute_media(driver)
                 deep_commit(driver)
 
@@ -1444,6 +1464,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         print(f'\n共 {len(incomplete)} 門待處理課程，開始依序處理...')
 
         stopped = False
+        unresolved = {}
         session_completed_taipei = 0
         session_quiz_passed_taipei = 0
         session_quiz_total_taipei = 0
@@ -1495,14 +1516,38 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     except Exception:
                         pass
 
+            if modules.get('study'):
+                course['study'] = modules['study']
             study_needed = is_study_incomplete(course, req_minutes=req_minutes)
             if study_needed:
                 from models.course_state import CourseStatus
                 _report_state(CourseStatus.LEARNING, "時數尚未達標，正在進行 SCORM 閱讀累積", "累積足夠時數後自動進入測驗與問卷")
                 scorm_ok = do_scorm_course(driver, wait, course, config=config, should_continue=should_continue, modules=modules)
                 if not scorm_ok:
+                    unresolved[course.get('href') or course['name']] = course
                     print('  ⚠️ SCORM 上課失敗，跳過測驗/問卷')
                     _report_state(CourseStatus.ERROR, "SCORM 上課執行失敗", "請檢查課程教材格式或網路連線", needs_man=True)
+                    continue
+                # 本機等待時間不代表平台已入帳；離開教材後回課程頁確認。
+                study_confirmed = False
+                for record_attempt in range(2):
+                    refreshed = get_course_modules(driver, course['href'])
+                    if not refreshed.get('study'):
+                        print('  ⚠️ 無法讀取平台修課時間，不以本機計時宣告達標。')
+                        break
+                    course['study'] = refreshed['study']
+                    if not is_study_incomplete(dict(course, done=''), req_minutes=req_minutes):
+                        study_confirmed = True
+                        print(f'  ✅ 平台修課時間已確認：{course["study"]}')
+                        break
+                    print(f'  ⚠️ 平台僅記錄 {course["study"]}，時數尚未達標。')
+                    if record_attempt == 0 and should_continue():
+                        print('  依平台紀錄補足剩餘時數（本輪最多補課一次）。')
+                        if not do_scorm_course(driver, wait, course, config=config, should_continue=should_continue, modules=refreshed):
+                            break
+                if not study_confirmed:
+                    unresolved[course.get('href') or course['name']] = course
+                    _report_state(CourseStatus.ERROR, '平台修課時數未確認達標', '下次依平台時數補課，請確認沒有其他上課視窗', needs_man=True)
                     continue
             else:
                 print('  ✅ 上課時數已達標，跳過上課，檢查測驗/問卷')
@@ -1531,6 +1576,9 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     min_pass_score=req_score,
                     stats=quiz_stats,
                 )
+                if score_text == 'STOP_ALL':
+                    stopped = True
+                    break
                 if score_text == 'SKIPPED':
                     print('  ⏩ 測驗已跳過，繼續檢查並自動填寫課程問卷...')
                     _report_state(CourseStatus.SKIPPED, "測驗已手動或自動跳過", "檢查課程滿意度問卷")
@@ -1546,6 +1594,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
             fb_url = modules.get('fb_url')
             quest = _clean_status(course.get('quest'))
+            survey_done = quest == '已完成' or (not fb_url and quest in ('', '-', '--', '無', '無問卷', '不需填寫'))
             if is_questionnaire_pending(course):
                 from models.course_state import CourseStatus
                 _report_state(CourseStatus.SURVEY, "測驗流程完成，進行課程滿意度問卷", "自動選取滿意選項並送出")
@@ -1556,23 +1605,24 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
                 if fb_url:
                     print('\n  📋 問卷')
-                    do_feedback(driver, wait, feedback_view_url=fb_url)
+                    survey_done = do_feedback(driver, wait, feedback_view_url=fb_url) is True
                 else:
                     print('  ⚠️ 問卷狀態為填寫，但找不到問卷入口')
             elif quest == '已完成':
                 print('  ✅ 問卷已完成，跳過')
+            elif fb_url:
+                print('  ⚠️ 已找到問卷入口，但完成狀態尚未確認')
             else:
                 print('  無問卷')
 
             # 📊 每完成一門課輸出即時成效儀表板卡片
             # 註：course_api_calls 目前以單流程執行為前提；未來若支援多流程並行，改由 Gemini 呼叫層回報 per-course counter。
-            session_completed_taipei += 1
-            has_quiz = bool(quiz_url and course_id)
+            has_quiz = bool(quiz_url)
             if has_quiz:
                 session_quiz_total_taipei += 1
                 # 課程清單的成績是本輪開始前的快照；本輪剛考過的結果以 quiz_stats 為準
                 is_c_passed = is_quiz_passed(course, req_score=req_score) or bool(quiz_stats.get("passed"))
-                quiz_passed_state = True if is_c_passed else False
+                quiz_passed_state = None if quiz_stats.get('score_unknown') else bool(is_c_passed)
                 if is_c_passed:
                     session_quiz_passed_taipei += 1
             else:
@@ -1598,7 +1648,11 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             else:
                 solve_mode = "quiz_bank"
 
-            survey_done = bool(quest == '已完成' or fb_url)
+            completed = course_completed(has_quiz, is_c_passed, survey_done)
+            if completed:
+                session_completed_taipei += 1
+            else:
+                unresolved[course.get('href') or course['name']] = course
 
             try:
                 from utils.course_dashboard import render_course_completion_card
@@ -1607,7 +1661,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                     has_quiz=has_quiz,
                     quiz_passed=quiz_passed_state,
                     survey_completed=survey_done,
-                    course_completed=True,
+                    course_completed=completed,
                     solve_mode=solve_mode,
                     course_api_calls=course_api_calls,
                     today_api_calls=api_after,
@@ -1621,12 +1675,16 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 print(f"  ⚠️ 課程結案摘要產生失敗，不影響課程完成流程：{e}")
 
             from models.course_state import CourseStatus
-            if not has_quiz or is_c_passed:
+            if completed:
                 _report_state(CourseStatus.COMPLETED, "時數達標且完成課程（免測驗或測驗及格）", "已完課，接續下一門", is_comp=True)
             elif skip_exam_for_session:
                 _report_state(CourseStatus.SKIPPED, "時數達標但已跳過測驗（問卷已處理）", "後續請手動補考即可認證完課", is_comp=False)
             else:
-                if quiz_stats.get("score_unknown"):
+                if not survey_done:
+                    _report_state(CourseStatus.MANUAL_REVIEW, "問卷尚未確認完成", "請至平臺確認問卷狀態", needs_man=True)
+                elif quiz_stats.get('blocked'):
+                    _report_state(CourseStatus.MANUAL_REVIEW, "題目或填答不完整，未交卷", "請確認題型、分頁或 AI 回應", needs_man=True)
+                elif quiz_stats.get("score_unknown"):
                     _report_state(CourseStatus.MANUAL_REVIEW, "已交卷但審閱頁未顯示成績，無法判定是否及格", "請至平臺確認成績，未及格再手動補測", is_comp=False, needs_man=True)
                 else:
                     _report_state(CourseStatus.MANUAL_REVIEW, "測驗成績未達門檻", "請檢查題庫或手動補測", is_comp=False, needs_man=True)
@@ -1642,6 +1700,8 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             print('⚠️ 無法重新讀取最終課程清單，不能宣告全部完成。')
             return False
         final_incomplete = pending_courses_sorted(courses_final)
+        final_keys = {c.get('href') or c['name'] for c in final_incomplete}
+        final_incomplete.extend(course for key, course in unresolved.items() if key not in final_keys)
         print(f'  課程總數: {len(courses_final)} 筆，待處理: {len(final_incomplete)} 筆')
         if final_incomplete:
             preview = '、'.join(c["name"][:18] for c in final_incomplete[:5])

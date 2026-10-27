@@ -54,6 +54,7 @@ from utils.helpers import (
     match_radio_option_index,
 )
 from utils.security import validate_ai_base_url
+from utils.quiz_policy import MAX_QUIZ_ATTEMPTS, answer_values, can_submit, grade_evidence, grade_passed, needs_ai_review
 from utils.webdriver_mgr import download_best_chromedriver
 
 GLOBAL_DB_LOCK = threading.Lock()
@@ -61,6 +62,49 @@ GLOBAL_DB_LOCK = threading.Lock()
 # 降低 Selenium 自身的冗長日誌
 logging.getLogger("selenium").setLevel(logging.ERROR)
 logger = get_logger()
+
+# 每一步只點一個可操作按鈕，等待頁面更新後再由 Python 決定是否繼續。
+_COURSE_ENTRY_SCRIPT = r"""
+function available(button) {
+    var style = window.getComputedStyle(button);
+    return !button.disabled && button.getAttribute('aria-disabled') !== 'true' &&
+        button.getClientRects().length > 0 && style.display !== 'none' &&
+        style.visibility !== 'hidden' && style.visibility !== 'collapse';
+}
+function label(button) {
+    return (button.innerText || button.value || button.textContent || '').trim();
+}
+var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
+for (var m = 0; m < modalBtns.length; m++) {
+    var modal = modalBtns[m];
+    if (available(modal) && ['確定', '確認'].indexOf(label(modal)) !== -1) {
+        var modalLabel = label(modal);
+        modal.click();
+        return {kind: 'confirm', label: modalLabel};
+    }
+}
+var entryLabels = ['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '開始學習', '前往學習'];
+if (includeExam) entryLabels = entryLabels.concat(['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗']);
+var enrollLabels = ['報名課程', '我要報名', '加入課程', '確認報名', '選課', '我要選課'];
+var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
+for (var i = 0; i < btns.length; i++) {
+    var button = btns[i];
+    if (!available(button)) continue;
+    var text = label(button);
+    var cleanText = text.replace(/\s+/g, '');
+    var href = (button.getAttribute('href') || '').toLowerCase();
+    var onclick = (button.getAttribute('onclick') || '').toLowerCase();
+    var isEntry = entryLabels.some(k => cleanText.indexOf(k) !== -1) ||
+        onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 ||
+        href.indexOf('action=learn') !== -1;
+    var isEnroll = includeEnrollment && enrollLabels.some(k => cleanText.indexOf(k) !== -1);
+    if (isEntry || isEnroll) {
+        button.click();
+        return {kind: isEntry ? 'entry' : 'enroll', label: text || '課程連結'};
+    }
+}
+return null;
+"""
 
 
 def _normalize_q(text: str) -> str:
@@ -342,6 +386,7 @@ class AdminEfficiencyPilot:
         self.log_callback = log_callback
         self.running = True  # 停止開關
         self._exam_fail_counts = {}  # course_id → 不及格次數
+        self._course_api_calls = {}  # course_id → 本次執行所有測驗嘗試的 API 用量
         self._completed_in_session = (
             set()
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
@@ -574,6 +619,13 @@ class AdminEfficiencyPilot:
         """去除答案的數字前綴（如 '2.唾液' → '唾液'）及 || 後綴"""
         import re as _re
 
+        if isinstance(ans, str) and ans.strip().startswith('['):
+            try:
+                values = json.loads(ans)
+                if isinstance(values, list):
+                    return values
+            except (ValueError, TypeError):
+                pass
         # 去除 '1.', '2. ', '3、' 等數字前綴（保留純數字答案如 '0.74'）
         ans = _re.sub(r"^\d+[.\uff0e\u3001]\s*(?=[^\d])", "", ans).strip()
         # 去除 '||' 後綴（標注符號）
@@ -747,58 +799,44 @@ class AdminEfficiencyPilot:
         return None
 
     def _save_answers_to_db(self, answers: dict, source: str = ""):
-        """將 {題目: 答案} dict upsert 進 questions.db 並同步記憶體。
-        answers: {q_text: ans_str}
-        source:  用於 log 標注來源（如 'AI' / 'harvest'）
-        """
+        """交易成功後才更新記憶體及回報成功；失敗不留下部分答案。"""
+        from contextlib import closing
         if not answers:
-            return
-        import sys as _sys
-        _base = (
-            os.path.dirname(_sys.executable)
-            if getattr(_sys, "frozen", False)
-            else os.path.dirname(os.path.abspath(__file__))
-        )
-        db_path = str(ensure_seeded_database())
+            return False
         try:
+            db_path = str(ensure_seeded_database())
             with GLOBAL_DB_LOCK:
-                conn = get_db_connection(db_path, timeout=30.0)
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS questions (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        question TEXT UNIQUE NOT NULL,
-                        option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
-                        answer TEXT
-                    )
-                """)
-                added = 0
-                for q_text, ans_str in answers.items():
-                    cur = conn.execute(
-                        "SELECT id FROM questions WHERE question = ?", (q_text,)
-                    ).fetchone()
-                    if cur:
-                        conn.execute(
-                            "UPDATE questions SET answer = ? WHERE question = ?",
-                            (ans_str, q_text),
-                        )
-                    else:
-                        conn.execute(
-                            "INSERT INTO questions (question, answer) VALUES (?, ?)",
-                            (q_text, ans_str),
-                        )
-                        added += 1
-                    # 同步記憶體（不論新增或更新都要覆蓋，避免記憶體留有舊錯誤答案）
-                    nk = _normalize_q(q_text)
-                    if nk:
-                        if nk not in self._answer_map:
-                            self._answer_keys.append(nk)
-                        self._answer_map[nk] = {"answer": ans_str, "options": [], "question": q_text}
-                conn.commit()
-                conn.close()
-            tag = f"（{source}）" if source else ""
-            logger.info(f"   💾 已同步 {len(answers)} 題到 questions.db{tag}（新增 {added} 題）")
-        except Exception as e:
-            logger.warning(f"   ⚠️ 寫入 questions.db 失敗: {e}")
+                with closing(get_db_connection(db_path, timeout=30.0)) as conn:
+                    with conn:
+                        conn.execute("""
+                            CREATE TABLE IF NOT EXISTS questions (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                question TEXT UNIQUE NOT NULL,
+                                option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
+                                answer TEXT
+                            )
+                        """)
+                        added = 0
+                        for question, answer in answers.items():
+                            if conn.execute('SELECT id FROM questions WHERE question = ?', (question,)).fetchone():
+                                conn.execute('UPDATE questions SET answer = ? WHERE question = ?', (answer, question))
+                            else:
+                                conn.execute('INSERT INTO questions (question, answer) VALUES (?, ?)', (question, answer))
+                                added += 1
+                answer_map = self.__dict__.setdefault('_answer_map', {})
+                answer_keys = self.__dict__.setdefault('_answer_keys', [])
+                for question, answer in answers.items():
+                    key = _normalize_q(question)
+                    if key:
+                        if key not in answer_map:
+                            answer_keys.append(key)
+                        answer_map[key] = {'answer': answer, 'options': [], 'question': question}
+            tag = f'（{source}）' if source else ''
+            logger.info(f'   💾 已同步 {len(answers)} 題到 questions.db{tag}（新增 {added} 題）')
+            return True
+        except Exception as exc:
+            logger.warning(f'   ⚠️ 寫入 questions.db 失敗: {exc}')
+            return False
 
     def toggle_chrome_visibility(self, show: bool):
         """控制 Chrome 視窗顯示與隱藏"""
@@ -991,7 +1029,7 @@ class AdminEfficiencyPilot:
                     time.sleep(3)
                 else:
                     logger.warning(
-                        f"   ⚠️ set_see_question_result 無法公布答案（server 回應：{resp.text.strip()[:50]!r}），此課程可能不開放答案"
+                        f"   ⚠️ 讀取答案請求遭伺服器拒絕（回應：{resp.text.strip()[:50]!r}）；尚無法確認是請求參數、登入狀態或課程權限問題"
                     )
                     return result
 
@@ -1118,6 +1156,7 @@ class AdminEfficiencyPilot:
         course_id = str(course.get("course_id", ""))
         course_name = course.get("caption", course_id)
         passed = False
+        self._last_exam_score_unknown = False
         time.sleep(3)
 
         # 取得課程專屬及格門檻（動態支援 60、70、75、80、100 分等各平臺門檻）
@@ -1155,41 +1194,43 @@ class AdminEfficiencyPilot:
                 pass
 
             # 擷取分數
-            score_match = re.search(r"(?:成績|得分|分數|總分)[：:\s]*([0-9]+(?:\.[0-9]+)?)", body_text)
-            score_val = float(score_match.group(1)) if score_match else None
+            score_val, result_status = grade_evidence(body_text)
             score_str = f"【得分：{score_val} 分 / 門檻：{pass_score} 分】" if score_val is not None else f"【門檻：{pass_score} 分】"
 
             if score_val is not None:
-                if score_val >= pass_score:
+                if grade_passed(score_val, pass_score) is True:
                     logger.info(f"   🎉 測驗結果：達標及格 {score_str}！")
                     passed = True
                     self._exam_fail_counts.pop(course_id, None)
                     # 🛡️ 只有獲得 100 分滿分時，才將整卷 AI 答案同步至題庫；部分及格不存庫，防止未滿分之錯誤答案污染
                     if _ai_answered and score_val >= 100.0:
-                        self._save_answers_to_db(_ai_answered, source="AI")
-                        logger.info(f"   💾 測驗獲得 100 分滿分，已將 {len(_ai_answered)} 題 AI 驗證解答正式同步至題庫")
+                        if self._save_answers_to_db(_ai_answered, source="AI") is True:
+                            logger.info(f"   💾 測驗獲得 100 分滿分，已將 {len(_ai_answered)} 題 AI 驗證解答正式同步至題庫")
                 else:
                     self._exam_fail_counts[course_id] = self._exam_fail_counts.get(course_id, 0) + 1
                     fail_now = self._exam_fail_counts[course_id]
                     logger.warning(f"   ❌ 測驗結果：未達門檻 {score_str}（已累計未達標 {fail_now} 次）")
                     passed = False
-            elif "\u4e0d\u53ca\u683c" in body_text or "未通過" in body_text:
+            elif grade_passed(None, pass_score, result_status) is False:
                 self._exam_fail_counts[course_id] = self._exam_fail_counts.get(course_id, 0) + 1
                 fail_now = self._exam_fail_counts[course_id]
                 logger.warning(f"   ❌ 測驗結果：不及格 / 未通過 {score_str}（已累計不及格 {fail_now} 次）")
                 passed = False
-            elif "\u53ca\u683c" in body_text or "通過" in body_text:
+            elif grade_passed(None, pass_score, result_status) is True:
                 logger.info(f"   🎉 測驗結果：及格 / 通過 {score_str}！")
                 passed = True
                 self._exam_fail_counts.pop(course_id, None)
             else:
                 logger.info(f"   📝 測驗已送出 {score_str}（請至學習紀錄查核狀態）")
-
+                self._last_exam_score_unknown = True
                 passed = False
         except Exception as e:
             logger.debug(f"讀取測驗成績失敗: {e}")
+            self._last_exam_score_unknown = True
             passed = False
 
+        if self._last_exam_score_unknown:
+            self._mark_exam_manual_review(course, "已交卷但成績未知，停止自動重考，請查核平臺紀錄")
         return passed
 
     def _count_session_quiz_course(self, course_id):
@@ -1204,9 +1245,11 @@ class AdminEfficiencyPilot:
         c_id = str(course.get("course_id", ""))
         outages = self.__dict__.setdefault("_exam_ai_outages", {})
         if outages.get(c_id, 0) >= EXAM_AI_OUTAGE_MAX_DEFERS:
+            if callable(getattr(self, '_mark_exam_manual_review', None)):
+                self._mark_exam_manual_review(course, 'AI 多次無法回應，保留草稿，請稍後重新執行')
             return False
         outages[c_id] = outages.get(c_id, 0) + 1
-        if self._exam_fail_counts.get(c_id, 0) > 0:
+        if getattr(self, '_last_exam_submitted', True) and self._exam_fail_counts.get(c_id, 0) > 0:
             self._exam_fail_counts[c_id] -= 1
         self.__dict__.setdefault("_exam_retry_after", {})[c_id] = time.time() + EXAM_AI_OUTAGE_DEFER_SECONDS
         logger.warning(
@@ -1215,8 +1258,99 @@ class AdminEfficiencyPilot:
         )
         return True
 
+    def _apply_interactive_exam_answers(self, course, rows, answers):
+        """回貼必須涵蓋所有題目，不能以先前殘留的勾選填補缺答。"""
+        if set(answers) != set(range(1, len(rows) + 1)):
+            self._mark_exam_manual_review(course, '人機協同回貼缺題，停止交卷')
+            return False
+        for q_idx, row in enumerate(rows):
+            q_num = q_idx + 1
+            if q_num not in answers:
+                continue
+            selected_labels = answers[q_num]
+
+            radios = row.find_elements(By.CSS_SELECTOR, "input[type='radio']")
+            checkboxes = row.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+            inputs = checkboxes if checkboxes else radios
+
+            expected = {str(label).upper() for label in selected_labels}
+            for opt_idx, control in enumerate(inputs):
+                want = chr(65 + opt_idx) in expected
+                checked = bool(self.driver.execute_script('return arguments[0].checked;', control))
+                if want != checked and (checkboxes or want):
+                    self.driver.execute_script('arguments[0].click();', control)
+            actual = {chr(65 + i) for i, control in enumerate(inputs)
+                      if self.driver.execute_script('return arguments[0].checked;', control) is True}
+            if not expected or actual != expected:
+                self._mark_exam_manual_review(course, '人機協同答案未完整勾選，停止交卷')
+                return False
+
+        return self._verify_exam_ready(course, rows)
+
+    def _verify_exam_ready(self, course, rows):
+        """雙平臺採相同完整性門檻；e 等依每個題目列讀回勾選狀態。"""
+        counts = self.driver.execute_script("""
+            var rows = arguments[0];
+            var answered = rows.filter(row => row.querySelector('input[type=radio]:checked, input[type=checkbox]:checked')).length;
+            return {total: rows.length, answered: answered};
+        """, rows)
+        ready = isinstance(counts, dict) and can_submit(counts.get('total', 0), counts.get('answered', 0), expected_total=len(rows))
+        if not ready:
+            self._mark_exam_manual_review(course, '仍有未填答或無法讀取的題目，保留草稿，禁止交卷')
+        return ready
+
+    def _click_course_entry(self, *, include_exam=False, allow_enrollment=False):
+        """依序處理確認、報名與上課入口；最多四步，原生 Alert 留給呼叫端處理。"""
+        script = ("const includeExam = arguments[0];\n"
+                  "const includeEnrollment = arguments[1];\n" + _COURSE_ENTRY_SCRIPT)
+        for _ in range(4):
+            if not self.running:
+                return None
+            before_url = self.driver.current_url
+            before_handles = set(self.driver.window_handles)
+            action = self.driver.execute_script(script, include_exam, allow_enrollment)
+            if not action:
+                return None
+            if action['kind'] == 'entry':
+                return action['label']
+            logger.info(f"   📝 已點擊「{action['label']}」，繼續確認上課入口")
+            if not self.safe_sleep(1):
+                return None
+            try:
+                if set(self.driver.window_handles) - before_handles:
+                    return action['label']
+                current_url = self.driver.current_url
+                if current_url != before_url and '/info/' not in current_url:
+                    return action['label']
+            except UnexpectedAlertPresentException:
+                return action['label']
+        return None
+
     def auto_exam(self, course):
+        """累積同一課程各輪測驗用量，包含不及格或中斷的嘗試。"""
+        from utils.security import global_quota_tracker
+
+        totals = self.__dict__.setdefault('_course_api_calls', {})
+        course_id = str(course.get('course_id', ''))
+        try:
+            before = global_quota_tracker.get_stats()
+        except Exception:
+            before = None
+        try:
+            return self._auto_exam_attempt(course)
+        finally:
+            if before is not None:
+                try:
+                    after = global_quota_tracker.get_stats()
+                    delta = after['used'] - before['used'] if after['date'] == before['date'] else after['used']
+                    totals[course_id] = totals.get(course_id, 0) + max(0, delta)
+                except Exception as exc:
+                    logger.debug(f'測驗用量統計失敗，不影響測驗結果：{exc}')
+
+    def _auto_exam_attempt(self, course):
         """時數達標後，自動進入測驗並作答。回傳 True=通過, False=未通過/失敗"""
+        self._last_exam_ai_outage = False
+        self._last_exam_submitted = False
         ai_keys = self.config.get("ai_keys", {})
         ai_keys = ai_keys if isinstance(ai_keys, dict) else {}
         ai_provider = self.config.get("ai_provider", "Gemini")
@@ -1231,24 +1365,24 @@ class AdminEfficiencyPilot:
             and not ai_enabled
         ):
             logger.info("   📝 未設定題庫或 AI，且未啟用人機協同模式，跳過自動作答")
+            self._mark_exam_manual_review(course, '未設定有效題庫、AI 或人機協同，停止自動作答')
             return False
 
         course_id = str(course.get("course_id", ""))
 
         # 不及格超過 3 次，跳過此課程
         fail_count = self._exam_fail_counts.get(course_id, 0)
-        if fail_count >= 3:
+        if fail_count >= MAX_QUIZ_ATTEMPTS:
+            self._mark_exam_manual_review(course, '測驗未及格已達三次上限，請人工確認')
             logger.warning(
                 f"   ⚠️ 課程「{course.get('caption', course_id)}」已不及格 {fail_count} 次，跳過，請使用者自行完成測驗"
             )
             return False
 
         logger.info("   📝 開始自動作答流程...")
-        self._last_exam_ai_outage = False
         # 收集本場 AI 補答的題目，考試通過後寫入 db
         _ai_answered = {}
         # 僅在已啟用 AI 且重測時才以 AI 覆核；否則維持純題庫模式。
-        force_ai = fail_count >= 1 and ai_enabled
         if not ai_enabled:
             if not has_api_key:
                 logger.info("   📚 未設定 API Key，啟用純題庫模式，不呼叫 AI。")
@@ -1284,25 +1418,7 @@ class AdminEfficiencyPilot:
                         self._completed_in_session.add(str(course.get("course_id", "")))
                         return True
 
-                    clicked_in = self.driver.execute_script("""
-                        var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
-                        for (var m = 0; m < modalBtns.length; m++) {
-                            var mt = (modalBtns[m].innerText || modalBtns[m].textContent || '').trim();
-                            if (mt === '確定' || mt === '確認') {
-                                modalBtns[m].click();
-                                return '確定（彈窗）';
-                            }
-                        }
-                        var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
-                        for (var i = 0; i < btns.length; i++) {
-                            var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                            if (['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗', '上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習'].some(k => t.indexOf(k) !== -1)) {
-                                btns[i].click();
-                                return t;
-                            }
-                        }
-                        return null;
-                    """)
+                    clicked_in = self._click_course_entry(include_exam=True)
                     if clicked_in:
                         logger.info(f"   📝 已點擊「{clicked_in}」進入教室/測驗介面")
                         time.sleep(4)
@@ -1630,25 +1746,9 @@ class AdminEfficiencyPilot:
                         logger.info(
                             f"   🚀 已收到回貼答案（共 {len(interactive_ans_map)} 題），正在自動勾選網頁選項..."
                         )
-                        for q_idx, row in enumerate(rows):
-                            q_num = q_idx + 1
-                            if q_num not in interactive_ans_map:
-                                continue
-                            selected_labels = interactive_ans_map[q_num]
-
-                            radios = row.find_elements(By.CSS_SELECTOR, "input[type='radio']")
-                            checkboxes = row.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
-                            inputs = checkboxes if checkboxes else radios
-
-                            for lbl in selected_labels:
-                                opt_idx = ord(lbl.upper()) - 65
-                                if 0 <= opt_idx < len(inputs):
-                                    try:
-                                        self.driver.execute_script("arguments[0].click();", inputs[opt_idx])
-                                    except Exception as e:
-                                        logger.debug(f"勾選選項 {lbl} 失敗: {e}")
-
-                        logger.info("   ✅ 選項勾選完成，正在送出考卷...")
+                        if not self._apply_interactive_exam_answers(course, rows, interactive_ans_map):
+                            return False
+                        logger.info("   ✅ 選項勾選與完整性驗證完成，正在送出考卷...")
                         time.sleep(1)
                         try:
                             self.driver.execute_script(
@@ -1671,6 +1771,7 @@ class AdminEfficiencyPilot:
 
                         time.sleep(1)
                         self._accept_alert()
+                        self._last_exam_submitted = True
                         passed = self._read_exam_result(course)
                         # 人機協同答案只用於本次作答，不寫回本機題庫。
                         if not passed:
@@ -1886,7 +1987,7 @@ class AdminEfficiencyPilot:
                     logger.warning(f"   ⚠️ 解析第 {q_idx + 1} 題失敗：{e}")
 
             # ⚡ 10 題合一整卷 AI 批次作答（僅發送 1 次 API 請求，節省 90% 額度）
-            items_needing_ai = [item for item in parsed_items if item["ans"] is None or force_ai]
+            items_needing_ai = [item for item in parsed_items if needs_ai_review(item['ans'], fail_count if ai_enabled else 0)]
             if ai_enabled and items_needing_ai:
                 batch_questions = []
                 opt_labels = ["A", "B", "C", "D", "E", "F", "G", "H", "I"]
@@ -1914,11 +2015,13 @@ class AdminEfficiencyPilot:
 
                 try:
                     from quiz_bank import ai_batch_solve_quiz
+                    for item in items_needing_ai:
+                        item['ans'] = None
                     batch_res = ai_batch_solve_quiz(course.get('caption', 'e等公務員測驗'), batch_questions, self.config)
-                    if batch_res.get("success") and batch_res.get("answers"):
+                    if batch_res.get("success") and batch_res.get("parsed_answers"):
                         for b_q in batch_questions:
                             q_num = str(b_q["index"])
-                            ans_choice = batch_res["answers"].get(q_num) or batch_res["answers"].get(int(q_num))
+                            ans_choice = batch_res['parsed_answers'].get(b_q['name'])
                             if ans_choice:
                                 item = b_q["raw_item"]
                                 matched_opt = next((o for o in b_q["options"] if o["label"].upper() == str(ans_choice).upper() or o["val"] == str(ans_choice)), None)
@@ -1928,16 +2031,21 @@ class AdminEfficiencyPilot:
                                     opt_text = (matched_opt.get("text") or "").strip()
                                     _ai_answered[item["q_text"]] = opt_text if opt_text else matched_opt["val"]
                                 else:
-                                    item["ans"] = str(ans_choice)
-                                    _ai_answered[item["q_text"]] = str(ans_choice)
+                                    item["ans"] = ans_choice
+                                    texts = [o['text'] for o in b_q['options'] if o['val'] in ans_choice] if isinstance(ans_choice, list) else []
+                                    _ai_answered[item["q_text"]] = json.dumps(texts, ensure_ascii=False) if texts else str(ans_choice)
                                 item["ans_source"] = "AI"
                                 logger.info(f"   🤖 AI 批次解答 [{q_num}/{len(rows)} 題]：{item['ans']!r}")
                     else:
                         self._last_exam_ai_outage = bool(batch_res.get("transient"))
-                        logger.warning(f"   ⚠️ AI 批次作答未取得有效答案：{batch_res.get('error')}，其餘題目以本地猜答處理")
+                        logger.warning(f"   ⚠️ AI 批次作答未取得有效答案：{batch_res.get('error')}；保留草稿，不猜答或交卷")
                 except Exception as batch_err:
-                    logger.warning(f"   ⚠️ AI 批次作答異常：{batch_err}，其餘題目以本地安全猜答處理（不重試 API，保證 1 卷 1 次）")
+                    logger.warning(f"   ⚠️ AI 批次作答異常：{batch_err}；保留草稿，不猜答或交卷")
 
+            if len(parsed_items) != len(rows) or any(item['ans'] is None for item in parsed_items):
+                if not self._last_exam_ai_outage:
+                    self._mark_exam_manual_review(course, '題目未完整解析或仍缺有效答案，保留草稿，禁止交卷')
+                return False
 
             for item in parsed_items:
                 q_idx = item["idx"]
@@ -1978,7 +2086,9 @@ class AdminEfficiencyPilot:
                             if is_all_above:
                                 expected_letters = [chr(ord('A') + i) for i in range(n)]
                             else:
-                                expected_letters = _parse_multiple_choice_answers(ans, num_options=n)
+                                expected_letters = answer_values(ans, {chr(65 + i): text for i, text in enumerate(option_texts[:n])}, multiple=True)
+                                if not expected_letters:
+                                    expected_letters = _parse_multiple_choice_answers(ans, num_options=n)
 
                             # 若未直接解析出字母且有選項文字，透過選項文字雙向包含反推
                             if not expected_letters and option_texts:
@@ -2026,49 +2136,22 @@ class AdminEfficiencyPilot:
                                 answered += 1
                             else:
                                 logger.warning(f"   ⚠️ 第{q_idx + 1}題 {source_tag} 填答驗證失敗！預期={exp_str}，實際={act_str}")
-                        else:
-                            # 無答案：隨機勾 2~3 個 checkbox
-                            pick_count = min(n, random.randint(2, max(2, n - 1)))
-                            picks = random.sample(checkboxes, pick_count)
-                            for pick in picks:
-                                self.driver.execute_script(
-                                    "arguments[0].click();", pick
-                                )
-                            logger.info(
-                                f"   🎲 多選題隨機猜答：[{q_idx + 1}/{len(rows)} 題] ({pick_count}/{n})：{q_text[:20]}..."
-                            )
-                            answered += 1
 
                     elif radios:
                         idx = None
                         if ans is not None:
                             # 🛡️ 軌道 B：文字本位（Text-Content-First）優先比對，抗選項隨機重排
                             idx = match_radio_option_index(ans, option_texts, len(radios))
-                            if idx is None and len(radios) == 2:
-                                idx = 0
-                                logger.debug(
-                                    f"   ⚠️ 是非題答案無法比對，預設選第一個：{q_text[:30]!r} ans={ans!r}"
-                                )
-                        else:
-                            if len(radios) == 2:
-                                idx = 0
-                                logger.info(
-                                    f"   🎲 是非題無答案，預設猜正確：[{q_idx + 1}/{len(rows)} 題] {q_text[:30]!r}"
-                                )
-                                _missing.append({"type": "是非", "question": q_text, "options": option_texts})
-                            else:
-                                idx = random.randrange(len(radios))
-                                logger.info(
-                                    f"   🎲 單選題隨機猜答（無答案，稍後回報）：[{q_idx + 1}/{len(rows)} 題] {q_text[:30]!r}"
-                                )
-                                _missing.append({"type": "單選", "question": q_text, "options": option_texts})
 
 
                         if idx is not None and idx < len(radios):
                             self.driver.execute_script(
                                 "arguments[0].click();", radios[idx]
                             )
-                            answered += 1
+                            if self.driver.execute_script('return arguments[0].checked;', radios[idx]) is True:
+                                answered += 1
+                            else:
+                                skipped += 1
                             if ans is not None:
                                 source_tag = f"[{ans_source}]" if ans_source else "[已知答案]"
                                 logger.info(f"   📝 作答進度：[{q_idx + 1}/{len(rows)} 題] 已填答 {source_tag}")
@@ -2083,6 +2166,9 @@ class AdminEfficiencyPilot:
                     skipped += 1
 
             logger.info(f"   📝 作答完成：{answered} 題已答，{skipped} 題略過")
+            if not can_submit(len(rows), answered, skipped=skipped) or not self._verify_exam_ready(course, rows):
+                self._mark_exam_manual_review(course, '填答讀回驗證未通過，保留草稿，禁止交卷')
+                return False
 
             # ── 6b. 傳送缺題通知到 GAS Relay → Telegram（背景執行，不阻擋主流程）──
             if _missing:
@@ -2195,6 +2281,7 @@ class AdminEfficiencyPilot:
             time.sleep(3)
 
             # ── 9. 讀取成績，判斷是否通過 ──
+            self._last_exam_submitted = True
             passed = self._read_exam_result(course, _ai_answered=_ai_answered)
 
             # ── 10. 不及格時嘗試讀取正確答案 ──
@@ -3532,11 +3619,7 @@ class AdminEfficiencyPilot:
         session_start = time.time()
         last_prog_sec = -1
         last_prog_time = time.time()
-        try:
-            from utils.security import global_quota_tracker
-            api_before = global_quota_tracker.get_stats().get("used", 0)
-        except Exception:
-            api_before = 0
+        course_success = False
 
         try:
             # ⭐ 檢查點 1
@@ -3643,32 +3726,7 @@ class AdminEfficiencyPilot:
                     return "SKIP"
 
                 before_handles = list(self.driver.window_handles)
-                clicked = self.driver.execute_script("""
-                    var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
-                    for (var m = 0; m < modalBtns.length; m++) {
-                        var mt = (modalBtns[m].innerText || modalBtns[m].textContent || '').trim();
-                        if (mt === '確定' || mt === '確認') {
-                            modalBtns[m].click();
-                            return '確定（彈窗）';
-                        }
-                    }
-                    var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
-                    for (var i = 0; i < btns.length; i++) {
-                        var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                        var cleanT = t.replace(/\\s+/g, '');
-                        var href = (btns[i].getAttribute('href') || '').toLowerCase();
-                        var onclick = (btns[i].getAttribute('onclick') || '').toLowerCase();
-                        if (['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '報名課程', '我要報名', '加入課程', '確認報名', '開始學習', '前往學習', '選課', '我要選課'].some(k => cleanT.indexOf(k) !== -1)) {
-                            btns[i].click();
-                            return t;
-                        }
-                        if (onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 || href.indexOf('action=learn') !== -1) {
-                            btns[i].click();
-                            return t || '課程連結';
-                        }
-                    }
-                    return null;
-                """)
+                clicked = self._click_course_entry(allow_enrollment=True)
                 if clicked:
                     logger.info(f"   📝 已點擊「{clicked}」進入課程教室")
 
@@ -4040,7 +4098,7 @@ class AdminEfficiencyPilot:
                     if q_ok:
                         c_id = str(course.get("course_id", course.get("id", "")))
                         self._completed_in_session.add(c_id)
-                        self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                        self._mark_exam_manual_review(course, "本次跳過測驗，尚未確認完課")
                         try:
                             from utils.security import global_quota_tracker
                             from utils.course_dashboard import render_course_completion_card
@@ -4050,7 +4108,7 @@ class AdminEfficiencyPilot:
                                 has_quiz=True,
                                 quiz_passed=False,
                                 survey_completed=True,
-                                course_completed=True,
+                                course_completed=False,
                                 solve_mode="skipped",
                                 course_api_calls=0,
                                 today_api_calls=api_after,
@@ -4080,13 +4138,14 @@ class AdminEfficiencyPilot:
                             c_id = str(course.get("course_id", course.get("id", "")))
                             self._completed_in_session.add(c_id)
                             self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                            course_success = True
                             self._session_passed_count = getattr(self, "_session_passed_count", 0) + 1
                             self._session_quiz_passed_count = getattr(self, "_session_quiz_passed_count", 0) + 1
                             try:
                                 from utils.security import global_quota_tracker
                                 from utils.course_dashboard import render_course_completion_card
                                 api_after = global_quota_tracker.get_stats().get("used", 0)
-                                course_api = max(0, api_after - api_before)
+                                course_api = self._course_api_calls.get(str(course.get("course_id", "")), 0)
                                 s_mode = "ai" if course_api > 0 else "quiz_bank"
                                 card = render_course_completion_card(
                                     course_name=course.get('caption', ''),
@@ -4112,7 +4171,7 @@ class AdminEfficiencyPilot:
             if not self.safe_sleep(5):
                 return "STOP"
             self.sync_session()
-            return "SUCCESS"
+            return "SUCCESS" if course_success else "PENDING"
 
         except UnexpectedAlertPresentException as e:
             alert_text = ""
@@ -4367,7 +4426,7 @@ class AdminEfficiencyPilot:
                             return False
                         # 考試未通過（且未達 3 次不及格上限）
                         exam_passed = self._is_exam_passed(c)
-                        needs_exam = (not exam_passed) and (self._exam_fail_counts.get(c_id, 0) < 3)
+                        needs_exam = (not exam_passed) and (self._exam_fail_counts.get(c_id, 0) < MAX_QUIZ_ATTEMPTS)
                         # 問卷未填（fill=="0" 且 write_questionnaire 非空）
                         needs_questionnaire = (str(c.get("fill", "0")) == "0") and bool(c.get("write_questionnaire", ""))
                         if self.config.get("skip_exam_for_session", False):
@@ -4430,11 +4489,6 @@ class AdminEfficiencyPilot:
                                 break
                             c_id = str(c.get("course_id", ""))
                             try:
-                                from utils.security import global_quota_tracker
-                                auto_all_api_before = global_quota_tracker.get_stats().get("used", 0)
-                            except Exception:
-                                auto_all_api_before = 0
-                            try:
                                 self.driver.execute_script(
                                     f"gotoCourse({c['course_id']})"
                                 )
@@ -4475,32 +4529,7 @@ class AdminEfficiencyPilot:
 
                                 # 點「開始上課」/「進入課程」/「上課去」按鈕（如有）
                                 try:
-                                    clicked_entry = self.driver.execute_script("""
-                                        var modalBtns = document.querySelectorAll('.modal button, .dialog button, div[role="dialog"] button, button.btn-primary, button.btn-confirm');
-                                        for (var m = 0; m < modalBtns.length; m++) {
-                                            var mt = (modalBtns[m].innerText || modalBtns[m].textContent || '').trim();
-                                            if (mt === '確定' || mt === '確認') {
-                                                modalBtns[m].click();
-                                                return '確定（彈窗）';
-                                            }
-                                        }
-                                        var btns = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"]');
-                                        for (var i = 0; i < btns.length; i++) {
-                                            var t = (btns[i].innerText || btns[i].value || btns[i].textContent || '').trim();
-                                            var cleanT = t.replace(/\\s+/g, '');
-                                            var href = (btns[i].getAttribute('href') || '').toLowerCase();
-                                            var onclick = (btns[i].getAttribute('onclick') || '').toLowerCase();
-                                            if (['認證', '進行測驗', '開始測驗', '參加測驗', '前往測驗', '測驗', '上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '開始學習', '前往學習'].some(k => cleanT.indexOf(k) !== -1)) {
-                                                btns[i].click();
-                                                return t;
-                                            }
-                                            if (onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 || href.indexOf('action=learn') !== -1) {
-                                                btns[i].click();
-                                                return t || '課程連結';
-                                            }
-                                        }
-                                        return null;
-                                    """)
+                                    clicked_entry = self._click_course_entry(include_exam=True)
                                     if clicked_entry:
                                         logger.info(f"   📝 已點擊「{clicked_entry}」進入教室/測驗介面")
                                     if not self.safe_sleep(5):
@@ -4536,7 +4565,7 @@ class AdminEfficiencyPilot:
                                     logger.info(f"   ✅ 「{c.get('caption', '')}」問卷先前已完成，跳過填寫。")
                                 if q_ok:
                                     self._completed_in_session.add(c_id)
-                                    self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
+                                    self._mark_exam_manual_review(c, "本次跳過測驗，尚未確認完課")
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.SKIPPED, "使用者選擇本次跳過測驗（問卷已完成）", "課程已完成時數與問卷，後續補測即可完課", is_comp=False)
                                     try:
@@ -4548,7 +4577,7 @@ class AdminEfficiencyPilot:
                                             has_quiz=True,
                                             quiz_passed=False,
                                             survey_completed=True,
-                                            course_completed=True,
+                                            course_completed=False,
                                             solve_mode="skipped",
                                             course_api_calls=0,
                                             today_api_calls=api_after,
@@ -4585,7 +4614,7 @@ class AdminEfficiencyPilot:
                                         from utils.security import global_quota_tracker
                                         from utils.course_dashboard import render_course_completion_card
                                         api_after = global_quota_tracker.get_stats().get("used", 0)
-                                        course_api = max(0, api_after - auto_all_api_before)
+                                        course_api = self._course_api_calls.get(c_id, 0)
                                         s_mode = "ai" if course_api > 0 else "quiz_bank"
                                         card = render_course_completion_card(
                                             course_name=c.get('caption', ''),
@@ -4610,12 +4639,15 @@ class AdminEfficiencyPilot:
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "問卷填寫失敗，尚未確認完成", "請手動前往網站填寫問卷", needs_man=True)
                             elif not passed:
+                                if c_id in self._exam_manual_review:
+                                    _emit_course_state(c, CourseStatus.MANUAL_REVIEW, self._exam_manual_review[c_id]["reason"], "請確認平臺紀錄或保留的草稿", needs_man=True)
+                                    continue
                                 if self._defer_exam_after_ai_outage(c):
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.QUIZ, "AI 服務暫時無法回應，本次不及格不計入上限", f"{EXAM_AI_OUTAGE_DEFER_SECONDS // 60} 分鐘後自動重考")
                                     continue
                                 # 若不及格次數未達上限，跳回迴圈頂部繼續重考
-                                if self._exam_fail_counts.get(c_id, 0) < 3:
+                                if self._exam_fail_counts.get(c_id, 0) < MAX_QUIZ_ATTEMPTS:
                                     all_exam_done = False
                                     from models.course_state import CourseStatus
                                     fail_cnt = self._exam_fail_counts.get(c_id, 0)
@@ -4625,14 +4657,13 @@ class AdminEfficiencyPilot:
                                     # 已達 3 次不及格上限，列為待人工處理清單，本次不再重試
                                     self._mark_exam_manual_review(c, "測驗連續不及格已達 3 次上限")
                                     self._completed_in_session.add(c_id)
-                                    self._session_completed_count = getattr(self, "_session_completed_count", 0) + 1
                                     from models.course_state import CourseStatus
                                     _emit_course_state(c, CourseStatus.MANUAL_REVIEW, "測驗連續不及格已達 3 次上限", "請至平台手動查看題目或題庫解析", needs_man=True)
                                     try:
                                         from utils.security import global_quota_tracker
                                         from utils.course_dashboard import render_course_completion_card
                                         api_after = global_quota_tracker.get_stats().get("used", 0)
-                                        course_api = max(0, api_after - auto_all_api_before)
+                                        course_api = self._course_api_calls.get(c_id, 0)
                                         s_mode = "ai" if course_api > 0 else "manual"
                                         card = render_course_completion_card(
                                             course_name=c.get('caption', ''),

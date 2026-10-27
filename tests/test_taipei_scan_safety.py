@@ -215,6 +215,10 @@ class TaipeiRunQueueLoopTests(unittest.TestCase):
 
         # 模擬登入成功、取得 1 門待處理課程、模組解析完成
         with patch('taipei_eda_course.webdriver.Chrome', return_value=mock_driver), \
+             patch('app.download_best_chromedriver', return_value='test-driver.exe') as download_driver, \
+             patch('taipei_eda_course.load_config', return_value={}), \
+             patch('taipei_eda_course._acquire_taipei_run_lock', return_value='test-lock'), \
+             patch('taipei_eda_course._release_taipei_run_lock'), \
              patch('taipei_eda_course.do_login', return_value=True), \
              patch('taipei_eda_course.get_course_list', return_value=[sample_course]), \
              patch('taipei_eda_course.build_taipei_work_queue', return_value=[sample_course]), \
@@ -227,4 +231,5 @@ class TaipeiRunQueueLoopTests(unittest.TestCase):
             # 呼叫 run_taipei_eda，若 global_quota_tracker 未定義會拋出 NameError
             success = run_taipei_eda(config_override={'account': 'test_user', 'password': 'pwd'})
             self.assertTrue(success)
+            download_driver.assert_called_once_with()
 

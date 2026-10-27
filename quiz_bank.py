@@ -2,7 +2,7 @@
 臺北e大 測驗自動作答模組
 - 查 GAS 題庫 → 命中直接答 → 送出
 - 未知題：呼叫 AI 分析答案 → 填答 → 送出 → 存 GAS
-- AI 失敗 fallback：猜 val=0 送出 → review 讀正解 → 存 GAS → 再考一次
+- AI 失敗或填答不完整：停止交卷；已確認未及格才重考覆核
 """
 
 import re, json, time, requests, difflib, threading, sys, logging
@@ -105,11 +105,15 @@ def gas_fetch_bank(course_id, config=None):
             if not isinstance(row, dict): continue
             key = _normalize(row.get('q_text', ''))
             if key:
-                bank[key] = str(row.get('val', '0'))
+                raw = str(row.get('val', ''))
+                values = [v.strip() for v in raw.split(',') if v.strip()]
+                texts = [row.get('opt' + v) or v for v in values]
+                if texts:
+                    bank[key] = texts if len(texts) > 1 else texts[0]
         if bank:
             print(f'  [題庫] 從 GAS 載入 {len(bank)} 題（course_id={course_id}）')
         else:
-            print(f'  [題庫] GAS 目前沒有此課程題庫（course_id={course_id}），將用 AI/猜題建立題庫')
+            print(f'  [題庫] GAS 目前沒有此課程題庫（course_id={course_id}），需 AI 或人工補答')
         return bank
     except Exception as e:
         print(f'  [題庫] GAS 載入失敗: {e}')
@@ -120,10 +124,10 @@ def _taipei_question_payload(course_id, q):
     return {
         'course_id': str(course_id),
         'q_text': q.get('qtext', ''),
-        'opt0': opts.get('0', ''),
-        'opt1': opts.get('1', ''),
-        'opt2': opts.get('2', ''),
-        'opt3': opts.get('3', ''),
+        'opt0': list(opts.values())[0] if len(opts) > 0 else '',
+        'opt1': list(opts.values())[1] if len(opts) > 1 else '',
+        'opt2': list(opts.values())[2] if len(opts) > 2 else '',
+        'opt3': list(opts.values())[3] if len(opts) > 3 else '',
     }
 
 def gas_report_missing_questions(course_id, questions, course_name='', username='', config=None):
@@ -172,7 +176,7 @@ def gas_save_questions(course_id, questions_with_answers, course_name='', userna
     questions_with_answers: [{q_text, val, opt0..opt3}, ...]
     """
     if not questions_with_answers or not _is_cloud_sync_enabled(config):
-        return
+        return False
     payload = {
         'action': 'taipei_quiz_save',
         'course_id': str(course_id),
@@ -181,14 +185,16 @@ def gas_save_questions(course_id, questions_with_answers, course_name='', userna
         'questions': [dict(course_id=course_id, **q) for q in questions_with_answers]
     }
     try:
-        r = requests.post(GAS_URL, json=payload, timeout=15)
+        r = requests.post((config or {}).get('gas_url') or GAS_URL, json=payload, timeout=15)
         result = r.json()
         if result.get('status') == 'ok':
             print(f'  [題庫] 已同步共用題庫: added={result.get("added")}, updated={result.get("updated")}')
+            return True
         else:
             print(f'  [題庫] GAS 回傳異常: {result}')
     except Exception as e:
         print(f'  [題庫] GAS 存入失敗: {e}')
+    return False
 
 def lookup_bank(bank, q_text, threshold=0.75):
     """在 bank 裡模糊查找 q_text，回傳 val str 或 None"""
@@ -222,7 +228,9 @@ def save_ai_answers_to_sqlite(questions_data: list, answers_by_idx: dict):
                 opt_map = {opt["label"].upper(): opt["text"].strip() for opt in opts if "label" in opt and "text" in opt}
 
                 ans_code_str = str(ans_code).strip().upper()
-                resolved_ans = opt_map.get(ans_code_str, str(ans_code).strip())
+                codes = [code.strip() for code in ans_code_str.split(',') if code.strip()]
+                texts = [opt_map[code] for code in codes if code in opt_map]
+                resolved_ans = json.dumps(texts, ensure_ascii=False) if len(texts) > 1 else opt_map.get(ans_code_str, str(ans_code).strip())
 
                 opt_a = opt_map.get("A", "")
                 opt_b = opt_map.get("B", "")
@@ -422,7 +430,7 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
             if not ans_code:
                 continue
 
-            ans_code_str = str(ans_code).strip()
+            ans_code_str = ','.join(str(code).strip() for code in ans_code) if isinstance(ans_code, list) else str(ans_code).strip()
             answers_by_idx[idx_str] = ans_code_str
 
             opts = q.get("options", [])
@@ -431,7 +439,8 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
             codes = [c.strip().upper() for c in ans_code_str.replace("，", ",").replace("、", ",").replace(" ", ",").split(",") if c.strip()]
             matched_vals = [label_to_val[c] for c in codes if c in label_to_val]
 
-            if matched_vals:
+            if (matched_vals and len(matched_vals) == len(codes)
+                    and (q.get('is_multiple') or len(matched_vals) == 1)):
                 parsed_answers[q["name"]] = matched_vals if len(matched_vals) > 1 else matched_vals[0]
 
         _safe_print(f"  ✓ [AI批次] 成功解析 {len(answers_by_idx)}/{len(questions_data)} 題候選解答")
@@ -584,133 +593,119 @@ def _start_or_resume_quiz(driver, wait, quiz_view_url):
     return None
 
 def _read_questions(driver):
-    """
-    讀取作答頁所有題目與選項。
-    回傳 list of dict:
-      { name, qtext, options: {val: text}, prefix }
-    """
-    result = driver.execute_script("""
-        function clean(s) { return (s || '').replace(/\\s+/g, ' ').trim(); }
-        var out = [];
-        var blocks = document.querySelectorAll('.que, div[id^="question-"]');
-        blocks.forEach(function(q, qi) {
-            var qtext = q.querySelector('.qtext');
-            if (!qtext) {
-                qtext = q.querySelector('.formulation .qtext, .formulation .questiontext');
-            }
-            var qtxt = qtext ? clean(qtext.textContent) : '';
-            if (!qtxt) {
-                var formulation = q.querySelector('.formulation');
-                if (formulation) {
-                    var clone = formulation.cloneNode(true);
-                    clone.querySelectorAll('.answer, input, label, .ablock').forEach(function(el){ el.remove(); });
-                    qtxt = clean(clone.textContent);
-                }
-            }
-            var opts = {};
-            q.querySelectorAll('input[type=radio]').forEach(function(r) {
-                var val = r.value;
-                if (val === '-1') return;
-                var name = r.name;
-                var labelTxt = '';
-                var labelEl = document.getElementById(r.id + '_label');
-                if (labelEl) labelTxt = clean(labelEl.textContent);
-                if (!labelTxt) {
-                    var lbl = q.querySelector('label[for="' + r.id + '"]');
-                    if (lbl) labelTxt = clean(lbl.textContent);
-                }
-                if (!labelTxt) {
-                    var parent = r.closest('div, p, span, li');
-                    if (parent) labelTxt = clean(parent.textContent);
-                }
-                if (!opts._name) opts._name = name;
-                opts[val] = labelTxt;
+    """保留每個題目區塊，支援單選／複選；不支援題型也不得靜默漏掉。"""
+    result = driver.execute_script(r"""
+        function clean(s) { return (s || '').replace(/\s+/g, ' ').trim(); }
+        return Array.from(document.querySelectorAll('.que, div[id^="question-"]')).map(function(q) {
+            var text = q.querySelector('.qtext, .questiontext');
+            var radios = Array.from(q.querySelectorAll('input[type=radio]')).filter(r => r.value !== '-1');
+            var boxes = Array.from(q.querySelectorAll('input[type=checkbox]'));
+            var entry = q.querySelector('input[type=text][name*="answer"], input:not([type])[name*="answer"]');
+            var inputs = boxes.length ? boxes : radios;
+            var options = {}, controls = {};
+            inputs.forEach(function(input, i) {
+                var token = boxes.length ? String(i) : input.value;
+                var label = document.getElementById(input.id + '_label') ||
+                    Array.from(q.querySelectorAll('label')).find(el => el.htmlFor === input.id);
+                options[token] = clean(label ? label.textContent : (input.parentElement.textContent || ''));
+                controls[token] = {name: input.name, value: input.value};
             });
-            if (opts._name && qtxt) {
-                out.push({name: opts._name, qtext: qtxt, options: opts});
+            // 僅辨識題幹內依序編號的複選簡答，其他文字題維持安全阻擋。
+            var numeric = false;
+            if (!inputs.length && entry && text) {
+                var lines = (text.innerText || text.textContent || '').split(/\n/).map(clean).filter(Boolean);
+                var numbered = lines.map(line => line.match(/^(\d)(?:[.．、]\s*|\s*)([^\d].*)$/)).filter(Boolean);
+                numeric = numbered.length >= 2 && numbered.every((m, i) => Number(m[1]) === i + 1);
+                if (numeric) numbered.forEach(m => { options[m[1]] = m[2]; });
             }
+            return {name: boxes.length ? q.id : (inputs[0] ? inputs[0].name : q.id),
+                qtext: clean(text ? text.textContent : ''), options: options, controls: controls,
+                text_name: numeric ? entry.name : null, numeric_text: numeric,
+                is_multiple: boxes.length > 0 || numeric, supported: (inputs.length > 0 || numeric) && !!text};
         });
-        return out;
-    """)
-    seen = set()
-    deduped = []
+    """) or []
     for q in result:
-        q['options'].pop('_name', None)
         q['qtext'] = _clean_question_text(q.get('qtext', ''))
-        key = (q.get('name'), _normalize(q.get('qtext', '')))
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(q)
-    return deduped
+    return result
+
+
+def _question_values(q, raw):
+    """複選簡答的連續代號轉為選項集合；拒絕重複或不存在的代號。"""
+    from utils.quiz_policy import answer_values
+    if q.get('numeric_text') and isinstance(raw, str) and re.fullmatch(r'[1-9]+', raw):
+        if len(set(raw)) != len(raw):
+            return []
+        raw = list(raw)
+    return answer_values(raw, q['options'], multiple=q.get('is_multiple', False))
+
 
 def _fill_answers(driver, answers, questions=None):
-    """
-    填答：answers = {name: val} 或 {name: [val1, val2]} (多選)
-    questions: 選擇性傳入 _read_questions 的題目清單，用於當答案包含文字時動態比對選項
-    """
-    q_map = {q['name']: q for q in (questions or [])}
-    for name, val in answers.items():
-        vals = val if isinstance(val, list) else [val]
-        for v in vals:
-            v_str = str(v).strip()
-            # 🛡️ 軌道 B：若有題目選項資訊且答案非純代碼，優先依選項文字動態找出當前對應的 radio
-            q_info = q_map.get(name)
-            if q_info and q_info.get("options") and not v_str.isdigit():
-                opt_texts = [txt for _, txt in sorted(q_info["options"].items(), key=lambda x: str(x[0]))]
-                matched_idx = match_radio_option_index(v_str, opt_texts, len(opt_texts))
-                if matched_idx is not None:
-                    try:
-                        inputs = driver.find_elements(By.CSS_SELECTOR, f'input[name="{name}"]')
-                        if 0 <= matched_idx < len(inputs):
-                            r = inputs[matched_idx]
-                            driver.execute_script("arguments[0].click();", r)
-                            driver.execute_script(
-                                "arguments[0].checked=true;"
-                                "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
-                            print(f'  [填答] 🎯 依選項文字命中填答：{name} 第 {matched_idx + 1} 個選項 (val={r.get_attribute("value")})')
-                            continue
-                    except Exception:
-                        pass
+    """依各題的控制項名稱／值勾選，再讀回驗證；複選先清除舊選取。"""
+    from utils.quiz_policy import answer_values
+    verified = 0
+    for q in questions or []:
+        values = _question_values(q, answers.get(q['name']))
+        if not values:
+            continue
+        if q.get('numeric_text'):
+            value = ''.join(sorted(values, key=int))
+            ok = driver.execute_script(r"""
+                var input = Array.from(document.querySelectorAll('input')).find(el => el.name === arguments[0]);
+                if (!input || input.disabled || input.readOnly) return false;
+                input.value = arguments[1];
+                input.dispatchEvent(new Event('input', {bubbles:true}));
+                input.dispatchEvent(new Event('change', {bubbles:true}));
+                return input.value === arguments[1];
+            """, q['text_name'], value)
+            verified += ok is True
+            continue
+        controls = q.get('controls') or {value: {'name': q['name'], 'value': value} for value in q['options']}
+        ok = driver.execute_script(r"""
+            var controls = arguments[0], expected = arguments[1], multiple = arguments[2];
+            var inputs = Array.from(document.querySelectorAll('input[type=radio], input[type=checkbox]'));
+            var matched = {};
+            for (var token of Object.keys(controls)) {
+                var spec = controls[token];
+                var input = inputs.find(el => el.name === spec.name && el.value === spec.value);
+                if (!input || input.disabled) return false;
+                matched[token] = input;
+            }
+            for (var token of Object.keys(matched)) {
+                var want = expected.includes(token), input = matched[token];
+                if (input.checked !== want && (multiple || want)) input.click();
+            }
+            return Object.keys(matched).every(token => matched[token].checked === expected.includes(token));
+        """, controls, values, q.get('is_multiple', False))
+        if ok is True:
+            verified += 1
+    return verified
 
-            try:
-                # 優先使用原有的 value 屬性精確匹配（radio 或 checkbox）
-                r = driver.find_element(By.CSS_SELECTOR,
-                    f'input[name="{name}"][value="{v_str}"]')
-                driver.execute_script("arguments[0].click();", r)
-                driver.execute_script(
-                    "arguments[0].checked=true;"
-                    "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
-            except Exception as e:
-                # 💡 防禦性填答：當 value 對不上時（例如題庫 1-based 與網頁 0-based 不一致）
-                try:
-                    inputs = driver.find_elements(By.CSS_SELECTOR, f'input[name="{name}"]')
-                    if inputs:
-                        val_int = int(v_str)
-                        target_idx = -1
 
-                        # 情況一：題庫存的是 1-based (1~4)，網頁是 0-based。當 val=4 且 inputs 有 4 個時，目標 index 為 3
-                        if 1 <= val_int <= len(inputs):
-                            target_idx = val_int - 1
-                        # 情況二：如果 val 剛好是 0-based 的 index (0~3)
-                        elif 0 <= val_int < len(inputs):
-                            target_idx = val_int
+def _submission_counts(driver):
+    """比對實際題數、已答題數與導覽列總題數，防止分頁或題型漏讀。"""
+    return driver.execute_script(r"""
+        var qs = Array.from(document.querySelectorAll('.que, div[id^="question-"]'));
+        var answered = qs.filter(q => {
+            if (q.querySelector('input[type=radio]:checked, input[type=checkbox]:checked')) return true;
+            var entry = q.querySelector('input[type=text][name*="answer"], input:not([type])[name*="answer"]');
+            return entry && entry.value.trim().length > 0;
+        }).length;
+        var nav = Array.from(document.querySelectorAll('.qnbutton'));
+        var total = nav.length || qs.length;
+        return {total: qs.length, answered: answered, expected_total: total};
+    """)
 
-                        if target_idx != -1:
-                            r = inputs[target_idx]
-                            driver.execute_script("arguments[0].click();", r)
-                            driver.execute_script(
-                                "arguments[0].checked=true;"
-                                "arguments[0].dispatchEvent(new Event('change',{bubbles:true}));", r)
-                            print(f'  [填答] 💡 透過索引重新填答成功：{name} 第 {target_idx + 1} 個選項 (val={v_str})')
-                            continue
-                except Exception:
-                    pass
-                print(f'  [填答] ✗ {name}={v_str}: {e}')
+
+
 
 def _submit_quiz(driver, wait):
 
     """點完成作答 → summary → 全部送出並結束 → modal confirm → review URL"""
+    from utils.quiz_policy import can_submit, has_unanswered_warning
+    counts = _submission_counts(driver)
+    if not can_submit(**counts):
+        print('  ⚠️ 題目或填答不完整，保留草稿，不交卷。')
+        return None
     # 完成作答
     finish = driver.execute_script("""
         for (var b of document.querySelectorAll('button,input[type=submit]')) {
@@ -723,6 +718,11 @@ def _submit_quiz(driver, wait):
         return None
     _click_js(driver, finish)
     time.sleep(2); _dismiss_alerts(driver)
+
+    body = driver.find_element(By.TAG_NAME, 'body').text
+    if has_unanswered_warning(body):
+        print('  ⚠️ 交卷摘要仍有未回答題目，保留草稿，不確認送出。')
+        return None
 
     # 全部送出並結束
     confirm_btn = driver.execute_script("""
@@ -739,92 +739,80 @@ def _submit_quiz(driver, wait):
             modal_save = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-action="save"]'))
             )
+            if has_unanswered_warning(driver.find_element(By.TAG_NAME, 'body').text):
+                print('  ⚠️ 最後確認視窗顯示漏答，停止送出。')
+                return None
             driver.execute_script("arguments[0].click();", modal_save)
         except:
-            try: driver.switch_to.alert.accept()
-            except: pass
+            try:
+                alert = driver.switch_to.alert
+                if has_unanswered_warning(alert.text):
+                    alert.dismiss()
+                    return None
+                alert.accept()
+            except Exception:
+                pass
         time.sleep(2); _dismiss_alerts(driver)
 
     print(f'  [測驗] review → {driver.current_url}')
-    return driver.current_url
+    return driver.current_url if 'review.php' in driver.current_url else None
 
 def _read_correct_from_review(driver):
-    """
-    從 review 頁讀每題的正解 val。
-    策略：
-      1. 找 .answer div.correct 裡的 radio（Moodle 標示正確選項，需開啟顯示正解）
-      2. 若題目整體標示 .que.correct → checked radio = 正解
-      3. 若題目整體標示 .que.incorrect → 記錄題目是非題還是 MCQ
-         - 是非題 (options=2)：翻轉 checked val
-         - MCQ：無法判斷，回傳 None（後續 AI 重答）
-    回傳 {name: val}（確認正確的才加入）
-    """
-    result = driver.execute_script("""
-        var out = {};
-        var hasGrading = !!document.querySelector(
-            '.que.correct, .que.incorrect, .que.partiallycorrect, .answer .correct');
-        document.querySelectorAll('.que').forEach(function(q) {
-            var name   = null;
-            var val    = null;
-            var radios = Array.from(q.querySelectorAll('input[type=radio]')).filter(
-                function(r){ return r.value !== '-1'; });
-            if (!radios.length) return;
-
-            // 1. 優先：.answer div.correct 裡有 radio（正解標示）
-            var correctDiv = q.querySelector(
-                '.answer .r0.correct, .answer .r1.correct, ' +
-                '.answer .r2.correct, .answer .r3.correct, ' +
-                '.answer div.correct');
-            if (correctDiv) {
-                var r = correctDiv.querySelector('input[type=radio]');
-                if (r && r.value !== '-1') { name = r.name; val = r.value; }
-            }
-
-            // 2. 題目本身標示 correct（我們答對了）
-            if (!name && q.classList.contains('correct')) {
-                radios.forEach(function(r){ if (r.checked) { name=r.name; val=r.value; } });
-            }
-
-            // 3. 題目本身標示 incorrect（答錯了）
-            var isIncorrect = q.classList.contains('incorrect');
-            if (!name && isIncorrect) {
-                var checked_r = null;
-                radios.forEach(function(r){ if (r.checked) checked_r = r; });
-                if (checked_r) {
-                    // 是非題 (2個選項)：翻轉
-                    if (radios.length === 2) {
-                        var other = radios.find(function(r){ return r !== checked_r; });
-                        if (other) { name = other.name; val = other.value; }
-                    }
-                    // MCQ：無法確定，跳過，避免把錯選項存回題庫
+    """只採用本題正解標記或明確答對；複選必須有完整正解集合。"""
+    records = driver.execute_script(r"""
+        return Array.from(document.querySelectorAll('.que')).map(function(q) {
+            var radios = Array.from(q.querySelectorAll('input[type=radio]')).filter(r => r.value !== '-1');
+            var boxes = Array.from(q.querySelectorAll('input[type=checkbox]'));
+            var inputs = boxes.length ? boxes : radios;
+            var state = q.querySelector('.state');
+            var correct = q.classList.contains('correct') || (state && ['答對', '正確'].includes(state.textContent.trim()));
+            var vals = [];
+            inputs.forEach(function(input, i) {
+                var option = input.closest('.r0, .r1, .r2, .r3, .r4, .r5, .r6, .r7');
+                if ((correct && input.checked) || (option && option.classList.contains('correct'))) {
+                    vals.push(boxes.length ? String(i) : input.value);
                 }
-            }
-
-            // 不以其他題目的評分狀態推定本題正確；未經本題驗證的勾選值不得同步題庫。
-
-            if (name && val !== null) out[name] = val;
+            });
+            var right = q.querySelector('.rightanswer');
+            var entry = q.querySelector('input[type=text][name*="answer"], input:not([type])[name*="answer"]');
+            return {name: boxes.length ? q.id : (inputs[0] ? inputs[0].name : ''),
+                    values: vals, multiple: boxes.length > 0, verified: !!correct || !boxes.length,
+                    text: right ? right.textContent : '', text_id: entry ? q.id : null,
+                    text_value: correct && entry ? entry.value : ''};
         });
-        return out;
-    """)
+    """) or []
+    questions = {q['name']: q for q in _read_questions(driver)}
+    result = {}
+    from utils.quiz_policy import answer_values
+    for item in records:
+        q = questions.get(item.get('text_id') or item['name'])
+        if not q:
+            continue
+        text = re.sub(r'^.*?(?:正確答案(?:為|是)?|正解)\s*[:：]?\s*', '', item.get('text', '')).strip(' \"「」')
+        if q.get('numeric_text'):
+            values = _question_values(q, text or item.get('text_value'))
+            if values:
+                result[q['name']] = values
+            continue
+        values = answer_values(text, q['options'], multiple=item['multiple']) if text else []
+        if not values and item.get('verified'):
+            values = item['values']
+        if values:
+            result[item['name']] = values if item['multiple'] else values[0]
     return result
+
 
 _SCORE_LINE_KEYWORDS = ('分數', '成績', '評分', '得分')
 
 
 def _get_score_from_review(driver):
-    """從 review 頁讀成績文字；找不到回傳空字串。"""
+    """只讀成績證據，不把課程及格門檻或說明當成實得分數。"""
+    from utils.quiz_policy import grade_evidence
     try:
-        body = driver.find_element(By.TAG_NAME, 'body').text
+        score, _ = grade_evidence(driver.find_element(By.TAG_NAME, 'body').text)
     except Exception:
         return ''
-    for line in body.split('\n'):
-        line = line.strip()
-        if not re.search(r'\d', line):
-            continue
-        if any(k in line for k in _SCORE_LINE_KEYWORDS) or ('分' in line and ('得' in line or '滿分' in line)):
-            if _extract_score_num(line) is not None:
-                return line
-    return ''
+    return f'審閱頁得分：{score:g} 分' if score is not None else ''
 
 
 def _review_grade_counts(driver):
@@ -834,8 +822,11 @@ def _review_grade_counts(driver):
             var qs = document.querySelectorAll('.que');
             var graded = 0, correct = 0;
             qs.forEach(function(q) {
-                if (q.classList.contains('correct')) { graded++; correct++; }
-                else if (q.classList.contains('incorrect') || q.classList.contains('partiallycorrect')) { graded++; }
+                var state = q.querySelector('.state');
+                var text = state ? state.textContent.trim() : '';
+                if (q.classList.contains('correct') || text === '答對' || text === '正確') { graded++; correct++; }
+                else if (q.classList.contains('incorrect') || q.classList.contains('notanswered') ||
+                    text === '答錯' || text === '未回答' || text === '尚未回答') { graded++; }
             });
             return [correct, qs.length, graded];
         """)
@@ -848,41 +839,8 @@ def _review_grade_counts(driver):
 
 
 def _extract_score_num(score_text):
-    """解析百分制分數；支援「得80.00分(滿分為100.00分)」「8.00/10.00」「80 滿分 100」「(80%)」「80 分」。"""
-    text = str(score_text or '')
-    def _ratio(got, total):
-        try:
-            return float(got) / max(1e-9, float(total)) * 100.0
-        except Exception:
-            return None
-    m = re.search(r'得\s*([\d.]+)\s*分.*?滿分為?\s*([\d.]+)', text)
-    if m:
-        return _ratio(m.group(1), m.group(2))
-    m = re.search(r'得\s*([\d.]+)\s*分', text)
-    if m:
-        try:
-            return float(m.group(1))
-        except Exception:
-            pass
-    m = re.search(r'([\d.]+)\s*/\s*([\d.]+)', text)
-    if m:
-        return _ratio(m.group(1), m.group(2))
-    m = re.search(r'([\d.]+)\s*滿分為?\s*([\d.]+)', text)
-    if m:
-        return _ratio(m.group(1), m.group(2))
-    m = re.search(r'([\d.]+)\s*%', text)
-    if m:
-        try:
-            return float(m.group(1))
-        except Exception:
-            pass
-    m = re.search(r'([\d.]+)\s*分', text)
-    if m:
-        try:
-            return float(m.group(1))
-        except Exception:
-            pass
-    return None
+    from utils.quiz_policy import extract_score
+    return extract_score(score_text)
 
 
 def _is_100(score_text):
@@ -891,250 +849,156 @@ def _is_100(score_text):
     return val is not None and val >= 100.0
 
 
+def _get_score_from_course_record(driver, course_id, quiz_view_url):
+    """審閱頁不提供分數時，回同課程頁讀取明確的測驗分數欄位。"""
+    from urllib.parse import urlsplit
+    origin = urlsplit(quiz_view_url)
+    url = f'{origin.scheme}://{origin.netloc}/elearn/course/view.php?id={int(course_id)}'
+    driver.get(url)
+    time.sleep(2)
+    text = driver.find_element(By.TAG_NAME, 'body').text
+    match = re.search(r'測驗分數\s*[：:]\s*(\d+(?:\.\d+)?)', text)
+    return f'課程紀錄得分：{match.group(1)} 分' if match else ''
+
+
 # ── 主函式 ──────────────────────────────────────────
 
 
 def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, course_name='', username='', quiz_interactive_callback=None, min_pass_score=60.0, stats=None):
-    """
-    臺北E大測驗流程：
-    1. 每次都先用 GAS 題庫作答；缺題時依測驗模式使用 AI（每卷最多 1 次）或人機協同。
-    2. 未及格最多作答 3 次；缺題背景回報 GAS/TG，由 GAS 端 AI 補 JSON DB。
-    3. 已送出但成績無法判讀（審閱頁未公布分數與對錯）時不盲目重考，交由人工確認。
-    回傳 (score_text, is_100: bool)；stats 若提供 dict，會寫入 passed / score_num / score_unknown / ai_used。
-    """
-    if config is None:
-        config = {}
-    if stats is None:
-        stats = {}
-    stats.update({'passed': False, 'score_num': None, 'score_unknown': False, 'ai_used': False})
-
+    """共用政策：題庫優先、缺題補答、未及格覆核，完整填答才交卷。"""
+    from utils.quiz_policy import MAX_QUIZ_ATTEMPTS, answer_values, can_submit, grade_passed, needs_ai_review
+    config = config or {}
+    stats = stats if stats is not None else {}
+    stats.update(passed=False, score_num=None, score_unknown=False, ai_used=False, blocked=False)
     provider = config.get('ai_provider', 'OpenAI')
-    ai_keys = config.get('ai_keys', {}) or {}
-    has_local_ai = bool(ai_keys.get(provider) or config.get('ai_api_key', ''))
-
+    keys = config.get('ai_keys', {}) or {}
+    ai_enabled = bool(config.get('ai_auto_solve') and (keys.get(provider) or config.get('ai_api_key')))
+    verified = {}
+    best_score = ''
     print(f'\n=== 測驗 (course_id={course_id}) ===')
-    print('  [題庫] 使用臺北E大 GAS/GitHub 共用題庫')
-    print('  [測驗] 題庫優先作答；缺題時依測驗模式補答（AI 每卷最多 1 次）')
-
-    best_score_text = ''
-    best_is_100 = False
-    reported_missing_keys = set()
-    pending_ai_batch = None
-    submitted = False
-
-    def _question_record(q, val):
-        return {
-            'q_text': q['qtext'], 'val': val,
-            'opt0': q['options'].get('0',''), 'opt1': q['options'].get('1',''),
-            'opt2': q['options'].get('2',''), 'opt3': q['options'].get('3',''),
-        }
-
-    def _save_known_answers(to_save):
-        if not to_save:
-            return
-        deduped = []
-        seen = set()
-        for item in to_save:
-            key = _normalize(item.get('q_text', ''))
-            if not key or key in seen:
-                continue
-            seen.add(key)
-            deduped.append(item)
-        if deduped:
-            gas_save_questions(course_id, deduped, course_name=course_name, username=username, config=config)
-            print(f'  [題庫] 本次同步共用題庫 {len(deduped)} 題')
-
-    def _report_missing_once(missing_qs):
-        fresh = []
-        for q in missing_qs:
-            key = _normalize(q.get('qtext', ''))
-            if not key or key in reported_missing_keys:
-                continue
-            reported_missing_keys.add(key)
-            fresh.append(q)
-        if fresh:
-            gas_report_missing_questions(
-                course_id,
-                fresh,
-                course_name=course_name,
-                username=username,
-                config=config,
-            )
-
-    def _run_attempt(attempt_no, use_local_ai):
-        nonlocal pending_ai_batch, submitted
-        submitted = False
-        print(f'\n  [測驗] 第 {attempt_no} 次作答')
-
-        bank = gas_fetch_bank(course_id, config=config)
-        attempt_url = _start_or_resume_quiz(driver, wait, quiz_view_url)
-        if not attempt_url:
-            print('  [測驗] ✗ 無法開始作答')
-            return '', False, {}, {}
-
+    print('  [測驗] 題庫優先；缺題補答，未及格由 AI 覆核；每次作答最多一批 AI。')
+    for attempt in range(1, MAX_QUIZ_ATTEMPTS + 1):
+        batch = None
+        print(f'  [測驗] 第 {attempt} 次作答')
+        if not _start_or_resume_quiz(driver, wait, quiz_view_url):
+            stats['blocked'] = True
+            break
         questions = _read_questions(driver)
         print(f'  [測驗] 讀到 {len(questions)} 題')
-        if not questions:
-            try:
-                body_preview = driver.find_element(By.TAG_NAME, 'body').text[:300]
-            except Exception:
-                body_preview = ''
-            print(f'  [測驗] ⚠️ 沒讀到題目，頁面文字預覽: {body_preview!r}')
-
-        answers = {}
-        missing_qs = []
-        ai_answered = []
-
-        # 1. 優先比對共用題庫
-        for q in questions:
-            val = lookup_bank(bank, q['qtext'])
-            if val is not None:
-                answers[q['name']] = val
-                print(f'  ✓ [庫] {q["qtext"][:28]}... → val={val}')
-
-        # 2. 若有未命中題目，且啟用人機協同作答模式
-        cb = quiz_interactive_callback or config.get('quiz_interactive_callback')
-        is_interactive = bool(config.get('interactive_quiz_for_session')) and callable(cb)
-        unanswered_qs = [q for q in questions if q['name'] not in answers]
-
-        if unanswered_qs:
-            questions_data = []
-            opt_labels = ["A", "B", "C", "D", "E", "F", "G", "H"]
-            for idx, q in enumerate(questions, 1):
-                opts_list = []
-                for opt_idx, (opt_val, opt_txt) in enumerate(sorted(q['options'].items(), key=lambda x: str(x[0]))):
-                    label = opt_labels[opt_idx] if opt_idx < len(opt_labels) else str(opt_idx + 1)
-                    opts_list.append({"label": label, "text": opt_txt, "val": str(opt_val)})
-
-                is_tf = len(opts_list) == 2 and any(k in q['qtext'] or k in "".join(o['text'] for o in opts_list) for k in ["是非", "是否", "對錯", "○", "╳", "⭕", "❌"])
-                q_type = "是非" if is_tf else "單選"
-                questions_data.append({
-                    "index": idx,
-                    "name": q['name'],
-                    "type": q_type,
-                    "is_multiple": False,
-                    "q_text": q['qtext'],
-                    "options": opts_list,
-                    "raw_q": q
-                })
-
-            # 若使用者開啟「AI 全自動背景作答」且具備 API Key，僅在第 1 次嘗試發送批次請求（保證 1 卷最多 1 次 API）
-            ai_auto_solve = bool(config.get("ai_auto_solve", False))
-            if ai_auto_solve and has_local_ai and attempt_no == 1:
-                print('  ⚡ 啟用 AI 全自動背景極速作答（Gemini 批次模式，每卷限 1 次）...')
-                batch_res = ai_batch_solve_quiz(course_name or f"課程 {course_id}", questions_data, config)
-                if batch_res.get("success") and batch_res.get("parsed_answers"):
-                    stats['ai_used'] = True
-                    pending_ai_batch = (batch_res.get("questions_data", []), batch_res.get("answers", {}))
-                    for q_name, q_val in batch_res["parsed_answers"].items():
-                        answers[q_name] = q_val
-                        print(f'  ✓ [AI全自動] {q_name} → val={answers[q_name]}')
-            elif ai_auto_solve and has_local_ai and attempt_no > 1:
-                print(f'  ℹ️ 第 {attempt_no} 次嘗試：直接使用前次審閱正解與題庫補答（不重複消耗 AI 額度）')
-
-
-            # 否則若啟用人機協同助理彈窗
-            elif is_interactive and unanswered_qs:
-                print('  🤖 啟用人機協同作答助理（彈窗回貼 / Gemini 批次）...')
-                parsed = cb(course_name or f"課程 {course_id}", questions_data)
-                if parsed == "STOP_ALL":
-                    print('  🛑 使用者選擇結束本次執行')
-                    return '', False, {}, {}
-                elif parsed == "SKIP":
-                    print('  ⏩ 使用者選擇跳過測驗，將嘗試檢查並完成問卷')
-                    return 'SKIPPED', False, {}, {}
-                elif isinstance(parsed, dict) and parsed:
-                    for q_item in questions_data:
-                        idx = q_item["index"]
-                        if idx in parsed:
-                            chosen_labels = [l.upper() for l in parsed[idx]]
-                            for opt in q_item["options"]:
-                                if opt["label"].upper() in chosen_labels:
-                                    answers[q_item["name"]] = opt["val"]
-                                    print(f'  ✓ [人機/Gemini] {q_item["q_text"][:28]}... → 選 {opt["label"]} (val={opt["val"]})')
-                                    break
-
-
-        # 3. 仍未作答者，由猜題保底（不發送單題 AI 請求，保證 1 卷最多 1 次 API）
-        for q in questions:
-            if q['name'] in answers:
-                continue
-
-            answers[q['name']] = '0'
-            missing_qs.append(q)
-            print(f'  ? [猜] {q["qtext"][:28]}... → val=0')
-
-        _report_missing_once(missing_qs)
-
-        _fill_answers(driver, answers, questions=questions)
-        _submit_quiz(driver, wait)
-        submitted = True
-        time.sleep(2)
-
-        correct_by_name = _read_correct_from_review(driver)
-        score_text = _get_score_from_review(driver)
-        if not score_text:
-            # 審閱頁沒有分數列時，改以每題對錯標示推算，避免已及格仍被判為未及格而重考
-            counts = _review_grade_counts(driver)
-            if counts:
-                score_text = f'審閱頁推算 {counts[0]}/{counts[1]} 題正確'
-        is_100 = _is_100(score_text)
-        score_num = _extract_score_num(score_text)
-        is_passed = is_100 or (score_num is not None and score_num >= min_pass_score)
-        if score_num is None:
-            print(f'  ⚠️ [成績{attempt_no}] 審閱頁未顯示分數與對錯，無法判定是否及格')
-        else:
-            print(f'  [成績{attempt_no}] {score_text}（{score_num:.0f} 分｜及格：{"是" if is_passed else "否"}）')
-
-        # 🛡️ 只有「第 1 次嘗試」且確認為 100 分滿分時，才將該輪 AI 批次作答結果寫入本機題庫
-        # 若非滿分或進入後續重試輪次，立即清空 pending_ai_batch，徹底杜絕跨輪次題目置換污染
-        if attempt_no == 1 and is_100 and pending_ai_batch and pending_ai_batch[0] and pending_ai_batch[1]:
-            save_ai_answers_to_sqlite(pending_ai_batch[0], pending_ai_batch[1])
-            _safe_print(f'  💾 測驗第 1 輪已獲 100 分滿分（{score_text}），已將 {len(pending_ai_batch[1])} 題 AI 驗證解答正式同步至題庫')
-        pending_ai_batch = None
-
-
-        name_to_q = {q['name']: q for q in questions}
-        correct_by_text = {}
-        to_save = []
-
-        # 🛡️ 只有平臺 Review 頁面有公布正解時才存入共用題庫，未經驗證之 AI 猜答絕不上傳
-        for name, val in correct_by_name.items():
-            q = name_to_q.get(name)
-            if not q:
-                continue
-            correct_by_text[q['qtext']] = val
-            to_save.append(_question_record(q, val))
-
-        _save_known_answers(to_save)
-        return score_text, is_100, correct_by_text, answers
-
-    attempt_plan = [False, False, False]
-
-
-    for idx, use_ai in enumerate(attempt_plan, start=1):
-        score_text, is_100, _, _ = _run_attempt(idx, use_ai)
-        if score_text == 'SKIPPED':
-            return score_text, False
-        score_num = _extract_score_num(score_text)
-        if score_text:
-            best_score_text = score_text
-            best_is_100 = is_100
-            stats['score_num'] = score_num
-        if is_100 or (score_num is not None and score_num >= min_pass_score):
-            stats['passed'] = True
-            print(f'  🎉 測驗達標通過！【{score_text}】（門檻: {int(min_pass_score)} 分）')
-            return score_text, is_100
-        if submitted and score_num is None:
-            stats['score_unknown'] = True
-            print('  ⚠️ [測驗] 成績無法判讀，不再盲目重考；請至平臺確認成績')
+        counts = _submission_counts(driver)
+        if not questions or len(questions) != counts['expected_total'] or any(not q.get('supported', True) or not q.get('options') for q in questions):
+            print('  ⚠️ 題型或分頁未完整讀取，保留草稿，不交卷。')
+            stats['blocked'] = True
             break
-        if idx == 1:
-            print('  [測驗] 第一次未達及格標準，準備第二次補答')
-        elif idx < len(attempt_plan):
-            print('  [測驗] 尚未及格，繼續下一次')
+        bank = gas_fetch_bank(course_id, config=config)
+        answers, review = {}, []
+        for index, q in enumerate(questions, 1):
+            raw = verified.get(_normalize(q['qtext']))
+            if raw is None:
+                raw = lookup_bank(bank, q['qtext'])
+            values = _question_values(q, raw)
+            if values:
+                answers[q['name']] = values if q.get('is_multiple') else values[0]
+            if needs_ai_review(answers.get(q['name']), attempt - 1) and (ai_enabled or q['name'] not in answers):
+                review.append((index, q))
+            elif q['name'] in answers:
+                print(f'  ✓ [庫] {q["qtext"][:28]}...')
+        if review:
+            data = [{'index': index, 'name': q['name'], 'q_text': q['qtext'],
+                     'type': '多選' if q.get('is_multiple') else '單選', 'is_multiple': q.get('is_multiple', False),
+                     'options': [{'label': chr(65 + i), 'text': text, 'val': val} for i, (val, text) in enumerate(q['options'].items())]}
+                    for index, q in review]
+            # 重考不得沿用剛確認未及格的舊答案冒充 AI 覆核結果。
+            for _, q in review:
+                answers.pop(q['name'], None)
+            cb = quiz_interactive_callback or config.get('quiz_interactive_callback')
+            if config.get('interactive_quiz_for_session') and callable(cb):
+                result = cb(course_name or f'課程 {course_id}', data)
+                if result == 'STOP_ALL':
+                    stats['stopped'] = True
+                    return 'STOP_ALL', False
+                if result == 'SKIP':
+                    return 'SKIPPED', False
+                if not isinstance(result, dict):
+                    result = {}
+                for item in data:
+                    labels = (result or {}).get(item['index'], [])
+                    values = [o['val'] for o in item['options'] if o['label'] in labels]
+                    if values:
+                        answers[item['name']] = values if item['is_multiple'] else values[0]
+            elif ai_enabled:
+                stats['ai_used'] = True
+                batch = ai_batch_solve_quiz(course_name or f'課程 {course_id}', data, config)
+                if batch.get('success'):
+                    answers.update(batch.get('parsed_answers', {}))
+                else:
+                    stats['ai_outage'] = bool(batch.get('transient'))
+                    print(f'  ⚠️ AI 未能補答，保留草稿：{batch.get("error", "無有效解答")}')
+            else:
+                gas_report_missing_questions(course_id, [q for _, q in review], course_name=course_name, username=username, config=config)
+        valid = {}
+        for q in questions:
+            values = _question_values(q, answers.get(q['name']))
+            if values:
+                valid[q['name']] = values if q.get('is_multiple') else values[0]
+        if not can_submit(len(questions), len(valid), expected_total=counts['expected_total']):
+            stats['blocked'] = True
+            print('  ⚠️ 尚有無有效答案的題目，保留草稿，不猜答或交卷。')
+            break
+        filled = _fill_answers(driver, valid, questions=questions)
+        if not can_submit(len(questions), filled, expected_total=counts['expected_total']):
+            stats['blocked'] = True
+            print('  ⚠️ 勾選後驗證未通過，保留草稿，不交卷。')
+            break
+        if not _submit_quiz(driver, wait):
+            stats['blocked'] = True
+            break
+        time.sleep(2)
+        correct = _read_correct_from_review(driver)
+        score_text = _get_score_from_review(driver)
+        counts = _review_grade_counts(driver) if not score_text else None
+        if not score_text:
+            try:
+                score_text = _get_score_from_course_record(driver, course_id, quiz_view_url)
+            except Exception:
+                pass
+        if not score_text and counts:
+            score_text = f'審閱頁推算 {counts[0]}/{counts[1]} 題正確'
+        score = _extract_score_num(score_text)
+        passed = grade_passed(score, min_pass_score)
+        stats.update(score_num=score, passed=passed is True, score_unknown=passed is None)
+        best_score = score_text or ''
+        # 只有逐題正解或整卷滿分可回寫；AI 提議本身不是正解證據。
+        if score is not None and score >= 100:
+            correct = valid
+            if batch and batch.get('success'):
+                save_ai_answers_to_sqlite(data, batch.get('answers', {}))
+        to_save = []
+        for q in questions:
+            values = _question_values(q, correct.get(q['name']))
+            if not values:
+                continue
+            texts = [q['options'][value] for value in values]
+            verified[_normalize(q['qtext'])] = texts if q.get('is_multiple') else texts[0]
+            if len(q['options']) <= 4:
+                tokens = list(q['options'])
+                record = {'q_text': q['qtext'], 'val': ','.join(str(tokens.index(value)) for value in values)}
+                record.update({f'opt{i}': q['options'][tokens[i]] if i < len(tokens) else '' for i in range(4)})
+                to_save.append(record)
+        if to_save:
+            if gas_save_questions(course_id, to_save, course_name=course_name, username=username, config=config) is True:
+                print(f'  [題庫] 本次成功同步共用題庫 {len(to_save)} 題')
+            else:
+                print('  [題庫] 本次共用同步未確認成功，不影響已取得的測驗結果。')
+        if passed is True:
+            print(f'  🎉 測驗達標通過！【{score_text}】（門檻: {min_pass_score:g} 分）')
+            return score_text, score >= 100
+        if passed is None:
+            print('  ⚠️ 成績無法判讀，停止重考，請至平臺確認成績。')
+            break
+        print(f'  [測驗] 得分 {score:g}，門檻 {min_pass_score:g}；未達標。')
+    return best_score, False
 
-    return best_score_text, best_is_100
 
 
 def do_feedback(driver, wait, feedback_view_url):

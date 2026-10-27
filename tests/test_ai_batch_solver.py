@@ -127,6 +127,23 @@ class AiBatchSolverTests(unittest.TestCase):
         self.assertNotIn('q5', res['parsed_answers'])
 
     @patch('requests.post')
+    def test_multiple_choice_json_array_keeps_all_valid_options(self, mock_post):
+        self.sample_questions[0]['is_multiple'] = True
+        response = MagicMock()
+        response.json.return_value = {'choices': [{'message': {'content': '{"answers":{"1":["A","C"],"2":"A"}}'}}]}
+        mock_post.return_value = response
+        result = ai_batch_solve_quiz('測試課程', self.sample_questions, self.config)
+        self.assertEqual(result['parsed_answers']['q1'], ['0', '2'])
+
+    @patch('requests.post')
+    def test_invalid_option_does_not_become_partial_answer(self, mock_post):
+        response = MagicMock()
+        response.json.return_value = {'choices': [{'message': {'content': '{"answers":{"1":"A,Z","2":"A"}}'}}]}
+        mock_post.return_value = response
+        result = ai_batch_solve_quiz('測試課程', self.sample_questions, self.config)
+        self.assertNotIn('q1', result['parsed_answers'])
+
+    @patch('requests.post')
     def test_ai_batch_solve_missing_key(self, mock_post):
         empty_config = {'ai_provider': 'Gemini', 'ai_api_key': ''}
         res = ai_batch_solve_quiz('測試課程', self.sample_questions, empty_config)

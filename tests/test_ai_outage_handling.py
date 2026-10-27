@@ -34,8 +34,10 @@ class AIBatchRetryTests(unittest.TestCase):
         post = Mock(side_effect=side_effect)
         with patch.object(quiz_bank.requests, "post", post), \
              patch.object(quiz_bank.time, "sleep"), \
+             patch("utils.security.global_quota_tracker.record_usage") as usage, \
              patch("utils.security.global_ai_rate_limiter.acquire", return_value=True):
             result = quiz_bank.ai_batch_solve_quiz("課程", QUESTIONS, dict(CONFIG))
+        self.assertEqual(usage.call_count, post.call_count)
         return result, post
 
     def test_503_then_fallback_model_succeeds(self):

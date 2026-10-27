@@ -20,8 +20,10 @@ def render_course_completion_card(
 ) -> str:
     """格式化每門課即時動態成果卡片（純 Presenter）。"""
     # 1. 測驗成果判定 (三態)
-    if not has_quiz or quiz_passed is None:
+    if not has_quiz:
         quiz_text = "➖ 本課程無測驗"
+    elif quiz_passed is None:
+        quiz_text = "⚠️ 成績待確認"
     elif quiz_passed is True:
         quiz_text = "🎉 達標及格"
     else:

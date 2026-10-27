@@ -113,18 +113,21 @@ class TaipeiQuizFlowTests(unittest.TestCase):
         from unittest.mock import patch, Mock
         import quiz_bank
         questions = [{"name": "q1", "qtext": "題目一", "options": {"0": "對", "1": "錯"}}]
-        submit = Mock()
+        submit = Mock(return_value='review-url')
         stats = {}
         with patch.object(quiz_bank, "gas_fetch_bank", return_value={"題目一": "0"}), \
              patch.object(quiz_bank, "lookup_bank", return_value="0"), \
              patch.object(quiz_bank, "_start_or_resume_quiz", return_value="attempt-url"), \
              patch.object(quiz_bank, "_read_questions", return_value=questions), \
-             patch.object(quiz_bank, "_fill_answers"), \
+             patch.object(quiz_bank, "_submission_counts", return_value={'total': 1, 'answered': 1, 'expected_total': 1}), \
+             patch.object(quiz_bank, "_fill_answers", return_value=1), \
              patch.object(quiz_bank, "_submit_quiz", submit), \
              patch.object(quiz_bank, "_read_correct_from_review", return_value={}), \
              patch.object(quiz_bank, "_get_score_from_review", return_value=score_text), \
+             patch.object(quiz_bank, "_get_score_from_course_record", return_value=''), \
              patch.object(quiz_bank, "_review_grade_counts", return_value=grade_counts), \
              patch.object(quiz_bank, "gas_save_questions"), \
+             patch.object(quiz_bank, "save_ai_answers_to_sqlite"), \
              patch.object(quiz_bank, "gas_report_missing_questions"), \
              patch.object(quiz_bank.time, "sleep"):
             result = quiz_bank.do_quiz_with_bank(Mock(), Mock(), "1", "url", config={}, min_pass_score=70, stats=stats)
