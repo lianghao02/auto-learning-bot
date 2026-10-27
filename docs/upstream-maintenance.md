@@ -32,6 +32,7 @@
 | taipei_eda_course.py | 臺北 E 大課程與 SCORM 流程 | taipei_scan_safety、course_completion_logic |
 | quiz_bank.py | 本地／共用題庫與 AI 答案處理 | ai_batch_solver、quiz_answer_parsing、interactive_quiz_dialog、security |
 | models/course_state.py、utils/course_dashboard.py | 課程狀態與儀表板摘要 | course_state_model、course_dashboard |
+| utils/quiz_policy.py | 雙平臺共用答題政策、答案驗證與交卷門檻；DOM 操作各自維持 | quiz_policy；離線 Chrome：tools/quiz_policy_qa.py |
 | ui.py、utils/office_theme.py | PySide6 工作台與集中配色 | office_theme、interactive_quiz_dialog；介面異動另做 UI QA |
 | utils/log_feed.py | 雙平台日誌解析與顯示模型 | log_feed |
 | utils/app_paths.py、utils/config_io.py | 路徑、設定與資料庫入口 | app_paths、security |

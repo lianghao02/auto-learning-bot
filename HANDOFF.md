@@ -3,97 +3,83 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/auto-learning-bot
 - **Branch**：main
-- **Commit SHA**：52569e10e（本輪文件修改前基準；本輪尚未提交）
-- **Skill Version**：v1.0.0
-- **Task Type**：AUDIT / HANDOFF
+- **Commit SHA**：d3e9f8cb3a86728fbca075e648b5e3ee6a7998c3（本輪與前輪本機修正尚未提交）
+- **Skill Version**：lianghao-development v1.0.0
+- **Task Type**：IMPROVE / FIX / HANDOFF
 - **Local Path Hint**：07_auto-learning-bot
 
 ---
 
 ## 目前狀態
-
-使用者已於本輪授權依專案／分支分開提交與推送；下列未提交描述為提交前斷點，最終提交與遠端同步結果見控制中心本輪計畫及 Git。
-2026-10-22：本輪上游查核與模組地圖已完成，僅文件修改，尚未提交推送；未大拆 app.py。先前功能成果繼承，下列 UI／平台驗證為前輪紀錄。
-
-可交付（已提交本機，未推送、未發布）
+2026-10-25：雙平臺答題政策、三階段修訂，以及正式回報的臺北 E 大複選簡答／研習入帳核對修正均完成，待正式課程實測。已本機提交（2026-10-27），未推送、升版、打包或發布；根目錄 run.bat 啟動來源版可載入修正。
 
 ## 本輪目標
-1. 分析專案並依使用者提供的雙平臺執行日誌檢查問題。
-2. 確認外部 API 是否正常。
-3. 日誌台改為最適合的呈現方式（兩平臺格式不一致、心跳訊息洗版）。
-4. UI 改為遊戲感更重的 2D Q 版，並重新調整配色。
+依使用者要求，讓臺北 E 大與 e 等採相同答題原則：完整讀題、題庫優先、缺題補答、未及格覆核、漏答不交卷、未知成績不重考、確認完成才結算。保留各自登入、課程導覽與 DOM 操作。
 
 ## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 基準 HEAD `434f875`（V2.0.1 + 前一輪 2D Q 版工作台），工作目錄乾淨，86 項測試通過。
-- API 實測（2026-10-21）：
-  - GAS 共用題庫：HTTP 200，`taipei_quiz_get` course_id=3180 回 10 題。
-  - Gemini：設定檔中的 `gemini-2.0-flash-lite` 已下架（404）；程式在批次作答與 fallback 路徑會自動改用 `gemini-3.1-flash-lite`，實測 200 正常。`gemini-3.5-flash` 亦正常。
-  - GitHub Release API：HTTP 200，最新 V2.0.1。
-  - e等 課程 API 主機可連（未登入回 403 屬正常）；臺北E大、ECPA、我的E政府以 Python requests 驗證憑證失敗，但這些頁面由 Chrome 操作，不影響執行。
-- 日誌中 e等「API 回傳 0 筆」是平臺閒置登出所致，第二次重新登入後恢復 682 筆。
+- 本輪承接前輪未提交的雙平臺整合、入口、用量與測試隔離修正，均為本對話已授權成果，完整保留。
+- 使用者截圖的臺北 E 大測驗有 20 題、7 題未回答，對應同次日誌只讀 13 題；課程頁顯示 50 分、門檻 80 分。
+- 原臺北 E 大只讀 radio；題庫全命中後未及格也不會切換 AI，且摘要把未及格計為完成。
+- 原正式 SCORM 連結可能因課名含「簡報」被排除；隔離重現已確認。
+- 前輪 e 等教室入口多步確認、跨重考 API 累計及 school_hash 訊息修正承接。
 
 ## 已完成 (Completed)
-- 本輪 fetch upstream 至 9360d7c0a；本地仍為 52569e10e，未合併。新增 docs/upstream-maintenance.md 與 AGENTS.md 指引，記錄等效修正核對、候選提交與模組測試地圖。
-- **冒險日誌**：新增 `utils/log_feed.py` 統一解析兩平臺格式；研習心跳改為即時卡片，只留 25% 里程碑；分類膠囊、5 種篩選、重複訊息合併 ×N、警告徽章、捲動時不強制拉回底部。
-- **配色與遊戲感**：`utils/office_theme.py` 改為晴空糖果配色（色票集中為常數），墨藍粗外框、厚底按鈕、陽光黃選中分頁、深色日誌。
-- **修正**（細節見 CHANGELOG 未發布區塊）：
-  - 臺北E大成績解析與審閱頁推算。
-  - 審閱頁未公布對錯時不回寫共用題庫。
-  - `pending_ai_batch` 作用域錯誤。
-  - 儀表板作答方式與通過狀態誤報。
-  - 單次研習上限短於目標時數。
-  - SCORM 章節點擊失敗刷屏，以及日誌輪替。
-  - e等 閒置登出改為直接重新登入。
-  - `[DOM]` 診斷訊息降為 DEBUG，並修正舊 Gemini 模型名稱。
+- 後續正式實測回報：課程 3597 本機計時 126 分鐘，平台只記錄 01:48:41，期間有多重視窗警告；課程 806 的部分複選實為文字輸入欄位。
+- 新增數字代號複選簡答：辨識依序編號選項，沿用題庫／AI 批次覆核，填入排序且無分隔的代號（例如 124），讀回驗證並支援審閱正解回存。未辨識的一般文字題繼續阻擋。
+- 平台修課時間支援 HH:MM:SS；研習後回課程頁核對正式入帳，不足時最多補課一次，仍不足或讀不到則保留待處理、不進行結案。遇多重視窗警告停止本課，不把後續等待算有效上課；本機達標訊息明確標為預估待平台確認。
+- 新增 utils/quiz_policy.py：集中三次上限、缺答／重考覆核、答案有效性、交卷完整性、三態成績與完成判定。
+- 臺北 E 大支援 radio／checkbox，保留每題控制項名稱與值；選項依文字對應，複選讀回完整集合驗證。
+- 導覽列題數與讀取題數不符、特殊題型或漏答時停止交卷；交卷摘要出現未回答警告也停止確認。
+- 題庫未及格且啟用 AI 時，每次重考一批覆核；AI 中斷或只回部分答案不沿用舊錯答、不猜答。
+- 審閱頁支援分行成績與答對／答錯標記；必要時回同課程頁查測驗分數，仍未知則待人工確認。
+- 僅回寫逐題已驗證答案或整卷滿分答案；恢復滿分 AI 答案的本機學習，複選以文字 JSON 保存。GAS 409 等失敗不再誤報成功同步。
+- e 等採相同缺答／覆核與完整性門檻；自動及人機協同均驗證勾選；移除自動猜答，未知成績不增加失敗次數，AI 中斷未交卷不倒扣先前失敗次數。
+- 跳過、未及格與未知狀態不增加完成門數；e 等上課後測驗未完成不再回報 SUCCESS；未知成績摘要不再顯示無測驗。
+- 正式 SCORM 不因課名「簡報」被誤擋；保留補充教材與非上課資源的排除。
+- 原有成績安全、日誌、主題、AI 重試備援與本地 fork 維護成果繼承，不更換 Selenium。
+
+- 後續補強最後確認視窗的漏答警告、人機協同缺答借用舊勾選的漏洞。
+- 共用成績證據判讀：不以及格門檻或操作說明推定成績，8/10 正規化為 80 分；零分母未知。既有 AI 覆核防護完整回歸。
+- 有問卷入口但完成狀態未知、有測驗卻缺課程識別碼均不視為免除；內部仍未確認完成的課程不因最終清單缺少資訊而消失。
+- SQLite 寫入以交易處理，成功後才更新記憶體與宣告同步；部分寫入失敗會回復交易，不污染記憶體。
 
 ## 異動檔案 (Changed Files)
-本輪僅 docs/upstream-maintenance.md、AGENTS.md、HANDOFF.md；以下為前輪功能修改。
-
-- `quiz_bank.py`、`taipei_eda_course.py`、`app.py`
-- `ui.py`、`utils/office_theme.py`、`utils/log_feed.py`（新）、`icons/office/combo-arrow.svg`
-- `tests/test_log_feed.py`（新，11 項）、`tests/test_office_theme.py`、`tests/test_interactive_quiz_dialog.py`、`tools/office_ui_qa.py`
-- `CHANGELOG.md`、`HANDOFF.md`
+- 共用與產品：utils/quiz_policy.py（新增）、app.py、quiz_bank.py、taipei_eda_course.py、utils/course_dashboard.py。
+- 測試：tests/test_taipei_text_and_time.py（後續新增）、tests/test_quiz_safety_boundaries.py（本輪新增）、tests/test_quiz_policy.py（前輪新增）、tests/test_egov_entry_and_usage.py（前輪新增）、test_ai_batch_solver.py、test_ai_outage_handling.py、test_log_feed.py、test_taipei_scan_safety.py。
+- 工具與文件：tools/quiz_policy_qa.py（新增）、IMPLEMENTATION_PLAN.md（新增）、docs/upstream-maintenance.md、HANDOFF.md。
 
 ## 刻意未修改 (Do Not Do / Deliberately Omitted)
-- 未更換自動化引擎，也未修改版本號、`python_embed`、`dist/` 與 `data/config.json`。
-- 設定檔中的 `ai_model` 仍是 `gemini-2.0-flash-lite`。程式執行時會自動改用新模型；使用者若在設定頁重新儲存，也會寫回新值。
+未修改帳密、API Key、版本號、既有可攜版成品或正式平台資料；未登入正式課程、呼叫正式 AI、寫遠端題庫或交卷。三次上限與動態及格門檻保留。
 
 ## 尚未完成 (Remaining Work)
-- **P1**：無。
-- **使用者實測回饋（第二輪，已修正）**：Gemini `gemini-3.1-flash-lite` 尖峰時段回 503／逾時，e等 因此整卷猜答，連續 3 次不及格。已加入重試、備援模型、延後重考與日誌路由修正，詳見 CHANGELOG；當時 `gemini-3.5-flash` 實測正常。
-- **P2**：e等「精神疾病與家庭暴力議題」「老人福利服務」停在介紹頁、無法進入教室，需以真實帳號在瀏覽器確認是否為課程未開放或報名狀態問題。
-- **P3**：
-  - e等 待上課程預覽名稱截斷在 13 字（如「(一般」「《CED」），屬顯示問題。
-  - `ui.py` 各元件仍有舊的行內樣式，會被主題覆蓋，日後可再收斂。
+- **P1 (阻斷/必須)**：無已知本機實作阻斷。
+- **P2 (重要/當次)**：本機實作與必要驗證完成。
+- **P3 (改善建議/暫緩)**：使用者以來源版重跑臺北 E 大兩門與 e 等三門待處理課程；新增複選簡答與平台時數核對後仍需正式課程驗收；未知題型、跨頁題目或平台權限問題依明確待人工狀態處理，不擴大無限重試。
 
 ## 驗證結果 (Validation)
 ### 已執行測試與結果
-- 執行 `python_embed\python.exe -m unittest discover -s tests`：105 項全部通過（原 86 項，新增 19 項）。新增測試涵蓋：
-  - 日誌整理器
-  - 成績格式解析
-  - 題庫滿分不中斷
-  - 審閱頁推算
-  - 成績無法判讀時不重考
-  - 真的未及格仍重考 3 次
-- 執行 `tools/office_ui_qa.py`：1366×768（1.0／1.25／1.5 倍縮放）與 1920×1080 皆為 `errors: []`。已逐張檢視課程表、日誌、設定頁的截圖。
-- 以實際 `taipei_eda_course.log` 末 4,000 行餵入日誌整理器：整理為 242 筆，篩選分布合理。
+- embedded Python：python -B -m unittest discover -s tests -q，164/164 通過。
+- 雙平臺政策與安全回歸共 39 項（另承接入口／用量 14 項）；涵蓋題庫錯答後 AI 覆核、AI 缺答不送卷、三次上限、未知成績、漏讀／漏填、摘要阻擋、409 失敗、未及格不計完成與複選文字存取。
+- 既有 Chrome 155 + Selenium 執行 tools/quiz_policy_qa.py：22/22 離線情境通過。包括 13 單選 + 7 複選共 20 題、複選勾選讀回、摘要未答阻擋、審閱正解、e 等 13/20 阻擋及 20/20 通過、簡報 SCORM 保留；另驗證末段確認視窗漏答、人機協同舊勾選、規則文字不當成績與實得比例分數。
+- 語法、git diff --check、新增內容敏感資料掃描通過。
+- 本機配額維持 3；Driver SHA256 維持 A53211711E0B86AB1A807D656E2008035C70478F835A463F1ED834E4680B0AEA。
 ### 尚未驗證項目
-- 真實平臺端到端執行，包含成績推算路徑與 e等 閒置重新登入路徑。
+- 正式平台端到端與重新打包；不將離線 fixture 視為正式三門／兩門課已完成。
+- embedded Python 未安裝 pytest，沿用 unittest；未新增相依套件。
 ### 已知風險 (Known Risks)
-- 本機的 `data/logs/taipei_eda_course.log` 已在本輪輪替為 `.log.1`（43MB 舊檔保留，未刪除）。
+- 未知題型或題目分頁未完整讀取時會停止交卷，保留待處理；不宣稱所有平台題型已支援。
+- 臺北 E 大多重視窗造成入帳中斷的根因尚未確認；警告會安全停止，不嘗試繞過平台限制。
+- 臺北 E 大成績回課程頁查核仍依平台更新速度與可見資訊；school_hash 根因尚未實測確認。
+- 同時執行兩平臺時，共用每日用量差額可能包含另一平臺呼叫，不能當作官方帳務。
 
 ## Git 狀態
-本輪（2026-10-22）：main／52569e10e，Modified（僅上述文件）、未提交推送；fetch 只更新 upstream 參照。以下原記錄為前輪狀態，不代表本輪已驗證。
-
-- Commit：見 `git log -1`（fix: 修正臺北E大成績判定並改版冒險日誌與 Q 版配色）
-- Push：否
-- Working Tree：Clean
-- Branch：main
+- Commit：基準 d3e9f8cb3；2026-10-27 重新驗證（unittest 164/164、quiz_policy_qa 22/22、無敏感資料）後已本機提交，SHA 以 `git log -2` 為準。
+- Push：否。
+- Working Tree：Clean（提交後）。
+- Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
-1. 使用者確認畫面與日誌呈現。
-2. 提交本輪修改。
-3. 以真實帳號跑一輪臺北E大測驗，確認成績判定。
+關閉既有來源版後由根目錄 run.bat 重啟；確認臺北 E 大糖尿病測驗完整讀到 20 題、缺題啟動 AI、未及格重考由 AI 覆核，且不再帶漏答交卷。正式課程若仍失敗，依新日誌與題型檢查，不把未完成標為完成。未授權前不推送／發布。
 
 ## 發布狀態 (Release Status)
-待使用者確認（尚未升版與打包）
+本機來源可測試；未升版、打包或發布。dist 舊可攜版不包含本輪修改。
