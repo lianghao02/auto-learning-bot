@@ -1,6 +1,6 @@
 # 行政效能領航員（Admin Efficiency Pilot）
 
-[![Version](https://img.shields.io/badge/version-V2.0.1-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.0.1)
+[![Version](https://img.shields.io/badge/version-V2.1.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.1.0)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 [![Tests](https://img.shields.io/badge/tests-project%20runner-blue.svg)](scripts/run_tests.ps1)
@@ -24,7 +24,7 @@
 
 1. 前往 **[GitHub Releases 最新發行頁面](https://github.com/lianghao02/auto-learning-bot/releases/latest)**。
 2. 在 **Assets** 區塊點擊下載：
-   👉 **`AdminEfficiencyPilot_V2.0.1_Portable.zip`**
+   👉 **`AdminEfficiencyPilot_V2.1.0_Portable.zip`**
 3. **解壓縮**：將下載的 ZIP 壓縮檔完整解壓縮至本機任意資料夾（建議放置於桌面或非系統槽，避免路徑權限問題）。
 4. **啟動**：進入解壓縮後的資料夾，直接雙擊 **`行政效能領航員.exe`**（自帶專屬圖示，點擊直接啟動，無 CMD 黑窗）；亦可雙擊 **`啟動程式.bat`**。
    - 💡 可雙擊 **`建立桌面捷徑.bat`** 一鍵在桌面建立專屬圖示捷徑。
@@ -61,7 +61,15 @@
 
 ---
 
-## 🌟 V2.0.1 商業級介面與核心功能特色
+## 🌟 V2.1.0 雙平臺答題政策與冒險日誌
+
+- 🎮 **2D Q 版遊戲風工作台**：晴空糖果配色、墨藍粗外框與厚底按鈕；課程表改為「任務告示板」，勾選與下拉元件加上圖形標記，所有文字對比維持 WCAG AA。
+- 📜 **冒險日誌**：臺北 E 大與 e 等公務園統一為「時間｜分類｜訊息」格式；研習進度改為頂部即時卡片，紀錄只留 25% 里程碑，可依重點／研習／測驗問卷／登入系統篩選，重複訊息合併計次。
+- 🧠 **雙平臺相同答題原則**：完整讀題、題庫優先、缺題才補答、未及格時由 AI 覆核；漏答不交卷、成績未知不重考、確認完成才結算；支援單選、複選與數字代號複選簡答。
+- 🔌 **AI 服務中斷防護**：Gemini 503／逾時自動重試並改用備援模型；AI 中斷造成的不及格不計入 3 次上限，延後重考，不再整卷亂猜。
+- ⏱ **研習時數核對**：臺北 E 大研習後回課程頁核對平臺實際入帳時數，不足最多補課一次；遇多重視窗警告安全停止，不把等待算作有效上課。
+
+### V2.0.1 商業級介面與核心功能特色（沿用）
 
 - 🎨 **現代自適應工作台（Compact Ribbon & In-Row Focus）**：
   - 徹底重構主視窗架構，全面移除舊版絕對座標與靜態貼圖外殼，完美適應 Windows 高 DPI（125%、150%）顯示環境。

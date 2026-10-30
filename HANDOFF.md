@@ -3,15 +3,15 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/auto-learning-bot
 - **Branch**：main
-- **Commit SHA**：d3e9f8cb3a86728fbca075e648b5e3ee6a7998c3（本輪與前輪本機修正尚未提交）
+- **Commit SHA**：發布提交前基準 930af2cb；發布提交與 tag V2.1.0 以 `git log -1` 為準
 - **Skill Version**：lianghao-development v1.0.0
-- **Task Type**：IMPROVE / FIX / HANDOFF
+- **Task Type**：RELEASE
 - **Local Path Hint**：07_auto-learning-bot
 
 ---
 
 ## 目前狀態
-2026-10-25：雙平臺答題政策、三階段修訂，以及正式回報的臺北 E 大複選簡答／研習入帳核對修正均完成，待正式課程實測。已本機提交（2026-10-27），未推送、升版、打包或發布；根目錄 run.bat 啟動來源版可載入修正。
+2026-10-30：已發布 V2.1.0（commit、annotated tag、GitHub Release 與可攜版 ZIP/SHA-256）。內容為前述雙平臺答題政策、冒險日誌、Q 版工作台與 AI 中斷防護。
 
 ## 本輪目標
 依使用者要求，讓臺北 E 大與 e 等採相同答題原則：完整讀題、題庫優先、缺題補答、未及格覆核、漏答不交卷、未知成績不重考、確認完成才結算。保留各自登入、課程導覽與 DOM 操作。
@@ -73,13 +73,16 @@
 - 同時執行兩平臺時，共用每日用量差額可能包含另一平臺呼叫，不能當作官方帳務。
 
 ## Git 狀態
-- Commit：基準 d3e9f8cb3；2026-10-27 重新驗證（unittest 164/164、quiz_policy_qa 22/22、無敏感資料）後已本機提交，SHA 以 `git log -2` 為準。
-- Push：否。
-- Working Tree：Clean（提交後）。
+- Commit：`chore(release): 發布 V2.1.0 ...`，SHA 以 `git log -1` 為準。
+- Push：是（main 與 tag V2.1.0）。
+- Working Tree：Clean。
 - Branch：main。
 
 ## 下一步建議動作 (Next Recommended Action)
-關閉既有來源版後由根目錄 run.bat 重啟；確認臺北 E 大糖尿病測驗完整讀到 20 題、缺題啟動 AI、未及格重考由 AI 覆核，且不再帶漏答交卷。正式課程若仍失敗，依新日誌與題型檢查，不把未完成標為完成。未授權前不推送／發布。
+既有使用者啟動後會收到 V2.1.0 更新通知；請以正式課程驗收：臺北 E 大完整讀題與漏答阻擋、AI 缺題覆核、e 等 AI 重試與延後重考、研習時數入帳核對。正式課程若仍失敗，依新日誌與題型檢查，不把未完成標為完成。
 
 ## 發布狀態 (Release Status)
-本機來源可測試；未升版、打包或發布。dist 舊可攜版不包含本輪修改。
+V2.1.0 已發布。
+- 附件：`AdminEfficiencyPilot_V2.1.0_Portable.zip`（SHA-256：`3071ee99041f3f93d63d9c026c78099a796bd67593f08fb56c208022abc60319`）與 `.sha256`。
+- 發布前驗證：unittest 164/164 通過；`check_release_versions.py 07` 為 OK；ZIP 不含 config.json、questions.db、日誌與本機路徑；於含中文與空白的路徑解壓後，embedded runtime 可載入全部模組並建立主視窗（offscreen）。
+- 尚未驗證：正式平台端到端、實機 125% DPI。
