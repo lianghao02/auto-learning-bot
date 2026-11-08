@@ -1,9 +1,6 @@
-# 雙 Agent 協作
+# Agent 協作規則
 
-本專案共用程式、測試、文件與 CI；Codex 讀取 .agents/AGENTS.md，Antigravity 讀取 .gemini/AGENTS.md。需要平行開發時，從 00_home 執行：
+本專案共用程式、測試、文件與 CI；Codex 讀取 `.agents/AGENTS.md`，Antigravity 讀取 `.gemini/AGENTS.md`。
 
-```powershell
-.\scripts\New-AgentWorktree.ps1 -Project 07_auto-learning-bot -Agent both
-```
-
-提交前執行 scripts/qa.ps1，並依本專案既有 README 的測試方式進行功能驗收。
+- 平行開發或隔離任務時，依全域憲法以獨立工作區或分支隔離，不讓兩個 Agent 同時操作同一工作目錄。
+- 提交前執行 `scripts/qa.ps1`，並依本專案既有 `README.md` 的測試方式進行功能驗收。
