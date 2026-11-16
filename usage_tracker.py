@@ -18,9 +18,14 @@ from pathlib import Path
 import requests
 from utils.app_paths import user_data_path
 from utils.config_io import write_json_atomically
+from utils.security import (
+    DEFAULT_GAS_URL,
+    is_cloud_sync_enabled as _config_cloud_sync_enabled,
+    resolve_gas_url,
+)
 
 
-GAS_URL = "https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1M6rL2gM8nTGicmEjfh_1TNiBo12YcVsb37J7Cl/exec"
+GAS_URL = DEFAULT_GAS_URL
 HEARTBEAT_SECONDS = 60
 
 
@@ -56,26 +61,33 @@ def get_device_id() -> str:
     return device_id
 
 
-def is_cloud_sync_enabled() -> bool:
+def _load_config() -> dict:
     path = _config_path()
     try:
         if path.exists():
             data = json.loads(path.read_text(encoding="utf-8"))
-            settings = data.get("settings", {})
-            if isinstance(settings, dict) and "cloud_sync_enabled" in settings:
-                return bool(settings["cloud_sync_enabled"])
-            if "cloud_sync_enabled" in data:
-                return bool(data["cloud_sync_enabled"])
+            return data if isinstance(data, dict) else {}
     except Exception:
         pass
-    return True
+    return {}
+
+
+def is_cloud_sync_enabled() -> bool:
+    return _config_cloud_sync_enabled(_load_config())
 
 
 def _post(payload: dict) -> dict | None:
-    if not is_cloud_sync_enabled():
+    cfg = _load_config()
+    if not _config_cloud_sync_enabled(cfg):
         return None
     try:
-        resp = requests.post(GAS_URL, json=payload, timeout=6)
+        target_url = resolve_gas_url(cfg) if cfg.get("gas_url") or (cfg.get("settings") or {}).get("gas_url") else GAS_URL
+        if target_url != GAS_URL:
+            target_url = resolve_gas_url({"gas_url": target_url})
+        else:
+            from utils.security import validate_gas_url
+            target_url = validate_gas_url(GAS_URL)
+        resp = requests.post(target_url, json=payload, timeout=6)
         if resp.status_code == 200:
             try:
                 return resp.json()

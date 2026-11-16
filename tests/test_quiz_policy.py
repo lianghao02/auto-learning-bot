@@ -192,7 +192,14 @@ class SubmissionAndSyncSafetyTests(unittest.TestCase):
         response = Mock()
         response.json.return_value = {'status': 'error', 'error': '409'}
         with patch.object(quiz_bank.requests, 'post', return_value=response):
-            self.assertIs(quiz_bank.gas_save_questions(1, [{'q_text': '題目', 'val': '0'}]), False)
+            self.assertIs(
+                quiz_bank.gas_save_questions(
+                    1,
+                    [{'q_text': '題目', 'val': '0'}],
+                    config={'cloud_sync_enabled': True},
+                ),
+                False,
+            )
 
     def test_split_grade_row_is_read(self):
         driver = Mock()

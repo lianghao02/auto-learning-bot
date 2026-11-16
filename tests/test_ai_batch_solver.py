@@ -162,6 +162,48 @@ class AiBatchSolverTests(unittest.TestCase):
         self.assertTrue(_is_100("10/10"))
         self.assertFalse(_is_100("6/10"))
 
+    def test_single_question_ai_paths_share_limiter_and_quota(self):
+        import requests as req
+        from quiz_bank import ai_guess_answer
+        from app import AdminEfficiencyPilot
+
+        ok_resp = MagicMock()
+        ok_resp.raise_for_status.return_value = None
+        ok_resp.json.return_value = {'choices': [{'message': {'content': '甲'}}]}
+
+        with patch('quiz_bank.requests.post', return_value=ok_resp) as mock_post, \
+             patch('utils.security.global_ai_rate_limiter.acquire', return_value=True) as mock_acquire, \
+             patch('utils.security.global_quota_tracker.record_usage') as mock_usage:
+            ans = ai_guess_answer(
+                '測試題目',
+                {'0': '甲', '1': '乙'},
+                {'ai_provider': 'Gemini', 'ai_api_key': 'AIzaSyTestMockKey12345678'},
+            )
+        self.assertEqual(ans, '0')
+        self.assertEqual(mock_acquire.call_count, 1)
+        self.assertEqual(mock_usage.call_count, 1)
+        self.assertIn('generativelanguage.googleapis.com', mock_post.call_args.args[0])
+
+        # _ai_find_answer 遇到 429 時觸發工作階段熔斷
+        err_resp = req.Response()
+        err_resp.status_code = 429
+        rate_err_mock = MagicMock()
+        rate_err_mock.raise_for_status.side_effect = req.exceptions.HTTPError(response=err_resp)
+
+        pilot = AdminEfficiencyPilot.__new__(AdminEfficiencyPilot)
+        pilot.config = {'ai_provider': 'Gemini', 'ai_api_key': 'AIzaSyTestMockKey12345678'}
+        pilot._answer_map = {'q1': {'answer': '1'}}
+        pilot.logger = MagicMock()
+
+        with patch('quiz_bank.requests.post', return_value=rate_err_mock) as mock_post2, \
+             patch('utils.security.global_ai_rate_limiter.acquire', return_value=True), \
+             patch('utils.security.global_quota_tracker.record_usage') as mock_usage2:
+            self.assertIsNone(pilot._ai_find_answer('題目', ['甲', '乙']))
+            self.assertTrue(pilot._ai_circuit_broken)
+            self.assertIsNone(pilot._ai_find_answer('題目', ['甲', '乙']))
+            self.assertEqual(mock_post2.call_count, 1)
+            self.assertEqual(mock_usage2.call_count, 1)
+
 
 if __name__ == '__main__':
     unittest.main()

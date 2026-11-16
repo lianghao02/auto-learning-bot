@@ -5,7 +5,14 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from utils.config_io import write_json_atomically
-from utils.security import validate_ai_base_url, verify_file_sha256
+from utils.security import (
+    DEFAULT_GAS_URL,
+    is_cloud_sync_enabled,
+    resolve_gas_url,
+    validate_ai_base_url,
+    validate_gas_url,
+    verify_file_sha256,
+)
 
 
 class ValidateAiBaseUrlTests(unittest.TestCase):
@@ -82,6 +89,50 @@ class ValidateAiBaseUrlTests(unittest.TestCase):
                 ai_requests=3
             )
             self.assertIn("階段成效彙整", batch_card)
+
+    def test_gas_url_validation_and_cloud_sync_opt_in(self):
+        self.assertFalse(is_cloud_sync_enabled(None))
+        self.assertFalse(is_cloud_sync_enabled({}))
+        self.assertTrue(is_cloud_sync_enabled({"cloud_sync_enabled": True}))
+        self.assertTrue(is_cloud_sync_enabled({"settings": {"cloud_sync_enabled": True}}))
+
+        self.assertEqual(resolve_gas_url({}), DEFAULT_GAS_URL)
+        with self.assertRaisesRegex(ValueError, "HTTPS"):
+            validate_gas_url("http://script.google.com/macros/s/abc/exec")
+        with self.assertRaisesRegex(ValueError, "帳號或密碼"):
+            validate_gas_url("https://user:pass@script.google.com/macros/s/abc/exec")
+        with self.assertRaisesRegex(ValueError, "官方網域"):
+            validate_gas_url("https://evil.example.com/exec")
+
+    def test_daily_quota_default_path_has_no_nested_data_dir(self):
+        from utils.security import DailyQuotaTracker
+        tracker = DailyQuotaTracker()
+        default_path = tracker._get_file_path()
+        self.assertEqual(default_path.name, "daily_quota.json")
+        self.assertNotEqual(default_path.parent.parent.name, "data")
+
+    def test_usage_tracker_defaults_to_disabled_when_unconfigured(self):
+        import usage_tracker
+        from unittest.mock import patch
+        with TemporaryDirectory() as temp_dir:
+            missing_cfg = Path(temp_dir) / "config.json"
+            with patch.object(usage_tracker, "_config_path", return_value=missing_cfg), \
+                 patch.object(usage_tracker.requests, "post") as mock_post:
+                self.assertFalse(usage_tracker.is_cloud_sync_enabled())
+                self.assertIsNone(usage_tracker.ping("V2.1.0"))
+                mock_post.assert_not_called()
+
+    def test_webdriver_missing_chrome_returns_none_without_hardcoded_120(self):
+        from unittest.mock import patch
+        from utils import webdriver_mgr
+
+        with patch.object(webdriver_mgr.sys, "platform", "linux"):
+            self.assertIsNone(webdriver_mgr.get_local_chrome_version())
+        with TemporaryDirectory() as temp_dir, \
+             patch.object(webdriver_mgr, "_resolve_target_folder", return_value=temp_dir), \
+             patch.object(webdriver_mgr, "get_local_chrome_version", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "無法從系統登錄檔偵測 Chrome 版本"):
+                webdriver_mgr.download_best_chromedriver()
 
 
 if __name__ == "__main__":

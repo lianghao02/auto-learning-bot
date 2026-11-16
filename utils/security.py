@@ -13,6 +13,58 @@ AI_PROVIDER_HOSTS = {
     "Groq": frozenset({"api.groq.com"}),
 }
 
+DEFAULT_GAS_URL = (
+    "https://script.google.com/macros/s/"
+    "AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1M6rL2gM8nTGicmEjfh_1TNiBo12YcVsb37J7Cl/exec"
+)
+GAS_ALLOWED_HOSTS = frozenset({"script.google.com", "script.googleusercontent.com"})
+
+
+def validate_gas_url(url: str | None) -> str:
+    """驗證 GAS 雲端題庫／統計端點網址，防止明文傳輸或非授權主機外洩。"""
+    value = str(url or "").strip()
+    if not value:
+        raise ValueError("GAS URL 不可為空白")
+
+    parsed = urlsplit(value)
+    if parsed.scheme.lower() != "https":
+        raise ValueError("GAS URL 必須使用 HTTPS")
+    if not parsed.hostname:
+        raise ValueError("GAS URL 缺少有效主機名稱")
+    if parsed.username or parsed.password:
+        raise ValueError("GAS URL 不可包含帳號或密碼")
+    if parsed.fragment:
+        raise ValueError("GAS URL 不可包含片段")
+
+    hostname = parsed.hostname.lower().rstrip(".")
+    if hostname not in GAS_ALLOWED_HOSTS:
+        expected = "、".join(sorted(GAS_ALLOWED_HOSTS))
+        raise ValueError(f"GAS 僅允許連線至官方網域：{expected}")
+
+    netloc = hostname if not parsed.port else f"{hostname}:{parsed.port}"
+    return urlunsplit(("https", netloc, parsed.path, parsed.query, ""))
+
+
+def resolve_gas_url(config: dict | None = None) -> str:
+    """從設定取得並驗證 GAS 端點網址；未設定時回退至預設端點。"""
+    raw = ""
+    if isinstance(config, dict):
+        raw = str(config.get("gas_url") or "").strip()
+        if not raw and isinstance(config.get("settings"), dict):
+            raw = str(config["settings"].get("gas_url") or "").strip()
+    return validate_gas_url(raw or DEFAULT_GAS_URL)
+
+
+def is_cloud_sync_enabled(config: dict | None = None) -> bool:
+    """檢查是否明確啟用雲端共用題庫同步與匿名統計（預設關閉，採 Opt-in）。"""
+    if isinstance(config, dict):
+        if "cloud_sync_enabled" in config:
+            return bool(config["cloud_sync_enabled"])
+        settings = config.get("settings")
+        if isinstance(settings, dict) and "cloud_sync_enabled" in settings:
+            return bool(settings["cloud_sync_enabled"])
+    return False
+
 
 def validate_ai_base_url(provider: str, base_url: str) -> str:
     """驗證 AI API 網址，避免將金鑰送往非預期主機。"""
@@ -108,7 +160,7 @@ class DailyQuotaTracker:
         if self._storage_path:
             return self._storage_path
         from utils.app_paths import user_data_path
-        return user_data_path("data/daily_quota.json")
+        return user_data_path("daily_quota.json")
 
     def record_usage(self, count: int = 1) -> dict:
         """記錄 API 消耗並回傳今日統計。"""

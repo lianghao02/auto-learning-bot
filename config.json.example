@@ -15,7 +15,7 @@
     ],
     "settings": {
         "headless": true,
-        "allow_insecure_tls_compatibility": false,
+        "cloud_sync_enabled": false,
         "residence_time": 75,
         "target_percentage": 1.05,
         "session_refresh_hours": 5.0,

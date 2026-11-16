@@ -925,8 +925,11 @@ GLOBAL_QUIZ_DIALOG_LOCK = threading.Lock()
 class InteractiveQuizDialog(QDialog):
     """遇到測驗時彈出的人機協同作答助理（支援一鍵複製 Prompt、Gemini 批次極速作答、答案貼上解析與跳過自動補填問卷）"""
 
+    gemini_batch_completed = Signal(dict)
+
     def __init__(self, course_name: str, questions_data: list, timeout_sec: int = 180, parent=None, config: dict = None):
         super().__init__(parent)
+        self.gemini_batch_completed.connect(self._on_gemini_batch_completed)
         self.course_name = course_name
         self.questions_data = questions_data
         self.timeout_sec = timeout_sec
@@ -1176,7 +1179,7 @@ class InteractiveQuizDialog(QDialog):
         def _worker():
             from quiz_bank import ai_batch_solve_quiz
             res = ai_batch_solve_quiz(self.course_name, self.questions_data, settings)
-            QTimer.singleShot(0, lambda: self._on_gemini_batch_completed(res))
+            self.gemini_batch_completed.emit(res)
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -2093,8 +2096,8 @@ class AccountSettingsTabPanel(QWidget):
         self.headless_cb.setStyleSheet(checkbox_style)
 
         self.cloud_sync_cb = QCheckBox("啟用雲端共用題庫同步與匿名統計（GAS 連線）")
-        self.cloud_sync_cb.setChecked(True)
-        self.cloud_sync_cb.setToolTip("取消勾選後，僅使用本機 SQLite 題庫與設定之 AI 服務，不連線外部 Google Apps Script。")
+        self.cloud_sync_cb.setChecked(False)
+        self.cloud_sync_cb.setToolTip("預設關閉（僅本機 SQLite 題庫與設定之 AI 服務）；勾選後才連線外部 Google Apps Script 共用題庫與匿名統計。")
         self.cloud_sync_cb.setStyleSheet(checkbox_style)
 
         self.ai_key_input = QLineEdit()
@@ -2336,7 +2339,7 @@ class AccountSettingsTabPanel(QWidget):
                         self.egov_type_combo.setCurrentIndex(idx)
                 settings = data.get("settings", {})
                 self.headless_cb.setChecked(settings.get("headless", False))
-                self.cloud_sync_cb.setChecked(settings.get("cloud_sync_enabled", True))
+                self.cloud_sync_cb.setChecked(settings.get("cloud_sync_enabled", False))
                 self.ai_key_input.setText(settings.get("ai_api_key", ""))
         except Exception:
             pass

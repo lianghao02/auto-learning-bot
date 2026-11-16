@@ -6,14 +6,19 @@
 """
 
 import re, json, time, requests, difflib, threading, sys, logging
-from utils.security import validate_ai_base_url
+from utils.security import (
+    DEFAULT_GAS_URL,
+    is_cloud_sync_enabled,
+    resolve_gas_url,
+    validate_ai_base_url,
+)
 from utils.helpers import match_radio_option_index
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoAlertPresentException
+from selenium.common.exceptions import NoAlertPresentException, WebDriverException
 
-GAS_URL = 'https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1M6rL2gM8nTGicmEjfh_1TNiBo12YcVsb37J7Cl/exec'
+GAS_URL = DEFAULT_GAS_URL
 
 
 # ── 工具 ─────────────────────────────────────────────
@@ -67,13 +72,18 @@ def _click_js(driver, el):
 # ── GAS 題庫存取 ──────────────────────────────────────
 
 def _is_cloud_sync_enabled(config=None) -> bool:
-    if isinstance(config, dict):
-        if "cloud_sync_enabled" in config:
-            return bool(config["cloud_sync_enabled"])
-        settings = config.get("settings")
-        if isinstance(settings, dict) and "cloud_sync_enabled" in settings:
-            return bool(settings["cloud_sync_enabled"])
-    return True
+    return is_cloud_sync_enabled(config)
+
+
+def _resolve_gas_endpoint(config=None) -> str:
+    """解析並驗證 GAS 端點網址；若覆寫模組 GAS_URL 亦需通過 HTTPS 與網域驗證。"""
+    if isinstance(config, dict) and (
+        str(config.get("gas_url") or "").strip()
+        or (isinstance(config.get("settings"), dict) and str(config["settings"].get("gas_url") or "").strip())
+    ):
+        return resolve_gas_url(config)
+    from utils.security import validate_gas_url
+    return validate_gas_url(GAS_URL)
 
 
 def gas_fetch_bank(course_id, config=None):
@@ -89,7 +99,8 @@ def gas_fetch_bank(course_id, config=None):
         return {}
     print(f'  [題庫] 正在從 GAS 載入 course_id={course_id}')
     try:
-        r = requests.get(GAS_URL,
+        gas_url = _resolve_gas_endpoint(config)
+        r = requests.get(gas_url,
                          params={'action': 'taipei_quiz_get', 'course_id': str(course_id)},
                          timeout=10)
         resp = r.json()
@@ -147,7 +158,11 @@ def gas_report_missing_questions(course_id, questions, course_name='', username=
     if not missing:
         return
 
-    gas_url = (config or {}).get('gas_url') or GAS_URL
+    try:
+        gas_url = _resolve_gas_endpoint(config)
+    except ValueError as e:
+        print(f'  [缺題] GAS 網址遭安全規則拒絕：{e}')
+        return
     payload = {
         'action': 'taipei_quiz_missing',
         'course_id': str(course_id),
@@ -185,7 +200,8 @@ def gas_save_questions(course_id, questions_with_answers, course_name='', userna
         'questions': [dict(course_id=course_id, **q) for q in questions_with_answers]
     }
     try:
-        r = requests.post((config or {}).get('gas_url') or GAS_URL, json=payload, timeout=15)
+        gas_url = _resolve_gas_endpoint(config)
+        r = requests.post(gas_url, json=payload, timeout=15)
         result = r.json()
         if result.get('status') == 'ok':
             print(f'  [題庫] 已同步共用題庫: added={result.get("added")}, updated={result.get("updated")}')
@@ -249,8 +265,26 @@ def save_ai_answers_to_sqlite(questions_data: list, answers_by_idx: dict):
 
 
 AI_BATCH_TIMEOUT = 45                 # 單次請求逾時秒數（整卷 10 題，尖峰時段 25 秒常不夠）
+AI_SINGLE_TIMEOUT = 20                # 單題請求逾時秒數
 AI_RETRY_DELAYS = (5, 15)             # 暫時性錯誤的重試間隔（秒）
-AI_FALLBACK_MODELS = {"Gemini": "gemini-3.5-flash"}  # 主模型過載時改用的備援模型
+AI_DEFAULT_MODELS = {
+    "OpenAI": "gpt-4o-mini",
+    "Gemini": "gemini-3.1-flash-lite",
+    "Claude": "claude-haiku-4-5",
+    "Groq": "llama-3.1-8b-instant",
+}
+AI_DEFAULT_BASE_URLS = {
+    "OpenAI": "https://api.openai.com/v1",
+    "Gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
+    "Claude": "https://api.anthropic.com/v1",
+    "Groq": "https://api.groq.com/openai/v1",
+}
+AI_FALLBACK_MODELS = {
+    "OpenAI": "gpt-4o",
+    "Gemini": "gemini-3.5-flash",
+    "Claude": "claude-sonnet-4-6",
+    "Groq": "llama-3.3-70b-versatile",
+}
 _TRANSIENT_HTTP = {500, 502, 503, 504}
 
 
@@ -266,7 +300,7 @@ def _is_transient_ai_error(exc):
     return False
 
 
-def _describe_ai_error(exc):
+def _describe_ai_error(exc, timeout_sec: int = AI_BATCH_TIMEOUT):
     if isinstance(exc, requests.exceptions.HTTPError):
         code = getattr(exc.response, "status_code", None)
         if code == 429:
@@ -277,12 +311,134 @@ def _describe_ai_error(exc):
             return "API 呼叫失敗 (HTTP 503 模型過載)"
         return f"API 呼叫失敗 (HTTP {code})"
     if isinstance(exc, requests.exceptions.Timeout):
-        return f"API 回應逾時（{AI_BATCH_TIMEOUT} 秒）"
+        return f"API 回應逾時（{timeout_sec} 秒）"
     if isinstance(exc, requests.exceptions.ConnectionError):
         return "無法連線至 AI 服務"
     if isinstance(exc, _AIRateLimited):
         return str(exc)
     return f"AI 解析過程異常: {exc}"
+
+
+def _resolve_ai_settings(config: dict | None) -> tuple[str, str, str, str]:
+    """解析並驗證 AI provider / api_key / base_url / model，統一舊模型自動升級。"""
+    cfg = config or {}
+    provider = str(cfg.get("ai_provider") or "Gemini")
+    ai_keys = cfg.get("ai_keys") or {}
+    api_key = str((ai_keys.get(provider) if isinstance(ai_keys, dict) else "") or cfg.get("ai_api_key", "")).strip()
+    default_url = AI_DEFAULT_BASE_URLS.get(provider, AI_DEFAULT_BASE_URLS["Gemini"])
+    raw_url = cfg.get("ai_base_url") or default_url
+    base_url = validate_ai_base_url(provider, raw_url)
+    default_model = AI_DEFAULT_MODELS.get(provider, "gemini-3.1-flash-lite")
+    model = str(cfg.get("ai_model") or default_model).strip() or default_model
+    if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5")):
+        model = "gemini-3.1-flash-lite"
+    return provider, api_key, base_url, model
+
+
+def request_ai_completion(
+    messages: list[dict],
+    config: dict | None,
+    *,
+    json_mode: bool = False,
+    max_tokens: int | None = None,
+    temperature: float = 0.0,
+    timeout: int = AI_BATCH_TIMEOUT,
+    log_prefix: str = "[AI批次]",
+) -> dict:
+    """共用 AI 請求通道：統一驗證網址、滑動限速、每日配額計數與暫時性錯誤重試。"""
+    cfg = config or {}
+    provider = str(cfg.get("ai_provider") or "Gemini")
+    ai_keys = cfg.get("ai_keys") or {}
+    raw_key = str((ai_keys.get(provider) if isinstance(ai_keys, dict) else "") or cfg.get("ai_api_key", "")).strip()
+    if not raw_key:
+        return {"success": False, "text": None, "model": None, "error": "尚未設定 API Key，請至系統設定填入", "transient": False, "rate_limited": False}
+
+    try:
+        provider, api_key, base_url, model = _resolve_ai_settings(cfg)
+    except ValueError as exc:
+        return {"success": False, "text": None, "model": None, "error": f"API 網址遭安全規則拒絕：{exc}", "transient": False, "rate_limited": False}
+
+    from utils.security import global_ai_rate_limiter, mask_api_key
+    masked_key = mask_api_key(api_key)
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    if provider == "Claude":
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+
+    base_payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if json_mode:
+        base_payload["response_format"] = {"type": "json_object"}
+    if max_tokens is not None:
+        base_payload["max_tokens"] = max_tokens
+
+    def _request_once(use_model: str) -> str:
+        if not global_ai_rate_limiter.acquire(timeout=15.0):
+            raise _AIRateLimited("超出每分鐘請求速率上限（5 RPM），請稍候重試")
+        _safe_print(f"  {log_prefix} 正在呼叫 {provider} ({use_model}) 端點: {base_url} (Key: {masked_key})")
+        # 記錄一次 API 發送嘗試（無論成功、逾時或 429 皆精確計數）
+        try:
+            from utils.security import global_quota_tracker
+            global_quota_tracker.record_usage(1)
+        except Exception:
+            pass
+        if provider == "Claude":
+            user_msgs = [m for m in messages if m.get("role") != "system"]
+            claude_payload = {
+                "model": use_model,
+                "max_tokens": max_tokens or 1000,
+                "messages": user_msgs or messages,
+            }
+            resp = requests.post(f"{base_url}/messages", headers=headers, json=claude_payload, timeout=timeout)
+            resp.raise_for_status()
+            return resp.json()["content"][0]["text"].strip()
+        resp = requests.post(
+            f"{base_url}/chat/completions",
+            headers=headers,
+            json={**base_payload, "model": use_model},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()["choices"][0]["message"]["content"].strip()
+
+    # 暫時性錯誤（503 過載、逾時、連線中斷）才重試；401／429 等不重試，避免浪費額度
+    plan = [(model, 0), (model, AI_RETRY_DELAYS[0])]
+    fallback = AI_FALLBACK_MODELS.get(provider)
+    plan.append((fallback if fallback and fallback != model else model, AI_RETRY_DELAYS[1]))
+
+    try:
+        last_exc = None
+        for attempt_no, (use_model, delay) in enumerate(plan, start=1):
+            if delay:
+                _safe_print(f"  ⏳ {log_prefix} {delay} 秒後重試（第 {attempt_no}/{len(plan)} 次，模型 {use_model}）")
+                time.sleep(delay)
+            try:
+                raw_text = _request_once(use_model)
+                return {"success": True, "text": raw_text, "model": use_model, "error": None, "transient": False, "rate_limited": False}
+            except Exception as exc:
+                last_exc = exc
+                if not _is_transient_ai_error(exc):
+                    raise
+                _safe_print(f"  ⚠️ {log_prefix} 暫時性錯誤：{_describe_ai_error(exc, timeout)}")
+        raise last_exc
+    except Exception as exc:
+        err_msg = _describe_ai_error(exc, timeout)
+        transient = _is_transient_ai_error(exc)
+        rate_limited = isinstance(exc, requests.exceptions.HTTPError) and getattr(exc.response, "status_code", None) == 429
+        if transient:
+            err_msg += f"（已重試 {len(plan)} 次仍失敗，Google 服務暫時不穩）"
+        _safe_print(f"  ❌ {log_prefix} {err_msg}")
+        return {"success": False, "text": None, "model": None, "error": err_msg, "transient": transient, "rate_limited": rate_limited}
 
 
 def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) -> dict:
@@ -291,29 +447,6 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
     """
     if not questions_data:
         return {"success": False, "error": "無題目資料", "answers": {}, "parsed_answers": {}}
-
-    provider = config.get('ai_provider', 'Gemini')
-    ai_keys  = config.get('ai_keys', {}) or {}
-    api_key  = (ai_keys.get(provider) or config.get('ai_api_key', '')).strip()
-    if not api_key:
-        return {"success": False, "error": "尚未設定 API Key，請至系統設定填入", "answers": {}, "parsed_answers": {}}
-
-    try:
-        base_url = validate_ai_base_url(
-            provider,
-            config.get('ai_base_url', 'https://generativelanguage.googleapis.com/v1beta/openai'),
-        )
-    except ValueError as exc:
-        return {"success": False, "error": f"API 網址遭安全規則拒絕：{exc}", "answers": {}, "parsed_answers": {}}
-
-    model = config.get('ai_model', 'gemini-3.1-flash-lite')
-    if provider == "Gemini" and ("gemini-2.0" in model or "gemini-1.5" in model or "gemini-2.5" in model):
-        model = "gemini-3.1-flash-lite"
-
-
-    from utils.security import global_ai_rate_limiter, mask_api_key
-    masked_key = mask_api_key(api_key)
-
 
     prompt_lines = [
         f"請針對以下《{course_name}》測驗題目進行回答。",
@@ -333,83 +466,33 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
         prompt_lines.append(f"{idx}. [{q_type}] {q_text}\n{opts_str}\n")
 
     prompt = "\n".join(prompt_lines)
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a professional Taiwan government civil service examination and compliance expert. You output answers in strict JSON without any surrounding text.",
+        },
+        {"role": "user", "content": prompt},
+    ]
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    if provider == "Claude":
-        headers = {
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-            "Content-Type": "application/json"
+    result = request_ai_completion(
+        messages,
+        config,
+        json_mode=True,
+        temperature=0.0,
+        timeout=AI_BATCH_TIMEOUT,
+        log_prefix="[AI批次]",
+    )
+    if not result["success"]:
+        return {
+            "success": False,
+            "error": result["error"],
+            "transient": result["transient"],
+            "answers": {},
+            "parsed_answers": {},
         }
 
-    payload = {
-        "model": model,
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a professional Taiwan government civil service examination and compliance expert. You output answers in strict JSON without any surrounding text."
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.0
-    }
-
-    def _request_once(use_model):
-        if not global_ai_rate_limiter.acquire(timeout=15.0):
-            raise _AIRateLimited("超出每分鐘請求速率上限（5 RPM），請稍候重試")
-        _safe_print(f"  [AI批次] 正在呼叫 {provider} ({use_model}) 端點: {base_url} (Key: {masked_key})")
-        # 記錄一次 API 發送嘗試（無論成功、逾時或 429 皆精確計數）
-        try:
-            from utils.security import global_quota_tracker
-            global_quota_tracker.record_usage(1)
-        except Exception:
-            pass
-        if provider == "Claude":
-            claude_payload = {
-                "model": use_model,
-                "max_tokens": 1000,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            resp = requests.post(f"{base_url}/messages", headers=headers, json=claude_payload, timeout=AI_BATCH_TIMEOUT)
-            resp.raise_for_status()
-            return resp.json()["content"][0]["text"].strip()
-        resp = requests.post(f"{base_url}/chat/completions", headers=headers, json={**payload, "model": use_model}, timeout=AI_BATCH_TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"].strip()
-
-    # 暫時性錯誤（503 過載、逾時、連線中斷）才重試；401／429 等不重試，避免浪費額度
-    plan = [(model, 0)] + [(model, AI_RETRY_DELAYS[0])]
-    fallback = AI_FALLBACK_MODELS.get(provider)
-    if fallback and fallback != model:
-        plan.append((fallback, AI_RETRY_DELAYS[1]))
-    else:
-        plan.append((model, AI_RETRY_DELAYS[1]))
-
+    raw_text = result["text"]
     try:
-        raw_text = None
-        last_exc = None
-        for attempt_no, (use_model, delay) in enumerate(plan, start=1):
-            if delay:
-                _safe_print(f"  ⏳ [AI批次] {delay} 秒後重試（第 {attempt_no}/{len(plan)} 次，模型 {use_model}）")
-                time.sleep(delay)
-            try:
-                raw_text = _request_once(use_model)
-                break
-            except Exception as exc:
-                last_exc = exc
-                if not _is_transient_ai_error(exc):
-                    raise
-                _safe_print(f"  ⚠️ [AI批次] 暫時性錯誤：{_describe_ai_error(exc)}")
-        if raw_text is None:
-            raise last_exc
-
         # 解析 JSON
         clean_json_str = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.IGNORECASE)
         clean_json_str = re.sub(r"\s*```$", "", clean_json_str).strip()
@@ -454,43 +537,19 @@ def ai_batch_solve_quiz(course_name: str, questions_data: list, config: dict) ->
             "error": None
         }
 
-
     except Exception as e:
         err_msg = _describe_ai_error(e)
-        transient = _is_transient_ai_error(e)
-        if transient:
-            err_msg += f"（已重試 {len(plan)} 次仍失敗，Google 服務暫時不穩）"
         _safe_print(f"  ❌ [AI批次] {err_msg}")
-        return {"success": False, "error": err_msg, "transient": transient, "answers": {}, "parsed_answers": {}}
+        return {"success": False, "error": err_msg, "transient": False, "answers": {}, "parsed_answers": {}}
 
 
 
 def ai_guess_answer(q_text, options, config):
     """
-    呼叫 AI API（OpenAI-compatible 或 Claude）分析題目，回傳正確選項的 val str。
+    呼叫 AI API（透過共用限速／配額通道）分析題目，回傳正確選項的 val str。
     config: {ai_provider, ai_keys:{Provider:key}, ai_base_url, ai_model}
     回傳 val str（'0'~'3'）或 None（失敗）
     """
-    provider = config.get('ai_provider', 'Gemini')
-    ai_keys  = config.get('ai_keys', {})
-    api_key  = ai_keys.get(provider) or config.get('ai_api_key', '')
-
-    if not api_key:
-        print('  [AI] 無 API key，跳過')
-        return None
-
-    try:
-        base_url = validate_ai_base_url(
-            provider,
-            config.get('ai_base_url', 'https://api.openai.com/v1'),
-        )
-    except ValueError as exc:
-        print(f'  [AI] API 網址遭安全規則拒絕：{exc}')
-        return None
-    model    = config.get('ai_model', 'gpt-4o-mini')
-    if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5")):
-        model = "gemini-3.1-flash-lite"  # 舊版 Gemini 模型已下架（API 回 404）
-
     # 建立選項文字清單（去掉編號前綴如 "1. "）
     opts_clean = {}
     for val, text in options.items():
@@ -506,55 +565,42 @@ def ai_guess_answer(q_text, options, config):
         '正確答案：'
     )
 
-    try:
-        if provider == 'Claude':
-            resp = requests.post(
-                f'{base_url}/messages',
-                headers={'x-api-key': api_key, 'anthropic-version': '2023-06-01',
-                         'Content-Type': 'application/json'},
-                json={'model': model, 'max_tokens': 150,
-                      'messages': [{'role': 'user', 'content': prompt}]},
-                timeout=20)
-            resp.raise_for_status()
-            ai_answer = resp.json()['content'][0]['text'].strip()
-        else:
-            resp = requests.post(
-                f'{base_url}/chat/completions',
-                headers={'Authorization': f'Bearer {api_key}',
-                         'Content-Type': 'application/json'},
-                json={'model': model, 'temperature': 0, 'max_tokens': 150,
-                      'messages': [{'role': 'user', 'content': prompt}]},
-                timeout=20)
-            resp.raise_for_status()
-            ai_answer = resp.json()['choices'][0]['message']['content'].strip()
+    result = request_ai_completion(
+        [{"role": "user", "content": prompt}],
+        config,
+        json_mode=False,
+        max_tokens=150,
+        temperature=0.0,
+        timeout=AI_SINGLE_TIMEOUT,
+        log_prefix="[AI]",
+    )
+    if not result["success"]:
+        return None
 
-        print(f'  [AI] 回答: {ai_answer!r}')
+    ai_answer = result["text"]
+    print(f'  [AI] 回答: {ai_answer!r}')
 
-        # 去掉 AI 回答的編號前綴（如 "1. 是" → "是"）
-        ai_clean = re.sub(r'^\d+[\.、\s]+', '', ai_answer).strip()
+    # 去掉 AI 回答的編號前綴（如 "1. 是" → "是"）
+    ai_clean = re.sub(r'^\d+[\.、\s]+', '', ai_answer).strip()
 
-        # 把 AI 回答文字比對回 val
-        ai_norm = _normalize(ai_clean)
-        # 精確比對
+    # 把 AI 回答文字比對回 val
+    ai_norm = _normalize(ai_clean)
+    # 精確比對
+    for val, text in opts_clean.items():
+        if _normalize(text) == ai_norm:
+            print(f'  [AI] 命中 val={val}')
+            return val
+    # fuzzy 比對
+    clean_texts = list(opts_clean.values())
+    matches = difflib.get_close_matches(ai_clean, clean_texts, n=1, cutoff=0.6)
+    if matches:
         for val, text in opts_clean.items():
-            if _normalize(text) == ai_norm:
-                print(f'  [AI] 命中 val={val}')
+            if text == matches[0]:
+                print(f'  [AI] fuzzy 命中 val={val}')
                 return val
-        # fuzzy 比對
-        clean_texts = list(opts_clean.values())
-        matches = difflib.get_close_matches(ai_clean, clean_texts, n=1, cutoff=0.6)
-        if matches:
-            for val, text in opts_clean.items():
-                if text == matches[0]:
-                    print(f'  [AI] fuzzy 命中 val={val}')
-                    return val
 
-        print(f'  [AI] 無法比對回選項，回答: {ai_answer!r}')
-        return None
-
-    except Exception as e:
-        print(f'  [AI] 呼叫失敗: {e}')
-        return None
+    print(f'  [AI] 無法比對回選項，回答: {ai_answer!r}')
+    return None
 
 
 def ai_guess_answer_retry(q_text, options, wrong_val, config):
@@ -588,7 +634,7 @@ def _start_or_resume_quiz(driver, wait, quiz_view_url):
             _dismiss_alerts(driver)
             print(f'  [測驗] 開始/繼續 → {driver.current_url}')
             return driver.current_url
-        except:
+        except WebDriverException:
             pass
     return None
 
@@ -743,7 +789,7 @@ def _submit_quiz(driver, wait):
                 print('  ⚠️ 最後確認視窗顯示漏答，停止送出。')
                 return None
             driver.execute_script("arguments[0].click();", modal_save)
-        except:
+        except Exception:
             try:
                 alert = driver.switch_to.alert
                 if has_unanswered_warning(alert.text):

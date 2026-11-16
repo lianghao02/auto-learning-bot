@@ -148,5 +148,87 @@ class CourseUsageTests(unittest.TestCase):
         self.assertEqual(self.pilot._course_api_calls["A"], 1)
 
 
+class EgovLoginRedirectTests(unittest.TestCase):
+    def setUp(self):
+        self.pilot = AdminEfficiencyPilot.__new__(AdminEfficiencyPilot)
+        self.pilot.running = True
+        self.pilot.stat_url = "https://elearn.hrd.gov.tw/learn/mycourse/learn_stat.php"
+        self.pilot.driver = Mock()
+        self.pilot.safe_sleep = Mock(return_value=True)
+        self.pilot.sync_session = Mock(return_value=True)
+
+    def test_intermediate_sso_urls_are_not_treated_as_logged_in(self):
+        self.assertFalse(
+            AdminEfficiencyPilot._is_elearn_logged_in_url(
+                "https://elearn.hrd.gov.tw/egov_login.php?token=xyz",
+                check_no_login=False,
+            )
+        )
+        self.assertFalse(
+            AdminEfficiencyPilot._is_elearn_logged_in_url(
+                "https://www.cp.gov.tw/portal/Clogin.aspx?ReturnUrl=https://elearn.hrd.gov.tw/egov_login.php",
+                check_no_login=True,
+            )
+        )
+        self.assertTrue(
+            AdminEfficiencyPilot._is_elearn_logged_in_url(
+                "https://elearn.hrd.gov.tw/mooc/index.php",
+                check_no_login=True,
+            )
+        )
+
+    def test_wait_for_redirect_survives_egov_login_relay_and_slow_sso(self):
+        # 模擬先在 cp.gov.tw 處理中，接著經過 egov_login.php 中繼，最後才進 mooc/index.php 與 learn_stat.php
+        urls = [
+            "https://www.cp.gov.tw/portal/Clogin.aspx",
+            "https://www.cp.gov.tw/portal/LoginSimple.aspx",
+            "https://elearn.hrd.gov.tw/egov_login.php?ticket=abc",
+            "https://elearn.hrd.gov.tw/mooc/index.php",
+            "https://elearn.hrd.gov.tw/learn/mycourse/learn_stat.php",
+        ]
+        idx = {"i": 0}
+
+        def get_url():
+            val = urls[min(idx["i"], len(urls) - 1)]
+            idx["i"] += 1
+            return val
+
+        type(self.pilot.driver).current_url = property(lambda _self: get_url())
+        self.pilot.driver.execute_script.return_value = ""
+
+        with patch("app.time.sleep"):
+            ok = self.pilot._wait_for_redirect_and_sync(
+                "✅ E政府登入成功", check_no_login=True, timeout_seconds=120
+            )
+        self.assertTrue(ok)
+        # 在到達 mooc/index.php 之前不可提前打斷 egov_login.php 跳去 stat_url
+        self.pilot.driver.get.assert_called_once_with(self.pilot.stat_url)
+        self.pilot.sync_session.assert_called_once()
+
+    def test_dismiss_announcement_modals_is_called_after_login_and_stat_redirect(self):
+        self.pilot.driver.current_url = "https://elearn.hrd.gov.tw/mooc/index.php"
+        self.pilot.driver.execute_script.return_value = 1
+
+        with patch("app.time.sleep"):
+            ok = self.pilot._wait_for_redirect_and_sync(
+                "✅ E政府登入成功", check_no_login=True, timeout_seconds=180
+            )
+        self.assertTrue(ok)
+        self.assertGreaterEqual(self.pilot.driver.execute_script.call_count, 2)
+
+    def test_wait_for_redirect_aborts_immediately_on_portal_error_text(self):
+        type(self.pilot.driver).current_url = property(
+            lambda _self: "https://www.cp.gov.tw/portal/LoginSimple.aspx"
+        )
+        self.pilot.driver.execute_script.return_value = "帳號或密碼錯誤，請重新輸入"
+
+        with patch("app.time.sleep"):
+            ok = self.pilot._wait_for_redirect_and_sync(
+                "✅ E政府登入成功", check_no_login=True, timeout_seconds=120
+            )
+        self.assertFalse(ok)
+        self.pilot.sync_session.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

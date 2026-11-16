@@ -10,42 +10,96 @@ if sys.platform == "win32":
 logger = logging.getLogger("LearningPilot")
 
 
-def get_local_chrome_version():
-    """透過 Windows 登錄檔獲取 Chrome 版本（僅 Windows）"""
+def get_local_chrome_version() -> str | None:
+    """透過 Windows 登錄檔獲取本機 Chrome 版本（僅 Windows）；找不到時回傳 None。"""
     if sys.platform != "win32":
-        return "120.0.0.0"
+        return None
     reg_path = r"SOFTWARE\Google\Chrome\BLBeacon"
-    try:
-        # 先嘗試 HKEY_CURRENT_USER
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, reg_path) as key:
-            return winreg.QueryValueEx(key, "version")[0]
-    except OSError:
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
         try:
-            # 再嘗試 HKEY_LOCAL_MACHINE
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, reg_path) as key:
-                return winreg.QueryValueEx(key, "version")[0]
+            with winreg.OpenKey(hive, reg_path) as key:
+                ver = str(winreg.QueryValueEx(key, "version")[0] or "").strip()
+                if ver:
+                    return ver
         except OSError:
-            return "120.0.0.0"
+            continue
+    return None
+
+
+def _resolve_target_folder(folder_name: str = "drivers") -> str:
+    if getattr(sys, "frozen", False):
+        base_path = os.path.dirname(sys.executable)
+    else:
+        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, folder_name)
+
+
+def _kill_scoped_chromedrivers(target_folder: str) -> None:
+    """僅終止執行路徑位於本專案 driver 目錄內的 chromedriver，避免誤殺其他程式進程。"""
+    import time
+    import psutil
+
+    scoped_dir = str(Path(target_folder).resolve()).casefold()
+    for proc in psutil.process_iter(["name", "exe"]):
+        try:
+            name = (proc.info.get("name") or "").lower()
+            if "chromedriver" not in name:
+                continue
+            exe = proc.info.get("exe") or ""
+            if exe and str(Path(exe).resolve()).casefold().startswith(scoped_dir):
+                proc.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+            continue
+    time.sleep(0.5)
+
+
+def _extract_driver_zip(zip_url: str, target_folder: str, local_version: str) -> str:
+    """下載並驗證 ChromeDriver ZIP（檢查 HTTP 狀態並禁止 zip-slip 路徑穿越）。"""
+    resp = requests.get(zip_url, timeout=30)
+    resp.raise_for_status()
+    target_root = Path(target_folder).resolve()
+    target_root.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
+        for member in zf.infolist():
+            member_path = (target_root / member.filename).resolve()
+            if target_root not in member_path.parents and member_path != target_root:
+                raise ValueError(f"ChromeDriver ZIP 含有不安全路徑：{member.filename}")
+        zf.extractall(target_root)
+
+    driver = next(target_root.rglob("chromedriver.exe"), None)
+    if not driver:
+        raise RuntimeError("解壓縮後找不到 chromedriver.exe")
+
+    final_path = os.path.join(str(target_root), "chromedriver.exe")
+    shutil.move(str(driver), final_path)
+
+    try:
+        version_file = os.path.join(str(target_root), "driver_version.txt")
+        with open(version_file, "w", encoding="utf-8") as f:
+            f.write(local_version)
+    except OSError:
+        pass
+
+    logger.info(f"驅動配置完成: {final_path}")
+    return final_path
 
 
 def download_best_chromedriver(folder_name="drivers"):
     """自動下載並匹配 Windows 版 ChromeDriver，優先找完全相同版本"""
-    # 打包成 exe 時用 exe 所在目錄；一般執行時用腳本所在目錄的上層
-    import sys
-
-    if getattr(sys, "frozen", False):
-        base_path = os.path.dirname(sys.executable)  # exe 所在目錄
-    else:
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    target_folder = os.path.join(base_path, folder_name)
+    target_folder = _resolve_target_folder(folder_name)
+    driver_file = os.path.join(target_folder, "chromedriver.exe")
+    version_file = os.path.join(target_folder, "driver_version.txt")
 
     local_version = get_local_chrome_version()
+    if not local_version:
+        if os.path.exists(driver_file):
+            logger.warning("⚠️ 無法偵測本機 Chrome 版本，沿用既有的本機 chromedriver")
+            return driver_file
+        raise RuntimeError("無法從系統登錄檔偵測 Chrome 版本，且找不到本機 chromedriver.exe")
+
     parts = local_version.split(".")
 
     try:
-        driver_file = os.path.join(target_folder, "chromedriver.exe")
-        version_file = os.path.join(target_folder, "driver_version.txt")
-
         if os.path.exists(driver_file):
             # 比對 Chrome major 版本，不符就刪除重下
             chrome_major = parts[0]
@@ -64,12 +118,7 @@ def download_best_chromedriver(folder_name="drivers"):
                     os.remove(driver_file)
                 except PermissionError:
                     try:
-                        import psutil
-                        import time
-                        for proc in psutil.process_iter(["name"]):
-                            if proc.info["name"] and "chromedriver" in proc.info["name"].lower():
-                                proc.kill()
-                        time.sleep(0.5)
+                        _kill_scoped_chromedrivers(target_folder)
                         if os.path.exists(driver_file):
                             os.remove(driver_file)
                     except Exception as _pe:
@@ -87,33 +136,12 @@ def download_best_chromedriver(folder_name="drivers"):
     prefix3 = ".".join(parts[:3])
     logger.info(f"偵測到本機 Chrome 版本: {local_version}")
 
-    def extract_driver(zip_url):
-        r = requests.get(zip_url, timeout=30)
-        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-            z.extractall(target_folder)
-        driver = next(Path(target_folder).rglob("chromedriver.exe"), None)
-        if not driver:
-            raise RuntimeError("解壓縮後找不到 chromedriver.exe")
-
-        final_path = os.path.join(target_folder, "chromedriver.exe")
-        shutil.move(str(driver), final_path)
-
-        # 寫入版本記錄供下次比對
-        try:
-            version_file = os.path.join(target_folder, "driver_version.txt")
-            with open(version_file, "w", encoding="utf-8") as f:
-                f.write(local_version)
-        except Exception:
-            pass
-
-        logger.info(f"驅動配置完成: {final_path}")
-        return final_path
-
     # 策略一：known-good-versions，優先找完全相同版本
     try:
         known_url = "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
         logger.info(f"正在尋找與 {local_version} 完全匹配的驅動...")
         resp = requests.get(known_url, timeout=15)
+        resp.raise_for_status()
         versions = resp.json().get("versions", [])
 
         exact = next((v for v in versions if v["version"] == local_version), None)
@@ -138,7 +166,7 @@ def download_best_chromedriver(folder_name="drivers"):
             )
             if url:
                 logger.info(f"正在下載驅動程式: {url}")
-                return extract_driver(url)
+                return _extract_driver_zip(url, target_folder, local_version)
     except Exception as e:
         logger.warning(f"精確版本查詢失敗，改用 patch API: {e}")
 
@@ -147,6 +175,7 @@ def download_best_chromedriver(folder_name="drivers"):
         json_url = "https://raw.githubusercontent.com/GoogleChromeLabs/chrome-for-testing/refs/heads/gh-pages/latest-patch-versions-per-build-with-downloads.json"
         logger.info(f"正在從 GitHub 獲取匹配 {prefix3} 的驅動資訊...")
         resp = requests.get(json_url, timeout=10)
+        resp.raise_for_status()
         data = resp.json()
         entry = data["builds"][prefix3]
         url = next(
@@ -155,7 +184,7 @@ def download_best_chromedriver(folder_name="drivers"):
             if d["platform"] == "win64"
         )
         logger.info(f"正在下載驅動程式: {url}")
-        return extract_driver(url)
+        return _extract_driver_zip(url, target_folder, local_version)
     except Exception as e:
         logger.error(f"Driver 下載或配置故障: {e}")
         fallback = os.path.join(target_folder, "chromedriver.exe")
@@ -212,34 +241,22 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
     3. latest-versions-per-milestone（新增，專門處理最新 Chrome 還沒收錄的情況）
     4. 以上都失敗 → 找 drivers/ 或系統 PATH 的本機 driver
     """
-    if getattr(sys, "frozen", False):
-        base_path = os.path.dirname(sys.executable)
-    else:
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    target_folder = os.path.join(base_path, folder_name)
-
+    target_folder = _resolve_target_folder(folder_name)
     local_version = get_local_chrome_version()
+    if not local_version:
+        local_path = os.path.join(target_folder, "chromedriver.exe")
+        if os.path.exists(local_path):
+            logger.warning("⚠️ 無法偵測本機 Chrome 版本，沿用既有的本機 driver")
+            return local_path
+        path_driver = shutil.which("chromedriver") or shutil.which("chromedriver.exe")
+        if path_driver:
+            return path_driver
+        raise RuntimeError("找不到可用的 ChromeDriver（無法偵測本機 Chrome 版本）")
+
     parts = local_version.split(".")
     major = parts[0]          # e.g. "147"
     prefix3 = ".".join(parts[:3])
     logger.info(f"偵測到本機 Chrome 版本: {local_version}")
-
-    def extract_driver(zip_url):
-        r = requests.get(zip_url, timeout=30)
-        with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-            z.extractall(target_folder)
-        driver = next(Path(target_folder).rglob("chromedriver.exe"), None)
-        if not driver:
-            raise RuntimeError("解壓縮後找不到 chromedriver.exe")
-        final_path = os.path.join(target_folder, "chromedriver.exe")
-        shutil.move(str(driver), final_path)
-        try:
-            with open(os.path.join(target_folder, "driver_version.txt"), "w", encoding="utf-8") as f:
-                f.write(local_version)
-        except Exception:
-            pass
-        logger.info(f"驅動配置完成: {final_path}")
-        return final_path
 
     os.makedirs(target_folder, exist_ok=True)
 
@@ -248,13 +265,14 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
         known_url = "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json"
         logger.info(f"[milestone版] 策略一：尋找與 {local_version} 完全匹配的驅動...")
         resp = requests.get(known_url, timeout=15)
+        resp.raise_for_status()
         versions = resp.json().get("versions", [])
         exact = next((v for v in versions if v["version"] == local_version), None)
         if exact:
             url = next((d["url"] for d in exact["downloads"].get("chromedriver", []) if d["platform"] == "win64"), None)
             if url:
                 logger.info(f"策略一成功，下載: {url}")
-                return extract_driver(url)
+                return _extract_driver_zip(url, target_folder, local_version)
     except Exception as e:
         logger.warning(f"策略一失敗: {e}")
 
@@ -263,10 +281,11 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
         patch_url = "https://raw.githubusercontent.com/GoogleChromeLabs/chrome-for-testing/refs/heads/gh-pages/latest-patch-versions-per-build-with-downloads.json"
         logger.info(f"[milestone版] 策略二：查詢 {prefix3} patch 版本...")
         resp = requests.get(patch_url, timeout=10)
+        resp.raise_for_status()
         entry = resp.json()["builds"][prefix3]
         url = next(d["url"] for d in entry["downloads"]["chromedriver"] if d["platform"] == "win64")
         logger.info(f"策略二成功，下載: {url}")
-        return extract_driver(url)
+        return _extract_driver_zip(url, target_folder, local_version)
     except Exception as e:
         logger.warning(f"策略二失敗: {e}")
 
@@ -275,12 +294,13 @@ def download_best_chromedriver_milestone(folder_name="drivers"):
         milestone_url = "https://googlechromelabs.github.io/chrome-for-testing/latest-versions-per-milestone-with-downloads.json"
         logger.info(f"[milestone版] 策略三：查詢 milestone {major} 的 driver...")
         resp = requests.get(milestone_url, timeout=15)
+        resp.raise_for_status()
         data = resp.json()
         entry = data["milestones"][major]
         url = next((d["url"] for d in entry["downloads"].get("chromedriver", []) if d["platform"] == "win64"), None)
         if url:
             logger.info(f"策略三成功（milestone {major}），下載: {url}")
-            return extract_driver(url)
+            return _extract_driver_zip(url, target_folder, local_version)
     except Exception as e:
         logger.warning(f"策略三失敗: {e}")
 

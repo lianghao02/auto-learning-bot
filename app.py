@@ -29,10 +29,12 @@ from utils.config_io import get_db_connection, write_json_atomically
 from utils.app_paths import app_dir, ensure_seeded_database, log_path, user_data_path
 
 # 強制 stdout/stderr 使用 UTF-8，避免在 cp950 環境下因 emoji 崩潰
-if hasattr(sys.stdout, "buffer"):
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-if hasattr(sys.stderr, "buffer"):
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None and hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -53,7 +55,7 @@ from utils.helpers import (
     INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
     match_radio_option_index,
 )
-from utils.security import validate_ai_base_url
+from utils.security import is_cloud_sync_enabled, resolve_gas_url, validate_ai_base_url
 from utils.quiz_policy import MAX_QUIZ_ATTEMPTS, answer_values, can_submit, grade_evidence, grade_passed, needs_ai_review
 from utils.webdriver_mgr import download_best_chromedriver
 
@@ -179,31 +181,28 @@ def _read_local_version() -> str:
         return "V0.0.0"
 
 
+def _read_local_changelog() -> str:
+    try:
+        text = (app_dir() / "CHANGELOG.md").read_text(encoding="utf-8-sig").strip()
+        if text:
+            return text
+    except (OSError, UnicodeError):
+        pass
+    return (
+        "V2.1.0 雙平臺答題政策與冒險日誌版\n"
+        "• 雙平臺共用答題政策、完整讀題與漏答禁止交卷\n"
+        "• 2D Q 版晴空糖果工作台與冒險日誌\n"
+        "• AI 服務暫時性錯誤重試與中斷延後防護"
+    )
+
+
 EXAM_AI_OUTAGE_DEFER_SECONDS = 600  # AI 服務中斷後延後重考的冷卻時間
 EXAM_AI_OUTAGE_MAX_DEFERS = 3        # 每門課最多寬限幾次，避免 AI 長時間中斷時無限延後
 
 
 class AdminEfficiencyPilot:
     VERSION = _read_local_version()
-    CHANGELOG = (
-        "V2.0.0 商業級自適應架構重構版（Commercial UI/UX Architecture）\n"
-        "• 徹底移除絕對座標硬編碼與靜態外殼：消除高 DPI 縮放下的文字切邊溢出與版面錯位隱患\n"
-        "• 控制中心單一現代架構：主視窗直接承載 Immersive 控制中心，消除雙層 EntryPage 心智負擔\n"
-        "• 柔和陰影互動體驗升級：全面移除 btn.move 座標位移，解決按鈕邊界滑鼠懸浮震顫（Jittering）\n"
-        "• 視覺調性純粹化：徹底清理宇宙粒子轉場殘留，回歸行政公務工具沉穩專業之莫蘭迪色系\n"
-        "• 新增初次啟動引導橫幅：未設定研習帳號時自動彈性提醒並一鍵導引至設定頁籤\n\n"
-        "V1.1.0 介面體驗重塑版（UI UX Redesign）\n"
-        "• 主工作台控制列整合：融合平台資訊、測驗模式與啟動按鈕，釋放垂直空間\n"
-        "• 帳號設定模組化分組卡片：臺北 E 大 / e 等公務員並列卡片 + 全域 AI 設定獨立卡片\n"
-        "• 頂部全域導航列收斂：純粹化全域控制，消除雙重入口心智負擔\n\n"
-        "V1.0.0 正式穩定版（Stable Release）\n"
-        "• 雙平臺研習流程穩定化：支援「臺北 E 大」與「e 等公務園」自動上課、教材切換與排程\n"
-        "• Google Gemini 批次極速作答引擎：10 題合一發送，1 秒內結構化解析並自動寫入本機 SQLite 題庫\n"
-        "• 人機協同助理彈窗升級：新增「✨ Gemini 1 秒智慧作答」專屬按鈕，開啟時自動將 Prompt 複製至剪貼簿\n"
-        "• 跳過測驗自動補填問卷機制：跳過測驗後自動檢查並完成滿意度問卷提交，完課進度零遺漏\n"
-        "• 免費額度滑動窗口安全限速器（5 RPM）與 API Key 日誌遮罩脫敏防護\n"
-        "• 具備動態及格門檻多重判定與主動定期 Session 保養機制"
-    )
+    CHANGELOG = _read_local_changelog()
 
 
 
@@ -440,9 +439,10 @@ class AdminEfficiencyPilot:
         except (AttributeError, OSError):
             pass
 
-        # GAS 題庫靜默背景同步（啟動時）
-        _t = threading.Thread(target=self._update_db_from_gas, daemon=True, name="GAS-DB-Sync")
-        _t.start()
+        # GAS 題庫靜默背景同步（須明確啟用雲端同步）
+        if is_cloud_sync_enabled(self.config):
+            _t = threading.Thread(target=self._update_db_from_gas, daemon=True, name="GAS-DB-Sync")
+            _t.start()
 
     def load_config(self, path):
         if path is None:
@@ -676,44 +676,11 @@ class AdminEfficiencyPilot:
         return None
 
     def _ai_find_answer(self, question_text: str, option_texts: list):
-        """題庫找不到答案時，呼叫 AI API 協助選答。
-        支援 OpenAI / Gemini / Groq（Bearer）及 Claude（x-api-key）。
-        自動 fallback：先用便宜模型，失敗再升級。
-        """
-        # 各服務的 fallback 鏈（便宜 → 貴）
-        _FALLBACK = {
-            "OpenAI": ["gpt-4o-mini", "gpt-4o"],
-            "Gemini": ["gemini-3.1-flash-lite", "gemini-3.5-flash"],
-            "Claude": ["claude-haiku-4-5", "claude-sonnet-4-6"],
-            "Groq":   ["llama-3.1-8b-instant", "llama-3.3-70b-versatile"],
-        }
-
-        provider = self.config.get("ai_provider", "Gemini")
-        ai_keys  = self.config.get("ai_keys", {})
-        api_key  = ai_keys.get(provider) or self.config.get("ai_api_key", "")
-        if not api_key or not option_texts:
+        """題庫找不到答案時，透過共用 AI 通道協助選答（含限速、配額追蹤與 429 熔斷）。"""
+        if not option_texts:
             return None
-        try:
-            base_url = validate_ai_base_url(
-                provider,
-                self.config.get("ai_base_url", "https://generativelanguage.googleapis.com/v1beta/openai"),
-            )
-        except ValueError as exc:
-            self.logger.error(f"❌ AI API 網址遭安全規則拒絕：{exc}")
+        if getattr(self, "_ai_circuit_broken", False):
             return None
-
-        # 使用者設定的模型優先；若為已廢棄之舊版模型自動無痛升級
-        configured_model = self.config.get("ai_model", "gemini-3.1-flash-lite")
-        if provider == "Gemini" and ("gemini-2.0" in configured_model or "gemini-1.5" in configured_model or "gemini-2.5" in configured_model):
-            configured_model = "gemini-3.1-flash-lite"
-
-        chain = _FALLBACK.get(provider, [configured_model])
-        # 從使用者設定的模型開始，忽略前面更便宜的（尊重使用者選擇）
-        if configured_model in chain:
-            chain = chain[chain.index(configured_model):]
-        else:
-            chain = [configured_model] + chain
-
 
         cleaned_options = [
             str(opt).strip() if str(opt).strip() else f"選項{i + 1}"
@@ -731,71 +698,31 @@ class AdminEfficiencyPilot:
             "正確答案選項編號："
         )
 
-        # 若本階段已經觸發過 429 熔斷，直接秒級返回 None（使用本地題庫速答）
-        if getattr(self, "_ai_circuit_broken", False):
-            return None
+        from quiz_bank import AI_SINGLE_TIMEOUT, request_ai_completion
 
-        for model in chain:
-            try:
-                if provider == "Claude":
-                    resp = requests.post(
-                        f"{base_url}/messages",
-                        headers={
-                            "x-api-key":         api_key,
-                            "anthropic-version": "2023-06-01",
-                            "Content-Type":      "application/json",
-                        },
-                        json={
-                            "model":    model,
-                            "max_tokens": 150,
-                            "messages": [{"role": "user", "content": prompt}],
-                        },
-                        timeout=20,
-                    )
-                else:
-                    resp = requests.post(
-                        f"{base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {api_key}",
-                            "Content-Type":  "application/json",
-                        },
-                        json={
-                            "model":       model,
-                            "messages":    [{"role": "user", "content": prompt}],
-                            "max_tokens":  150,
-                            "temperature": 0,
-                        },
-                        timeout=20,
-                    )
+        result = request_ai_completion(
+            [{"role": "user", "content": prompt}],
+            self.config,
+            json_mode=False,
+            max_tokens=150,
+            temperature=0.0,
+            timeout=AI_SINGLE_TIMEOUT,
+            log_prefix="[AI單題]",
+        )
+        if result["success"]:
+            answer = result["text"]
+            logger.info(f"   🤖 AI 補充答案（{result['model']}）：{answer!r}")
+            return answer
 
-                # 🛡️ 429 配額耗盡：開啟熔斷機制，當次執行階段不再重試，自動降級為純本地題庫速答
-                if resp.status_code == 429:
-                    if not getattr(self, "_ai_circuit_broken", False):
-                        self._ai_circuit_broken = True
-                        self.logger.warning(
-                            "⚠️ 偵測到 Gemini API 超出限額 (429)，本工作階段自動暫停 AI 呼叫，切換為『純本地 2503 題庫速答』模式"
-                        )
-                    return None
-
-                if resp.status_code in (500, 502, 503, 504):
-                    logger.debug(f"   ⚠️ AI [{model}] 回傳 {resp.status_code}，嘗試下一個模型")
-                    continue
-
-                resp.raise_for_status()
-
-                if provider == "Claude":
-                    answer = resp.json()["content"][0]["text"].strip()
-                else:
-                    answer = resp.json()["choices"][0]["message"]["content"].strip()
-
-                logger.info(f"   🤖 AI 補充答案（{model}）：{answer!r}")
-                return answer
-
-            except Exception as e:
-                logger.warning(f"   ⚠️ AI [{model}] 呼叫失敗: {e}")
-                continue
-
-        logger.warning("   ⚠️ 所有 AI 模型均失敗，放棄補答")
+        if result.get("rate_limited") and not getattr(self, "_ai_circuit_broken", False):
+            self._ai_circuit_broken = True
+            bank_count = len(getattr(self, "_answer_map", {}) or {})
+            if hasattr(self, "logger"):
+                self.logger.warning(
+                    f"⚠️ 偵測到 Gemini API 超出限額 (429)，本工作階段自動暫停 AI 呼叫，切換為『純本地 {bank_count} 題庫速答』模式"
+                )
+        elif result.get("error") and "網址遭安全規則拒絕" in result["error"] and hasattr(self, "logger"):
+            self.logger.error(f"❌ {result['error']}")
         return None
 
     def _save_answers_to_db(self, answers: dict, source: str = ""):
@@ -2170,8 +2097,8 @@ class AdminEfficiencyPilot:
                 self._mark_exam_manual_review(course, '填答讀回驗證未通過，保留草稿，禁止交卷')
                 return False
 
-            # ── 6b. 傳送缺題通知到 GAS Relay → Telegram（背景執行，不阻擋主流程）──
-            if _missing:
+            # ── 6b. 傳送缺題通知到 GAS Relay → Telegram（須明確啟用雲端同步；絕不傳送帳號）──
+            if _missing and is_cloud_sync_enabled(self.config):
                 # 去重（同一次考試同一題可能出現多次）
                 _seen = set()
                 _missing_dedup = []
@@ -2181,36 +2108,35 @@ class AdminEfficiencyPilot:
                         _seen.add(_key)
                         _missing_dedup.append(_m)
 
-                _GAS_URL = self.config.get(
-                    "gas_url",
-                    "https://script.google.com/macros/s/AKfycbzYUNM--zLlS8El6YR6lIiKerBIz1M6rL2gM8nTGicmEjfh_1TNiBo12YcVsb37J7Cl/exec"
-                )
-                _course_name = course.get("caption", "未知課程")
-                _username = (
-                    self.config.get("name")
-                    or self.config.get("account")
-                    or "匿名"
-                )
-                _payload = {
-                    "course": _course_name,
-                    "username": _username,
-                    "missing": _missing_dedup,
-                }
+                try:
+                    _GAS_URL = resolve_gas_url(self.config)
+                except ValueError as _url_err:
+                    logger.warning(f"   ⚠️ GAS 網址遭安全規則拒絕，略過缺題回報：{_url_err}")
+                    _GAS_URL = ""
 
-                import threading as _threading
-                import requests as _req
+                if _GAS_URL:
+                    _course_name = course.get("caption", "未知課程")
+                    _username = str(self.config.get("name") or "").strip() or "匿名"
+                    _payload = {
+                        "course": _course_name,
+                        "username": _username,
+                        "missing": _missing_dedup,
+                    }
 
-                def _post_gas(url, payload):
-                    try:
-                        _req.post(url, json=payload, timeout=20)
-                        logger.info(f"   📨 已回報 {len(payload['missing'])} 題缺題（{payload['username']}）")
-                    except Exception as _e:
-                        logger.debug(f"   缺題回報失敗: {_e}")
+                    import threading as _threading
+                    import requests as _req
 
-                _threading.Thread(
-                    target=_post_gas, args=(_GAS_URL, _payload), daemon=True
-                ).start()
-                logger.info(f"   📨 缺題回報已背景送出（{len(_missing_dedup)} 題）")
+                    def _post_gas(url, payload):
+                        try:
+                            _req.post(url, json=payload, timeout=20)
+                            logger.info(f"   📨 已回報 {len(payload['missing'])} 題缺題（{payload['username']}）")
+                        except Exception as _e:
+                            logger.debug(f"   缺題回報失敗: {_e}")
+
+                    _threading.Thread(
+                        target=_post_gas, args=(_GAS_URL, _payload), daemon=True
+                    ).start()
+                    logger.info(f"   📨 缺題回報已背景送出（{len(_missing_dedup)} 題）")
 
             # ── 7. 點「送出答案，結束測驗」──
             # 頁面有兩個 submit 按鈕：
@@ -3402,11 +3328,119 @@ class AdminEfficiencyPilot:
 
         return None
 
+    @staticmethod
+    def _is_elearn_logged_in_url(url: str, check_no_login: bool = False) -> bool:
+        """確認已落地 elearn.hrd.gov.tw 且非登入／SSO 認證中繼頁。"""
+        lowered = str(url or "").lower()
+        if "elearn.hrd.gov.tw" not in lowered:
+            return False
+        if any(k in lowered for k in ("egov_login", "clogin", "sys_login", "/login.php")):
+            return False
+        if check_no_login and "login" in lowered:
+            return False
+        return True
+
+    def _find_first_visible(self, selectors: list, timeout: float = 15.0):
+        """在單一總時限內輪詢候選選擇器，回傳第一個可見元素。"""
+        deadline = time.time() + max(0.5, float(timeout))
+        while time.time() <= deadline:
+            if not getattr(self, "running", True):
+                return None
+            for by_type, val in selectors:
+                try:
+                    for elem in self.driver.find_elements(by_type, val):
+                        if elem and elem.is_displayed():
+                            return elem
+                except Exception:
+                    continue
+            time.sleep(0.25)
+        return None
+
+    def _detect_egov_login_error(self) -> str:
+        """檢查我的E政府頁面是否已回傳明確登入錯誤訊息（避免無謂乾等逾時）。"""
+        try:
+            url = (self.driver.current_url or "").lower()
+            if "cp.gov.tw" not in url:
+                return ""
+            text = self.driver.execute_script(
+                "return document.body ? document.body.innerText : '';"
+            ) or ""
+        except Exception:
+            return ""
+
+        for kw in ("帳號或密碼錯誤", "密碼錯誤", "帳號不存在", "帳號已鎖定", "帳號停用", "登入失敗", "請輸入帳號", "請輸入密碼"):
+            if kw in text:
+                return kw
+        return ""
+
+    def _dismiss_announcement_modals(self) -> int:
+        """關閉 e等公務園登入後彈出的最新消息／資安提醒等覆蓋式 Modal（點擊 × / Close）。"""
+        if not self.driver:
+            return 0
+        try:
+            closed = self.driver.execute_script(
+                r"""
+                var count = 0;
+                function isVisible(el) {
+                    if (!el) return false;
+                    var s = window.getComputedStyle(el);
+                    return s.display !== 'none' && s.visibility !== 'hidden' &&
+                        s.opacity !== '0' && el.getClientRects().length > 0;
+                }
+                var dialogs = document.querySelectorAll(
+                    '.modal.in, .modal.show, .modal[style*="display: block"], ' +
+                    'div[role="dialog"], .ui-dialog, .fancybox-container, #fancybox-wrap, .fancybox-wrap'
+                );
+                for (var i = 0; i < dialogs.length; i++) {
+                    var dlg = dialogs[i];
+                    if (!isVisible(dlg)) continue;
+                    var btns = dlg.querySelectorAll(
+                        'button[data-fancybox-close], .fancybox-close-small, .fancybox-close, ' +
+                        'button.close, button[data-dismiss="modal"], button[data-bs-dismiss="modal"], ' +
+                        'button[aria-label="Close"], .ui-dialog-titlebar-close, ' +
+                        'button, a.close, a[role="button"]'
+                    );
+                    for (var j = 0; j < btns.length; j++) {
+                        var b = btns[j];
+                        if (!isVisible(b)) continue;
+                        var txt = (b.innerText || b.textContent || '').replace(/\s+/g, '').toLowerCase();
+                        var aria = (b.getAttribute('aria-label') || b.getAttribute('title') || '').toLowerCase();
+                        var cls = (b.className || '').toLowerCase();
+                        if (
+                            b.hasAttribute('data-fancybox-close') ||
+                            cls.indexOf('close') !== -1 ||
+                            b.getAttribute('data-dismiss') === 'modal' ||
+                            b.getAttribute('data-bs-dismiss') === 'modal' ||
+                            aria === 'close' || aria === '關閉' ||
+                            txt === 'close' || txt === '×' || txt === '✕' || txt === 'x' || txt === '關閉'
+                        ) {
+                            b.click();
+                            count++;
+                            break;
+                        }
+                    }
+                }
+                return count;
+                """
+            )
+            if closed:
+                logger.info(f"ℹ️ 已自動關閉 {closed} 個平臺公告彈窗")
+            return int(closed or 0)
+        except Exception:
+            return 0
+
     def _wait_for_redirect_and_sync(
-        self, success_msg: str, check_no_login: bool = False
+        self,
+        success_msg: str,
+        check_no_login: bool = False,
+        timeout_seconds: int = 180,
     ) -> bool:
         """等待重新導向至 elearn.hrd.gov.tw 後同步 session（登入共用邏輯）"""
-        for _ in range(60):
+        max_steps = max(1, int(timeout_seconds / 0.5))
+        start_ts = time.time()
+        last_progress_sec = 0
+
+        for _ in range(max_steps):
             if not self.running:
                 logger.info("🛑 使用者手動停止（登入中）")
                 return False
@@ -3416,19 +3450,43 @@ class AdminEfficiencyPilot:
                 alert_text = self._accept_alert_if_present()
                 if alert_text:
                     logger.info(f"ℹ️ 登入提示：{alert_text}")
+                    if any(kw in alert_text for kw in ("錯誤", "失敗", "鎖定", "停用", "無效")):
+                        logger.error(f"❌ 登入遭到拒絕：{alert_text}")
+                        return False
                 time.sleep(0.5)
                 continue
-            url_ok = "elearn.hrd.gov.tw" in url and (
-                not check_no_login or "login" not in url
-            )
-            if url_ok:
+            except Exception:
+                time.sleep(0.5)
+                continue
+
+            if self._is_elearn_logged_in_url(url, check_no_login=check_no_login):
                 logger.info(success_msg)
+                self._dismiss_announcement_modals()
                 self.driver.get(self.stat_url)
-                if not self.safe_sleep(5):
+                if not self.safe_sleep(3):
                     return False
-                self.sync_session()
-                return True
+                self._dismiss_announcement_modals()
+                try:
+                    landed_url = self.driver.current_url or ""
+                    if not self._is_elearn_logged_in_url(landed_url, check_no_login=True):
+                        logger.warning(f"⚠️ 導向學習統計頁後仍停留在登入頁（{landed_url}），判定登入未完成。")
+                        return False
+                except Exception:
+                    pass
+                return bool(self.sync_session())
+
+            egov_err = self._detect_egov_login_error()
+            if egov_err:
+                logger.error(f"❌ 我的E政府回應錯誤：{egov_err}")
+                return False
+
+            elapsed = int(time.time() - start_ts)
+            if elapsed >= last_progress_sec + 15:
+                last_progress_sec = elapsed
+                logger.info(f"⏳ 正在等待平臺單一登入回應（已等待 {elapsed} 秒）...")
             time.sleep(0.5)
+
+        logger.error(f"❌ 等待平臺單一登入逾時（超過 {timeout_seconds} 秒，最後頁面: {getattr(self.driver, 'current_url', '')}）")
         return False
 
     def login(self):
@@ -3471,67 +3529,55 @@ class AdminEfficiencyPilot:
     def login_egov(self):
         try:
             logger.info("🔑 使用我的E政府登入...")
+            try:
+                self.driver.set_page_load_timeout(180)
+            except Exception:
+                pass
 
             self.driver.get(
                 "https://www.cp.gov.tw/portal/Clogin.aspx?ReturnUrl=https://elearn.hrd.gov.tw/egov_login.php&ver=Simple&Level=1"
             )
-            time.sleep(2)
+            if not self.safe_sleep(1):
+                return False
 
-            # 💡 檢查點：若已經自動完成 SSO 導回 elearn.hrd.gov.tw，直接同步 Session
+            # 💡 檢查點：若已經自動完成 SSO 導回 elearn.hrd.gov.tw 真正已登入頁，直接同步 Session
             cur_url = self.driver.current_url
-            if "elearn.hrd.gov.tw" in cur_url and "egov_login" not in cur_url and "mooc/index.php" not in cur_url:
+            if self._is_elearn_logged_in_url(cur_url, check_no_login=True) and "mooc/index.php" not in cur_url:
                 logger.info("✅ 偵測到 E政府已具備有效 SSO 授權，直接同步 Session。")
                 return self.sync_session()
 
-            # 多重防禦性定位帳號欄位（給予最多 12 秒等待政府入口網載入）
-            user_f = None
             user_selectors = [
                 (By.ID, "AccountPassword_simple_txt_account"),
                 (By.CSS_SELECTOR, "input[placeholder*='帳號']"),
-                (By.CSS_SELECTOR, "input[type='text']"),
                 (By.CSS_SELECTOR, "input[id*='account']"),
+                (By.CSS_SELECTOR, "input[type='text']"),
             ]
-            for by_type, val in user_selectors:
-                try:
-                    user_f = WebDriverWait(self.driver, 12).until(EC.presence_of_element_located((by_type, val)))
-                    if user_f and user_f.is_displayed():
-                        break
-                except Exception:
-                    pass
-
-            # 多重防禦性定位密碼欄位
-            pass_f = None
             pass_selectors = [
                 (By.ID, "AccountPassword_simple_txt_password"),
                 (By.CSS_SELECTOR, "input[type='password']"),
                 (By.CSS_SELECTOR, "input[placeholder*='密碼']"),
                 (By.CSS_SELECTOR, "input[id*='password']"),
             ]
-            for by_type, val in pass_selectors:
-                try:
-                    pass_f = WebDriverWait(self.driver, 5).until(EC.presence_of_element_located((by_type, val)))
-                    if pass_f and pass_f.is_displayed():
-                        break
-                except Exception:
-                    pass
+
+            user_f = self._find_first_visible(user_selectors, timeout=15.0)
+            if user_f is None and self._is_elearn_logged_in_url(self.driver.current_url, check_no_login=True):
+                return self.sync_session()
+            pass_f = self._find_first_visible(pass_selectors, timeout=8.0) if user_f else None
 
             if not user_f or not pass_f:
-                # 若仍找不到且已在 elearn 平台，再次嘗試同步
-                if "elearn.hrd.gov.tw" in self.driver.current_url:
+                if self._is_elearn_logged_in_url(self.driver.current_url, check_no_login=True):
                     return self.sync_session()
                 logger.error(f"❌ 找不到我的E政府帳號或密碼輸入框（當前頁面: {self.driver.current_url}）")
                 return False
 
             user_f.clear()
             user_f.send_keys(str(self.config["account"]))
-            time.sleep(0.5)
+            time.sleep(0.2)
 
             pass_f.clear()
             pass_f.send_keys(str(self.config["password"]))
-            time.sleep(0.5)
+            time.sleep(0.2)
 
-            # 登入按鈕多重定位
-            login_btn = None
             btn_selectors = [
                 (By.ID, "AccountPassword_simple_btn_LoginHandler"),
                 (By.CSS_SELECTOR, "input[type='submit']"),
@@ -3541,27 +3587,30 @@ class AdminEfficiencyPilot:
                 (By.XPATH, "//button[contains(text(), '登入')]"),
                 (By.XPATH, "//input[@value='登入']"),
             ]
-            for by_type, val in btn_selectors:
+            login_btn = self._find_first_visible(btn_selectors, timeout=5.0)
+
+            logger.info("📤 已送出我的E政府帳密，等待跨站單一登入跳轉（伺服器回應約需 20～110 秒，請稍候）...")
+            if login_btn:
                 try:
-                    btns = self.driver.find_elements(by_type, val)
-                    for b in btns:
-                        if b.is_displayed():
-                            login_btn = b
-                            break
-                    if login_btn:
-                        break
+                    # 透過非阻塞 setTimeout 觸發點擊，讓等待與停止旗標檢查立即接手，不卡在同步 page load
+                    self.driver.execute_script(
+                        "var btn = arguments[0]; setTimeout(function(){ btn.click(); }, 50);",
+                        login_btn,
+                    )
+                except Exception:
+                    try:
+                        login_btn.click()
+                    except Exception:
+                        pass
+            else:
+                try:
+                    pass_f.submit()
                 except Exception:
                     pass
 
-            if login_btn:
-                try:
-                    login_btn.click()
-                except Exception:
-                    self.driver.execute_script("arguments[0].click();", login_btn)
-            else:
-                pass_f.submit()
-
-            return self._wait_for_redirect_and_sync("✅ E政府登入成功")
+            return self._wait_for_redirect_and_sync(
+                "✅ E政府登入成功", check_no_login=True, timeout_seconds=180
+            )
 
         except Exception as e:
             logger.error(f"E政府登入失敗: {e}")
@@ -4291,8 +4340,14 @@ class AdminEfficiencyPilot:
         else:
             logger.info("📖 AI 補答未啟用，僅使用本地題庫作答")
         try:
+            can_prompt_stdin = (
+                not getattr(self, "log_callback", None)
+                and sys.stdin is not None
+                and hasattr(sys.stdin, "isatty")
+                and sys.stdin.isatty()
+            )
             if not self.init_engine():
-                if sys.stdin:
+                if can_prompt_stdin:
                     input(
                         f"\n{Fore.RED}❌ 引擎啟動失敗，請檢查驅動程式後按 Enter 退出...{Style.RESET_ALL}"
                     )
@@ -4301,10 +4356,11 @@ class AdminEfficiencyPilot:
             if not self.login():
                 login_type = self.config.get("login_type", "ecpa")
                 if login_type == "egov":
-                    msg = "❌ 登入失敗！請確認『我的E政府』帳密正確，或是否出現驗證碼。"
+                    msg = "❌ 登入失敗！請確認『我的E政府』帳密正確，或是否出現驗證碼／伺服器逾時。"
                 else:
                     msg = "❌ 登入失敗！請確認 eCPA 帳密正確且無驗證碼要求。"
-                if sys.stdin:
+                logger.error(msg)
+                if can_prompt_stdin:
                     input(f"\n{Fore.RED}{msg} 按 Enter 退出...{Style.RESET_ALL}")
                 return
 

@@ -179,12 +179,13 @@ class InteractiveQuizDialogTests(unittest.TestCase):
                 self.addCleanup(settings_panel.close)
 
                 self.assertFalse(settings_panel.has_unsaved_changes())
+                self.assertFalse(settings_panel.cloud_sync_cb.isChecked())
                 self.assertEqual(settings_panel.pwd_input.echoMode(), QLineEdit.Password)
 
                 # 修改表單欄位後應偵測為有未儲存變更
                 settings_panel.acc_input.setText("user01")
                 settings_panel.pwd_input.setText("secret123")
-                settings_panel.cloud_sync_cb.setChecked(False)
+                settings_panel.cloud_sync_cb.setChecked(True)
                 self.assertTrue(settings_panel.has_unsaved_changes())
 
                 # 靜默儲存後應寫入檔案並清除未儲存狀態
@@ -204,5 +205,9 @@ class InteractiveQuizDialogTests(unittest.TestCase):
                         config={"cloud_sync_enabled": False},
                     )
                     mock_post.assert_not_called()
+
+    def test_interactive_dialog_has_batch_signal(self):
+        from ui import InteractiveQuizDialog
+        self.assertTrue(hasattr(InteractiveQuizDialog, "gemini_batch_completed"))
 
 

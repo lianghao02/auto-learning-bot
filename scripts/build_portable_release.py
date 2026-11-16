@@ -54,6 +54,7 @@ APP_FILES = (
     "config.json.example",
     "version.txt",
     "README.md",
+    "CHANGELOG.md",
 )
 APP_DIRS = ("icons", "models", "patches", "utils")
 OPTIONAL_DIRS = ("drivers",)
@@ -318,6 +319,14 @@ def _create_archive(archive_path: Path) -> None:
 
 
 
+def _extended_win_path(path: Path) -> Path:
+    resolved = path.resolve()
+    text = str(resolved)
+    if os.name == "nt" and not text.startswith("\\\\?\\"):
+        return Path("\\\\?\\" + text)
+    return resolved
+
+
 def safe_rmtree(path: Path) -> None:
     if not path.exists():
         return
@@ -328,12 +337,7 @@ def safe_rmtree(path: Path) -> None:
             func(p)
         except Exception:
             pass
-    try:
-        subprocess.run(f'cmd /c "rmdir /s /q \"{path}\""', shell=True, check=False)
-    except Exception:
-        pass
-    if path.exists():
-        shutil.rmtree(path, onerror=on_error)
+    shutil.rmtree(_extended_win_path(path), onerror=on_error)
 
 def main() -> int:
     _assert_safe_release_path()
