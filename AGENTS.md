@@ -36,23 +36,12 @@
 ---
 
 ## 4. 驗證方式
-- 修改課程邏輯、AI 作答或安全性模組後，必須執行自動化單元測試：
-  ```bash
-  pytest tests/ -q
+- 修改課程邏輯、AI 作答或安全性模組後，必須執行自動化單元測試（`python_embed` 未安裝 `pytest`，統一由專案測試執行器運行 `unittest`）：
+  ```powershell
+  pwsh -NoProfile -File scripts/run_tests.ps1
   ```
 
 ---
 
-## 5. 共用 Skill 引用與動態解析 (Discovery Rule)
-- 本專案遵循 LiangHao 全生態系標準規範 Skill：`lianghao-development`（Canonical Source 位於 `Dev-Control-Center/configs/skills/lianghao-development`，v1.0.0）。
-- Agent 開始工作時：
-  1. 優先使用目前環境可自動發現的 `lianghao-development` Skill
-  2. 若平台未自動載入，使用既有動態解析順序：環境變數 `LIANGHAO_SKILL_HOME` ➜ `%USERPROFILE%\.lianghao\config.json` ➜ 鄰近工作區探索 `..\00_Dev-Control-Center\configs\skills\lianghao-development` 或呼叫其 `skill-resolver.ps1`
-  3. 先讀 Shared Skill
-  4. 再讀本專案 `AGENTS.md`
-  5. 再讀目前 `HANDOFF.md` / `IMPLEMENTATION_PLAN.md`
-  6. 專案、Git、測試與建置實際狀態優先於文件歷史
-- 跨 Agent HANDOFF 一律使用 `lianghao-development` 標準範本，以 `Repository Full Name`、`Branch`、`Commit SHA`、`Task Type` 為主要識別，嚴禁複製 Skill 到本專案。
-
-## 6. 上游與模組維護
+## 5. 上游與模組維護
 - 模組分工、測試對應與上游差異查核見 `docs/upstream-maintenance.md`。先查現有等效修正，再按具體問題挑選上游變更；不因行數整批拆分或覆蓋本地流程。文件中的提交與測試數為查核基準，現況仍以 Git 與實測為準。
