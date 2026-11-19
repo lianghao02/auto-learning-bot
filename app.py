@@ -189,7 +189,7 @@ def _read_local_changelog() -> str:
     except (OSError, UnicodeError):
         pass
     return (
-        "V2.1.0 雙平臺答題政策與冒險日誌版\n"
+        "V2.2.0 雙平臺測驗政策強化與安全防護版\n"
         "• 雙平臺共用答題政策、完整讀題與漏答禁止交卷\n"
         "• 2D Q 版晴空糖果工作台與冒險日誌\n"
         "• AI 服務暫時性錯誤重試與中斷延後防護"

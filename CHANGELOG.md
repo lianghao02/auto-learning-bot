@@ -2,6 +2,12 @@
 
 ## 🧪 未發布 (Unreleased)
 
+## 🏆 [V2.2.0] - 2026-11-19
+
+### 重點更新
+- **雙平臺測驗政策與批次解題強化**：強化 `app.py`、`quiz_bank.py` 與 `utils/webdriver_mgr.py` 流程穩定性與防呆機制。
+- **安全性防護與回歸測試**：補強 `utils/security.py`、`usage_tracker.py` 與可攜版發布建置流程，新增 `test_ai_batch_solver.py` 與 `test_egov_entry_and_usage.py` 回歸測試。
+
 ## 🏆 [V2.1.0] - 2026-10-30
 
 ### 重點更新
