@@ -3,7 +3,7 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/auto-learning-bot
 - **Branch**：main
-- **Commit SHA**：發布提交前基準 930af2cb；發布提交與 tag V2.1.0 以 `git log -1` 為準
+- **Commit SHA**：`442fd124`（V2.2.0 發布提交與 tag `V2.2.0`；前版 V2.1.0 基準 `930af2cb`）
 - **Skill Version**：lianghao-development v1.0.0
 - **Task Type**：RELEASE
 - **Local Path Hint**：07_auto-learning-bot
@@ -11,6 +11,8 @@
 ---
 
 ## 目前狀態
+2026-11-19：已發布 **V2.2.0**（雙平臺測驗政策與 AI 批次解題強化、`utils/security.py`／`usage_tracker.py` 安全防護、新增 `test_ai_batch_solver.py` 與 `test_egov_entry_and_usage.py` 回歸測試及可攜式發行）；目前依 `IMPROVEMENTS.md` 維持維護狀態。以下保留 V2.1.0 詳細交接脈絡。
+
 2026-10-30：已發布 V2.1.0（commit、annotated tag、GitHub Release 與可攜版 ZIP/SHA-256）。內容為前述雙平臺答題政策、冒險日誌、Q 版工作台與 AI 中斷防護。
 
 ## 本輪目標
