@@ -25,6 +25,8 @@ import psutil
 import atexit
 import signal
 import traceback
+import weakref
+from contextlib import closing
 from utils.config_io import get_db_connection, write_json_atomically
 from utils.app_paths import app_dir, ensure_seeded_database, log_path, user_data_path
 
@@ -54,12 +56,40 @@ from utils.helpers import (
     maintain_driver_windows_hidden,
     INTERACTIVE_QUIZ_TIMEOUT_SECONDS,
     match_radio_option_index,
+    parse_multiple_choice_answers,
 )
 from utils.security import is_cloud_sync_enabled, resolve_gas_url, validate_ai_base_url
 from utils.quiz_policy import MAX_QUIZ_ATTEMPTS, answer_values, can_submit, grade_evidence, grade_passed, needs_ai_review
 from utils.webdriver_mgr import download_best_chromedriver
 
 GLOBAL_DB_LOCK = threading.Lock()
+_LIVE_PILOTS: weakref.WeakSet = weakref.WeakSet()
+_PROCESS_HOOKS_REGISTERED = False
+
+
+def _cleanup_all_pilots(*_args):
+    for pilot in list(_LIVE_PILOTS):
+        try:
+            pilot._cleanup()
+        except Exception:
+            pass
+
+
+def _register_process_cleanup_hooks_once():
+    global _PROCESS_HOOKS_REGISTERED
+    if _PROCESS_HOOKS_REGISTERED:
+        return
+    _PROCESS_HOOKS_REGISTERED = True
+    atexit.register(_cleanup_all_pilots)
+    if threading.current_thread() is threading.main_thread():
+        try:
+            signal.signal(signal.SIGTERM, _cleanup_all_pilots)
+        except (AttributeError, OSError, ValueError):
+            pass
+        try:
+            signal.signal(signal.SIGBREAK, _cleanup_all_pilots)
+        except (AttributeError, OSError, ValueError):
+            pass
 
 # 降低 Selenium 自身的冗長日誌
 logging.getLogger("selenium").setLevel(logging.ERROR)
@@ -120,6 +150,155 @@ def _normalize_q(text: str) -> str:
     return text
 
 
+_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+_ALL_ABOVE_PATTERNS = (
+    "以上皆是",
+    "以上皆可",
+    "以上皆正確",
+    "以上皆對",
+    "all of the above",
+    "ll of the above",
+)
+
+
+class _PlainTextLogFormatter(logging.Formatter):
+    """寫入純文字日誌檔前剝除 ANSI 終端機色碼，保持可讀性。"""
+
+    def format(self, record):
+        return _ANSI_ESCAPE_RE.sub("", super().format(record))
+
+
+def _can_resolve_exam_answer(ans, option_texts, num_radios: int, num_checkboxes: int) -> bool:
+    """預先驗證題庫答案是否能實際對應到當前頁面的單選或多選控制項。"""
+    if ans is None:
+        return False
+    if num_checkboxes > 0:
+        valid_letters = {chr(ord("A") + i) for i in range(num_checkboxes)}
+        ans_text = (
+            ans
+            if isinstance(ans, str)
+            else (ans[0] if isinstance(ans, list) and ans else str(ans))
+        )
+        ans_norm = str(ans_text or "").strip()
+        if not ans_norm:
+            return False
+        if any(p in ans_norm.lower() or p in ans_norm for p in _ALL_ABOVE_PATTERNS):
+            return True
+        expected_letters = answer_values(
+            ans,
+            {chr(65 + i): text for i, text in enumerate((option_texts or [])[:num_checkboxes])},
+            multiple=True,
+        )
+        if not expected_letters:
+            expected_letters = parse_multiple_choice_answers(ans, num_options=num_checkboxes)
+        if not expected_letters and option_texts:
+            for i, opt_t in enumerate(option_texts[:num_checkboxes]):
+                opt_clean = (opt_t or "").strip()
+                if opt_clean and (opt_clean in ans_norm or ans_norm in opt_clean):
+                    expected_letters.append(chr(ord("A") + i))
+        resolved = [ch for ch in expected_letters if ch in valid_letters]
+        return bool(resolved)
+    if num_radios > 0:
+        idx = match_radio_option_index(ans, option_texts, num_radios)
+        return idx is not None and 0 <= idx < num_radios
+    return False
+
+
+_UNAVAILABLE_INFO_TEXT_KEYWORDS = (
+    "查無此課程",
+    "找不到此課程",
+    "課程不存在",
+    "課程已下架",
+    "此課程已下架",
+    "本課程已下架",
+    "已下架",
+    "課程已關閉",
+    "此課程已關閉",
+    "本課程已關閉",
+    "課程尚未上架",
+    "本課程尚未上架",
+    "尚未上架",
+    "非上課期間",
+    "非開放期間",
+    "非開課期間",
+    "已超過開課期間",
+    "已超過上課期間",
+    "已過開課期間",
+    "開課期間已結束",
+    "上課期間已結束",
+    "已逾開課期間",
+    "本課程已結束",
+    "課程已結束",
+    "直播已結束",
+    "本課程尚未開放",
+    "無法進入教室",
+)
+
+_UNAVAILABLE_DISABLED_BTN_KEYWORDS = (
+    "已下架",
+    "已結束",
+    "已關閉",
+    "尚未開課",
+    "尚未上架",
+    "未開放",
+    "非上課期間",
+    "報名已截止",
+)
+
+
+def _match_unavailable_course_reason(
+    body_text: str,
+    disabled_labels: list[str] | tuple[str, ...] = (),
+    has_active_entry: bool = False,
+) -> str | None:
+    """依據 /info/ 頁面快照判讀課程是否已下架或非開課期間。
+
+    只要頁面上仍存在可見且可點擊的上課入口按鈕，一律回傳 None，避免誤判正常開課課程。
+    """
+    if has_active_entry:
+        return None
+    text = str(body_text or "")
+    for kw in _UNAVAILABLE_INFO_TEXT_KEYWORDS:
+        if kw in text:
+            return f"平臺顯示「{kw}」"
+    for label in disabled_labels or ():
+        clean_label = str(label or "").strip()
+        if not clean_label:
+            continue
+        for kw in _UNAVAILABLE_DISABLED_BTN_KEYWORDS:
+            if kw in clean_label:
+                return f"課程入口狀態為「{clean_label[:20]}」"
+    return None
+
+
+_NEGATION_TOKENS = ("不", "非", "未", "無", "誤", "錯", "免")
+_TRUE_FALSE_ANSWERS = frozenset({"正確", "錯誤", "對", "錯", "是", "否", "o", "x", "true", "false"})
+
+
+def _negation_signature(text: str) -> tuple[int, ...]:
+    """回傳題幹否定關鍵字計數簽章，防止模糊比對把肯定句與否定句誤配。"""
+    s = str(text or "")
+    return tuple(s.count(tok) for tok in _NEGATION_TOKENS)
+
+
+def _is_driver_disconnect_error(err_str: str) -> bool:
+    """判斷例外訊息是否代表瀏覽器視窗已關閉或 WebDriver 連線中斷。"""
+    raw = str(err_str or "")
+    low = raw.lower()
+    return (
+        "HTTPConnectionPool" in raw
+        or "Failed to establish a new connection" in raw
+        or "WebDriver" in raw
+        or "session" in low
+        or "chrome not reachable" in low
+        or "no such window" in low
+        or "target window already closed" in low
+        or "web view not found" in low
+        or "disconnected" in low
+    )
+
+
 class UILogHandler(logging.Handler):
     def __init__(self, callback):
         super().__init__()
@@ -152,8 +331,15 @@ class ThreadBoundUILogHandler(logging.Handler):
         tid = threading.get_ident()
         with self._lock:
             pilot = self._active_pilots.get(tid)
-        if pilot and pilot.ui_handler:
+        if not pilot:
+            return
+        if getattr(pilot, "ui_handler", None):
             pilot.ui_handler.emit(record)
+        if getattr(pilot, "file_handler", None):
+            try:
+                pilot.file_handler.emit(record)
+            except Exception:
+                pass
 
 
 # 全域註冊 ThreadBound Router 確保任何地方 logger.info 都能精確導向該平臺 UI
@@ -343,7 +529,7 @@ class AdminEfficiencyPilot:
 
         # fallback: answer.json
         if not loaded:
-            fallback_path = os.path.join(base_dir, "answer.json")
+            fallback_path = str(app_dir() / "answer.json")
             if os.path.exists(fallback_path):
                 try:
                     with open(fallback_path, encoding="utf-8") as f:
@@ -390,6 +576,7 @@ class AdminEfficiencyPilot:
             set()
         )  # course_id → 本次已成功處理（考試通過+問卷完成）
         self._exam_manual_review = {}  # course_id → 無法開啟測驗，待下次重新嘗試或人工確認
+        self._unavailable_in_session = {}  # course_id → 本輪偵測為平臺已下架／非開課期間課程
         self._course_relogin_counts = {}  # course_id → 重登/重試次數防護
         self._last_session_refresh_time = time.time()  # 上次主動刷新 Session 時間
         self._expanded_packages = set()  # 手動修復模式已檢查之組裝/套裝課程 ID
@@ -419,30 +606,39 @@ class AdminEfficiencyPilot:
         else:
             self.ui_handler = None
 
-        # 初始化日誌檔案 (每次覆蓋)
+        # 日誌檔案延後至 run() 實際啟動時才建立（避免僅初始化實例或提前返回就把前輪日誌清空為 0 bytes）
         self.log_file = str(log_path(f"debug_{self.config.get('login_type', 'default')}.log"))
+        self.file_handler = None
 
-        if not any(isinstance(h, logging.FileHandler) for h in self.log_instance.handlers):
-            fh = logging.FileHandler(self.log_file, mode="w", encoding="utf-8")
-            fh.setFormatter(
-                logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-            )
-            self.log_instance.addHandler(fh)
-
-        # 無論怎麼結束（Ctrl+C、關視窗、正常結束）都會清理
-        atexit.register(self._cleanup)
-        signal.signal(signal.SIGTERM, lambda *_: self._cleanup())
-        try:
-            signal.signal(
-                signal.SIGBREAK, lambda *_: self._cleanup()
-            )  # Windows Ctrl+Break
-        except (AttributeError, OSError):
-            pass
+        # 以弱參考集合集中管理清理，避免重複註冊累積實例或雙開時互蓋 signal handler
+        _LIVE_PILOTS.add(self)
+        _register_process_cleanup_hooks_once()
 
         # GAS 題庫靜默背景同步（須明確啟用雲端同步）
         if is_cloud_sync_enabled(self.config):
             _t = threading.Thread(target=self._update_db_from_gas, daemon=True, name="GAS-DB-Sync")
             _t.start()
+
+    def _ensure_file_handler(self):
+        """於執行緒正式啟動 run() 時開啟本輪專屬日誌檔。"""
+        if getattr(self, "file_handler", None) is not None:
+            return
+        existing_fh = next(
+            (h for h in self.log_instance.handlers if isinstance(h, logging.FileHandler)),
+            None,
+        )
+        if existing_fh is not None:
+            self.file_handler = existing_fh
+            return
+        try:
+            fh = logging.FileHandler(self.log_file, mode="w", encoding="utf-8")
+            fh.setFormatter(
+                _PlainTextLogFormatter("%(asctime)s - %(levelname)s - %(message)s")
+            )
+            self.log_instance.addHandler(fh)
+            self.file_handler = fh
+        except OSError:
+            self.file_handler = None
 
     def load_config(self, path):
         if path is None:
@@ -523,10 +719,8 @@ class AdminEfficiencyPilot:
             pass
         self._keep_awake_stop.set()
 
-    def _cleanup(self):
-        """統一清理入口，重複呼叫安全（atexit/signal/finally 都指向這裡）。"""
-        self.running = False
-        self._stop_keep_awake()
+    def _close_driver_only(self):
+        """僅關閉當前瀏覽器與受管 Driver 行程（供 Auto-Healing 與重啟使用，保留 running 與日誌管道）。"""
         if self.config.get("login_type") == "taipei_eda":
             try:
                 from taipei_eda_course import force_close_active_driver
@@ -539,13 +733,30 @@ class AdminEfficiencyPilot:
             except Exception:
                 pass
             self.driver = None
+        self._kill_managed_processes()
+
+    def _cleanup(self):
+        """統一清理入口，重複呼叫安全（atexit/signal/finally 都指向這裡）。"""
+        self.running = False
+        self._stop_keep_awake()
+        self._close_driver_only()
         if getattr(self, "ui_handler", None):
             try:
+                if getattr(self, "log_instance", None):
+                    self.log_instance.removeHandler(self.ui_handler)
                 logger.removeHandler(self.ui_handler)
                 self.ui_handler = None
             except Exception:
                 pass
-        self._kill_managed_processes()
+        if getattr(self, "file_handler", None):
+            try:
+                if getattr(self, "log_instance", None):
+                    self.log_instance.removeHandler(self.file_handler)
+                self.file_handler.flush()
+                self.file_handler.close()
+                self.file_handler = None
+            except Exception:
+                pass
 
     def kill_orphan_drivers(self):
         """
@@ -632,12 +843,12 @@ class AdminEfficiencyPilot:
         ans = _re.sub(r"\s*\|\|.*$", "", ans).strip()
         return ans
 
-    def _find_answer(self, question_text):
+    def _find_answer(self, question_text, *, num_options=None):
         """在題庫中查詢答案。
 
         策略（依優先順序）：
         1. normalize 後精準比對 _answer_map
-        2. difflib fuzzy 比對（cutoff=0.82）
+        2. difflib fuzzy 比對（cutoff=0.90，且強制驗證否定詞簽章與題型相容）
         3. 都找不到 → None
 
         回傳 str（答案文字）或 None。
@@ -655,11 +866,25 @@ class AdminEfficiencyPilot:
 
         # 2. difflib fuzzy（只在有 key list 時執行，避免空集合 warning）
         if self._answer_keys:
-            matches = get_close_matches(q_norm, self._answer_keys, n=1, cutoff=0.82)
-            if matches:
-                row = self._answer_map[matches[0]]
+            q_neg_sig = _negation_signature(q_norm)
+            matches = get_close_matches(q_norm, self._answer_keys, n=3, cutoff=0.90)
+            for match_key in matches:
+                row = self._answer_map[match_key]
+                # 否定詞簽章不一致（例如「不屬於」vs「屬於」）禁止模糊配對
+                if _negation_signature(match_key) != q_neg_sig:
+                    continue
+                cleaned = self._clean_answer(row["answer"])
+                # 多選項單／多選題（>=3 選項）禁止模糊配到純是非題
+                if (
+                    num_options is not None
+                    and num_options >= 3
+                    and not row.get("options")
+                    and isinstance(cleaned, str)
+                    and cleaned.strip().lower() in _TRUE_FALSE_ANSWERS
+                ):
+                    continue
                 logger.debug(f"   🔍 fuzzy match: {row['question'][:30]!r}")
-                return self._clean_answer(row["answer"])
+                return cleaned
 
         # 3. 向後相容：舊 self.answers list 雙向包含比對（只在未從 DB 載入時有資料）
         if self.answers:
@@ -784,6 +1009,8 @@ class AdminEfficiencyPilot:
 
     def _try_auto_healing(self, reason_msg: str) -> bool:
         """全自動靜默修復 (Auto-Healing) 網絡與 WebDriver 連線異常，防護網最多重試 3 次"""
+        if not getattr(self, "running", True):
+            return False
         if getattr(self, "_auto_healing_count", 0) >= 3:
             logger.error(f"❌ 已達到 Auto-Healing 最大自動修復重連上限 (3 次)，自動安全暫停以保護資源。原因：{reason_msg}")
             return False
@@ -792,8 +1019,8 @@ class AdminEfficiencyPilot:
         logger.warning(f"🔄 偵測到連線異常（{reason_msg}），正在啟動全自動靜默修復 (Auto-Healing 第 {self._auto_healing_count}/3 次)...")
 
         try:
-            # 1. 徹底清理舊死 Driver 資源
-            self._cleanup()
+            # 1. 僅清理舊死 Driver 資源（保留 self.running 與日誌 Handler）
+            self._close_driver_only()
             time.sleep(2)
 
             # 2. 重新初始化 WebDriver 引擎
@@ -833,63 +1060,56 @@ class AdminEfficiencyPilot:
                 logger.info("📥 GAS 回傳題庫為空或格式不符，略過")
                 return
 
-            import sys as _sys
-            _base = (
-                os.path.dirname(_sys.executable)
-                if getattr(_sys, "frozen", False)
-                else os.path.dirname(os.path.abspath(__file__))
-            )
             db_path = str(ensure_seeded_database())
-            conn = get_db_connection(db_path)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS questions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    question TEXT UNIQUE NOT NULL,
-                    option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
-                    answer TEXT
-                )
-            """)
             added = 0
             updated = 0
-            for item in data:
-                q = (item.get("question") or "").strip()
-                a = (item.get("answer") or "").strip()
-                if not q or not a:
-                    continue
-                # 支援 options:[] 格式（questions_patch.json）與 option_a/b/c/d 格式（GAS doGet）
-                opts = item.get("options") or []
-                oa = (opts[0] if len(opts) > 0 else item.get("option_a") or "").strip()
-                ob = (opts[1] if len(opts) > 1 else item.get("option_b") or "").strip()
-                oc = (opts[2] if len(opts) > 2 else item.get("option_c") or "").strip()
-                od = (opts[3] if len(opts) > 3 else item.get("option_d") or "").strip()
-                existing = conn.execute(
-                    "SELECT id, answer FROM questions WHERE question = ?", (q,)
-                ).fetchone()
-                if existing:
-                    if existing[1] != a:
-                        conn.execute(
-                            "UPDATE questions SET answer=?, option_a=?, option_b=?, option_c=?, option_d=? WHERE question=?",
-                            (a, oa, ob, oc, od, q),
-                        )
-                        updated += 1
-                else:
-                    conn.execute(
-                        "INSERT INTO questions (question, option_a, option_b, option_c, option_d, answer) VALUES (?,?,?,?,?,?)",
-                        (q, oa, ob, oc, od, a),
+            with GLOBAL_DB_LOCK, closing(get_db_connection(db_path)) as conn:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS questions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        question TEXT UNIQUE NOT NULL,
+                        option_a TEXT, option_b TEXT, option_c TEXT, option_d TEXT,
+                        answer TEXT
                     )
-                    added += 1
-                # 同步記憶體 _answer_map
-                nk = _normalize_q(q)
-                if nk:
-                    if nk not in self._answer_map:
-                        self._answer_keys.append(nk)
-                    self._answer_map[nk] = {
-                        "answer": a,
-                        "options": [o for o in [oa, ob, oc, od] if o],
-                        "question": q,
-                    }
-            conn.commit()
-            conn.close()
+                """)
+                for item in data:
+                    q = (item.get("question") or "").strip()
+                    a = (item.get("answer") or "").strip()
+                    if not q or not a:
+                        continue
+                    # 支援 options:[] 格式（questions_patch.json）與 option_a/b/c/d 格式（GAS doGet）
+                    opts = item.get("options") or []
+                    oa = (opts[0] if len(opts) > 0 else item.get("option_a") or "").strip()
+                    ob = (opts[1] if len(opts) > 1 else item.get("option_b") or "").strip()
+                    oc = (opts[2] if len(opts) > 2 else item.get("option_c") or "").strip()
+                    od = (opts[3] if len(opts) > 3 else item.get("option_d") or "").strip()
+                    existing = conn.execute(
+                        "SELECT id, answer FROM questions WHERE question = ?", (q,)
+                    ).fetchone()
+                    if existing:
+                        if existing[1] != a:
+                            conn.execute(
+                                "UPDATE questions SET answer=?, option_a=?, option_b=?, option_c=?, option_d=? WHERE question=?",
+                                (a, oa, ob, oc, od, q),
+                            )
+                            updated += 1
+                    else:
+                        conn.execute(
+                            "INSERT INTO questions (question, option_a, option_b, option_c, option_d, answer) VALUES (?,?,?,?,?,?)",
+                            (q, oa, ob, oc, od, a),
+                        )
+                        added += 1
+                    # 同步記憶體 _answer_map
+                    nk = _normalize_q(q)
+                    if nk:
+                        if nk not in self._answer_map:
+                            self._answer_keys.append(nk)
+                        self._answer_map[nk] = {
+                            "answer": a,
+                            "options": [o for o in [oa, ob, oc, od] if o],
+                            "question": q,
+                        }
+                conn.commit()
             logger.info(
                 f"📥 GAS 題庫同步完成：新增 {added} 題，更新 {updated} 題"
                 f"，記憶體共 {len(self._answer_map)} 題"
@@ -932,31 +1152,36 @@ class AdminEfficiencyPilot:
             logger.info(f"   📖 嘗試讀取正確答案（isReadAnswer={is_read}）")
 
             if is_read != "1":
-                # 呼叫 set_see_question_result.php
+                # 呼叫 set_see_question_result.php（優先以當前分站視窗同源 fetch 發送，避免跨分站 school_hash Cookie 衝突）
                 base_url = view_result_url.split("/learn/")[0]
                 api_url = (
                     f"{base_url}/learn/exam/set_see_question_result.php?{query_str}"
                 )
-                ua = self.driver.execute_script("return navigator.userAgent;")
-                # 同步 cookie 到 http_session
-                for c in self.driver.get_cookies():
-                    self.http_session.cookies.set(
-                        c["name"], c["value"], domain=c["domain"]
-                    )
-                resp = self.http_session.get(
-                    api_url,
-                    headers={"User-Agent": ua, "Referer": view_result_url},
-                    timeout=10,
-                )
-                logger.debug(
-                    f"   set_see_question_result: {resp.status_code} / {resp.text[:50]!r}"
-                )
-                if resp.text.strip() == "1":
+                resp_text = ""
+                if callable(getattr(self.driver, "execute_async_script", None)):
+                    try:
+                        fetch_res = self.driver.execute_async_script(
+                            """
+                            var url = arguments[0];
+                            var done = arguments[arguments.length - 1];
+                            fetch(url, {credentials: 'include'})
+                                .then(function(r) { return r.text(); })
+                                .then(function(t) { done({ok: true, text: t}); })
+                                .catch(function(e) { done({ok: false, text: String(e)}); });
+                            """,
+                            api_url,
+                        )
+                        if isinstance(fetch_res, dict) and fetch_res.get("ok"):
+                            resp_text = str(fetch_res.get("text") or "").strip()
+                    except Exception as _fe:
+                        logger.debug(f"   同源 fetch set_see_question_result 失敗: {_fe}")
+
+                if resp_text == "1":
                     self.driver.refresh()
                     time.sleep(3)
                 else:
                     logger.warning(
-                        f"   ⚠️ 讀取答案請求遭伺服器拒絕（回應：{resp.text.strip()[:50]!r}）；尚無法確認是請求參數、登入狀態或課程權限問題"
+                        f"   ⚠️ 讀取答案請求遭伺服器拒絕（回應：{resp_text[:50]!r}）；本課程可能不開放公布答案"
                     )
                     return result
 
@@ -1078,7 +1303,43 @@ class AdminEfficiencyPilot:
 
         return result
 
-    def _read_exam_result(self, course, _ai_answered=None):
+    def _check_exam_passed_via_s_main(self, main_window) -> bool:
+        """當交卷結果頁未直接顯示單次得分時，回主視窗 s_main 測驗清單複查是否已標記為「已通過」。"""
+        if not main_window or not self.driver:
+            return False
+        prev_win = None
+        try:
+            prev_win = self.driver.current_window_handle
+        except Exception:
+            prev_win = None
+        try:
+            self.driver.switch_to.window(main_window)
+            self.driver.switch_to.default_content()
+            try:
+                self.driver.switch_to.frame("mooc_sysbar")
+                exam_link = self.driver.find_element(
+                    By.CSS_SELECTOR, "a[href*='exam/exam_list.php'], a[href*='exam']"
+                )
+                self.driver.execute_script("arguments[0].click();", exam_link)
+            except Exception:
+                pass
+            status, _ = self._wait_s_main_action_or_status(
+                done_keywords=("已通過", "已選擇公布答案"),
+                none_keywords=(),
+                timeout=6.0,
+            )
+            return status == "done"
+        except Exception:
+            return False
+        finally:
+            if prev_win and prev_win != main_window:
+                try:
+                    if prev_win in self.driver.window_handles:
+                        self.driver.switch_to.window(prev_win)
+                except Exception:
+                    pass
+
+    def _read_exam_result(self, course, _ai_answered=None, *, main_window=None):
         """讀取測驗繳交後的成績與通過狀態並記錄日誌。依據每門課程之 criteria_exam_score 精確核定通過與否。"""
         course_id = str(course.get("course_id", ""))
         course_name = course.get("caption", course_id)
@@ -1145,6 +1406,10 @@ class AdminEfficiencyPilot:
                 passed = False
             elif grade_passed(None, pass_score, result_status) is True:
                 logger.info(f"   🎉 測驗結果：及格 / 通過 {score_str}！")
+                passed = True
+                self._exam_fail_counts.pop(course_id, None)
+            elif main_window and self._check_exam_passed_via_s_main(main_window):
+                logger.info(f"   🎉 測驗結果：平臺測驗清單已確認通過 {score_str}！")
                 passed = True
                 self._exam_fail_counts.pop(course_id, None)
             else:
@@ -1274,6 +1539,56 @@ class AdminEfficiencyPilot:
                 except Exception as exc:
                     logger.debug(f'測驗用量統計失敗，不影響測驗結果：{exc}')
 
+    def _wait_s_main_action_or_status(
+        self,
+        *,
+        done_keywords: tuple[str, ...],
+        none_keywords: tuple[str, ...],
+        timeout: float = 12.0,
+    ) -> tuple[str, object | None]:
+        """切換至 s_main（或主頁）並輪詢等待「已完成／無項目／可點擊按鈕」出現。"""
+        deadline = time.time() + max(1.0, float(timeout))
+        while time.time() <= deadline:
+            if not getattr(self, "running", True):
+                return "stopped", None
+            try:
+                self.driver.switch_to.default_content()
+                try:
+                    self.driver.switch_to.frame("s_main")
+                except Exception:
+                    pass
+
+                for el in self.driver.find_elements(By.CSS_SELECTOR, "div.process-btn"):
+                    try:
+                        txt = (el.text or "").strip()
+                    except Exception:
+                        txt = ""
+                    if txt and any(kw in txt for kw in done_keywords):
+                        return "done", None
+
+                for btn in self.driver.find_elements(By.CSS_SELECTOR, "div.process-btn.pay.active"):
+                    try:
+                        if btn.is_displayed():
+                            return "button", btn
+                    except Exception:
+                        return "button", btn
+
+                body_text = ""
+                try:
+                    body_text = self.driver.execute_script(
+                        "return document.body ? document.body.innerText : '';"
+                    ) or ""
+                except Exception:
+                    pass
+                if any(kw in body_text for kw in done_keywords):
+                    return "done", None
+                if any(kw in body_text for kw in none_keywords):
+                    return "none", None
+            except Exception:
+                pass
+            time.sleep(0.4)
+        return "timeout", None
+
     def _auto_exam_attempt(self, course):
         """時數達標後，自動進入測驗並作答。回傳 True=通過, False=未通過/失敗"""
         self._last_exam_ai_outage = False
@@ -1385,46 +1700,39 @@ class AdminEfficiencyPilot:
                     self._mark_exam_manual_review(course, "找不到測驗入口，尚未確認測驗已通過")
                     return False
 
-            time.sleep(2)
-
-            # ── 2. 切到 s_main frame（frameset 結構，非 iframe）──
-            self.driver.switch_to.default_content()
-            try:
-                self.driver.switch_to.frame("s_main")
-            except Exception:
-                logger.warning("   ⚠️ 無法切換到 s_main frame")
+            # ── 2 & 3. 切到 s_main 並等待測驗狀態／「進行測驗」按鈕載入完成 ──
+            status, pay_btn = self._wait_s_main_action_or_status(
+                done_keywords=("已通過", "已選擇公布答案"),
+                none_keywords=("目前沒有任何測驗", "尚無測驗", "無測驗資料", "沒有測驗"),
+                timeout=12.0,
+            )
+            if status == "stopped":
+                return False
+            if status == "done":
+                logger.info("   ✅ 測驗已通過（先前已完成），跳過作答")
+                return True
+            if status == "none":
+                logger.info("   ℹ️ 測驗清單顯示目前無測驗項目，跳過作答")
+                return True
+            if status != "button" or not pay_btn:
+                entry_fails = self.__dict__.setdefault("_exam_entry_fail_counts", {})
+                entry_fails[course_id] = entry_fails.get(course_id, 0) + 1
+                logger.warning(
+                    f"   ⚠️ 找不到「進行測驗」按鈕（等待 s_main 逾時，第 {entry_fails[course_id]} 次）"
+                )
+                if entry_fails[course_id] >= 2:
+                    self._mark_exam_manual_review(
+                        course, "找不到「進行測驗」按鈕（頁面未載入或版面不符）"
+                    )
                 return False
 
-            time.sleep(1)
-
-            # ── 2a. 檢查是否已通過（綠色「已通過」div 或已公布答案文字）──
             try:
-                # 方法1：找 div.process-btn 內含「已通過」span（來自截圖結構）
-                passed_els = self.driver.find_elements(
-                    By.XPATH,
-                    "//div[contains(@class,'process-btn')]//span[contains(text(),'已通過')]",
-                )
-                # 方法2：找「已選擇公布答案，不得再進行測驗」提示文字
-                if not passed_els:
-                    passed_els = self.driver.find_elements(
-                        By.XPATH, "//*[contains(text(),'已選擇公布答案')]"
-                    )
-                if passed_els:
-                    logger.info("   ✅ 測驗已通過（先前已完成），跳過作答")
-                    return True
-            except Exception:
-                pass
-
-            # ── 3. 點「進行測驗」──
-            try:
-                pay_btn = self.driver.find_element(
-                    By.CSS_SELECTOR, "div.process-btn.pay.active"
-                )
                 self.driver.execute_script("arguments[0].click();", pay_btn)
                 self._auto_hide_popups_if_needed(settle=True)
                 logger.info("   📝 已點擊「進行測驗」")
             except Exception as e:
-                logger.warning(f"   ⚠️ 找不到「進行測驗」按鈕: {e}")
+                err_line = (getattr(e, "msg", None) or str(e)).splitlines()[0]
+                logger.warning(f"   ⚠️ 點擊「進行測驗」按鈕失敗: {err_line}")
                 return False
 
             time.sleep(3)
@@ -1605,23 +1913,38 @@ class AdminEfficiencyPilot:
                             var items = td.querySelectorAll('ol li, ul li');
                             var texts = [];
                             for (var i = 0; i < items.length; i++) {
-                                var li = items[i];
-                                var text = '';
-                                for (var k = 0; k < li.childNodes.length; k++) {
-                                    var cn = li.childNodes[k];
-                                    if (cn.nodeType === 3) {
-                                        text += cn.textContent;
-                                    } else if (cn.nodeName !== 'INPUT' && cn.nodeName !== 'SPAN') {
-                                        text += cn.innerText || cn.textContent || '';
-                                    } else if (cn.nodeName === 'SPAN') {
-                                        for (var m = 0; m < cn.childNodes.length; m++) {
-                                            if (cn.childNodes[m].nodeType === 3) {
-                                                text += cn.childNodes[m].textContent;
-                                            }
-                                        }
-                                    }
+                                var clone = items[i].cloneNode(true);
+                                var removeNodes = clone.querySelectorAll('input, script, style');
+                                for (var r = 0; r < removeNodes.length; r++) {
+                                    removeNodes[r].remove();
                                 }
-                                texts.push(text.trim());
+                                texts.push((clone.textContent || '').replace(/\\s+/g, ' ').trim());
+                            }
+                            if (texts.length === 0) {
+                                var choiceInputs = td.querySelectorAll('input[type="radio"], input[type="checkbox"]');
+                                for (var c = 0; c < choiceInputs.length; c++) {
+                                    var inp = choiceInputs[c];
+                                    var labelText = '';
+                                    if (inp.id) {
+                                        var lbl = td.querySelector('label[for="' + inp.id.replace(/"/g, '\\"') + '"]');
+                                        if (lbl) labelText = (lbl.textContent || '').trim();
+                                    }
+                                    if (!labelText && inp.parentElement && inp.parentElement.tagName === 'LABEL') {
+                                        var pClone = inp.parentElement.cloneNode(true);
+                                        var pInps = pClone.querySelectorAll('input, script, style');
+                                        for (var p = 0; p < pInps.length; p++) pInps[p].remove();
+                                        labelText = (pClone.textContent || '').trim();
+                                    }
+                                    if (!labelText) {
+                                        var sib = inp.nextSibling;
+                                        while (sib && sib.nodeName !== 'INPUT' && sib.nodeName !== 'BR') {
+                                            labelText += (sib.textContent || '');
+                                            sib = sib.nextSibling;
+                                        }
+                                        labelText = labelText.trim();
+                                    }
+                                    texts.push(labelText.replace(/\\s+/g, ' ').trim());
+                                }
                             }
                             return texts;
                             """,
@@ -1699,9 +2022,9 @@ class AdminEfficiencyPilot:
                         time.sleep(1)
                         self._accept_alert()
                         self._last_exam_submitted = True
-                        passed = self._read_exam_result(course)
+                        passed = self._read_exam_result(course, main_window=main_window)
                         # 人機協同答案只用於本次作答，不寫回本機題庫。
-                        if not passed:
+                        if not passed and not getattr(self, "_last_exam_score_unknown", False):
                             time.sleep(1)
                             try:
                                 cur_exam_url = self.driver.current_url
@@ -1841,10 +2164,12 @@ class AdminEfficiencyPilot:
                         except Exception:
                             q_text = row.text.strip().split("\n")[0]
 
-                    ans = self._find_answer(q_text)
                     radios = row.find_elements(By.CSS_SELECTOR, "input[type='radio']")
                     checkboxes = row.find_elements(
                         By.CSS_SELECTOR, "input[type='checkbox']"
+                    )
+                    ans = self._find_answer(
+                        q_text, num_options=len(checkboxes or radios)
                     )
 
                     try:
@@ -1873,23 +2198,38 @@ class AdminEfficiencyPilot:
                             var items = td.querySelectorAll('ol li, ul li');
                             var texts = [];
                             for (var i = 0; i < items.length; i++) {
-                                var li = items[i];
-                                var text = '';
-                                for (var k = 0; k < li.childNodes.length; k++) {
-                                    var cn = li.childNodes[k];
-                                    if (cn.nodeType === 3) {
-                                        text += cn.textContent;
-                                    } else if (cn.nodeName !== 'INPUT' && cn.nodeName !== 'SPAN') {
-                                        text += cn.innerText || cn.textContent || '';
-                                    } else if (cn.nodeName === 'SPAN') {
-                                        for (var m = 0; m < cn.childNodes.length; m++) {
-                                            if (cn.childNodes[m].nodeType === 3) {
-                                                text += cn.childNodes[m].textContent;
-                                            }
-                                        }
-                                    }
+                                var clone = items[i].cloneNode(true);
+                                var removeNodes = clone.querySelectorAll('input, script, style');
+                                for (var r = 0; r < removeNodes.length; r++) {
+                                    removeNodes[r].remove();
                                 }
-                                texts.push(text.trim());
+                                texts.push((clone.textContent || '').replace(/\\s+/g, ' ').trim());
+                            }
+                            if (texts.length === 0) {
+                                var choiceInputs = td.querySelectorAll('input[type="radio"], input[type="checkbox"]');
+                                for (var c = 0; c < choiceInputs.length; c++) {
+                                    var inp = choiceInputs[c];
+                                    var labelText = '';
+                                    if (inp.id) {
+                                        var lbl = td.querySelector('label[for="' + inp.id.replace(/"/g, '\\"') + '"]');
+                                        if (lbl) labelText = (lbl.textContent || '').trim();
+                                    }
+                                    if (!labelText && inp.parentElement && inp.parentElement.tagName === 'LABEL') {
+                                        var pClone = inp.parentElement.cloneNode(true);
+                                        var pInps = pClone.querySelectorAll('input, script, style');
+                                        for (var p = 0; p < pInps.length; p++) pInps[p].remove();
+                                        labelText = (pClone.textContent || '').trim();
+                                    }
+                                    if (!labelText) {
+                                        var sib = inp.nextSibling;
+                                        while (sib && sib.nodeName !== 'INPUT' && sib.nodeName !== 'BR') {
+                                            labelText += (sib.textContent || '');
+                                            sib = sib.nextSibling;
+                                        }
+                                        labelText = labelText.trim();
+                                    }
+                                    texts.push(labelText.replace(/\\s+/g, ' ').trim());
+                                }
                             }
                             return texts;
                             """,
@@ -1912,6 +2252,21 @@ class AdminEfficiencyPilot:
                     })
                 except Exception as e:
                     logger.warning(f"   ⚠️ 解析第 {q_idx + 1} 題失敗：{e}")
+
+            # 🛡️ 送 AI 批次前先預驗題庫答案是否真能對上當前頁面選項；
+            # 若題庫命中舊格式或選項已改寫導致對不上，清空 ans 改由 AI 批次補答（不靜默略過）。
+            for item in parsed_items:
+                if item["ans"] is not None and not _can_resolve_exam_answer(
+                    item["ans"],
+                    item["option_texts"],
+                    len(item["radios"]),
+                    len(item["checkboxes"]),
+                ):
+                    logger.warning(
+                        f"   ⚠️ 第 {item['idx'] + 1} 題題庫答案（{str(item['ans'])[:30]!r}）無法對應目前選項（選項數={len(item['checkboxes'] or item['radios'])}），改由 AI 覆核"
+                    )
+                    item["ans"] = None
+                    item["ans_source"] = None
 
             # ⚡ 10 題合一整卷 AI 批次作答（僅發送 1 次 API 請求，節省 90% 額度）
             items_needing_ai = [item for item in parsed_items if needs_ai_review(item['ans'], fail_count if ai_enabled else 0)]
@@ -2025,7 +2380,8 @@ class AdminEfficiencyPilot:
                                         expected_letters.append(chr(ord('A') + i))
                                 expected_letters = sorted(list(set(expected_letters)))
 
-                            expected_set = set(expected_letters)
+                            valid_letters = {chr(ord('A') + i) for i in range(n)}
+                            expected_set = {ch for ch in expected_letters if ch in valid_letters}
 
                             # 在該題自己的 checkbox group 內逐一勾選
                             for i, cb in enumerate(checkboxes):
@@ -2063,6 +2419,7 @@ class AdminEfficiencyPilot:
                                 answered += 1
                             else:
                                 logger.warning(f"   ⚠️ 第{q_idx + 1}題 {source_tag} 填答驗證失敗！預期={exp_str}，實際={act_str}")
+                                skipped += 1
 
                     elif radios:
                         idx = None
@@ -2083,8 +2440,8 @@ class AdminEfficiencyPilot:
                                 source_tag = f"[{ans_source}]" if ans_source else "[已知答案]"
                                 logger.info(f"   📝 作答進度：[{q_idx + 1}/{len(rows)} 題] 已填答 {source_tag}")
                         else:
-                            logger.debug(
-                                f"   ⚠️ 單選答案無法比對，略過：{q_text[:30]!r} ans={ans!r} options={option_texts!r}"
+                            logger.warning(
+                                f"   ⚠️ 第 {q_idx + 1} 題單選答案無法比對，略過：{q_text[:30]!r} ans={str(ans)[:30]!r} 選項數={len(radios)}"
                             )
                             skipped += 1
 
@@ -2208,13 +2565,10 @@ class AdminEfficiencyPilot:
 
             # ── 9. 讀取成績，判斷是否通過 ──
             self._last_exam_submitted = True
-            passed = self._read_exam_result(course, _ai_answered=_ai_answered)
+            passed = self._read_exam_result(course, _ai_answered=_ai_answered, main_window=main_window)
 
-            # ── 10. 不及格時嘗試讀取正確答案 ──
-            # 考試 form submit 後，exam_window 已整頁跳轉到 view_result.php。
-            # 直接對當前視窗呼叫 _harvest_correct_answers。
-            # 若當前頁面不是 view_result.php，從 exam_start_url 推算後再 navigate。
-            if not passed:
+            # ── 10. 明確不及格時才嘗試讀取正確答案（成績未知時不誤觸發） ──
+            if not passed and not getattr(self, "_last_exam_score_unknown", False):
                 time.sleep(1)
                 try:
                     self.driver.switch_to.window(exam_window)
@@ -2311,27 +2665,23 @@ class AdminEfficiencyPilot:
                     logger.warning(f"   ⚠️ 找不到問卷連結: {e}")
                     return False
 
-            time.sleep(2)
-
-            # ── 2. 切到 s_main frame（若為舊版架構） ──
-            self.driver.switch_to.default_content()
-            try:
-                self.driver.switch_to.frame("s_main")
-            except Exception:
-                pass  # 若無 s_main，直接在 default_content 尋找按鈕
-
-            time.sleep(1)
-
-            # ── 2a. 檢查是否已填過（沒有「填寫問卷」按鈕則視為已完成）──
-            pay_btns = self.driver.find_elements(
-                By.CSS_SELECTOR, "div.process-btn.pay.active"
+            # ── 2 & 3. 切到 s_main 並等待問卷狀態／「填寫問卷」按鈕載入完成 ──
+            q_status, q_btn = self._wait_s_main_action_or_status(
+                done_keywords=("已完成", "已填寫", "已填畢"),
+                none_keywords=("目前沒有任何問卷", "尚無問卷", "沒有問卷", "無須填寫", "無需填寫"),
+                timeout=12.0,
             )
-            if not pay_btns:
-                logger.info("   📋 無可填寫的問卷（已完成或不需填寫）")
+            if q_status == "stopped":
+                return False
+            if q_status in ("done", "none"):
+                logger.info("   📋 無可填寫的問卷（已確認完成或平臺無問卷）")
                 return True
+            if q_status != "button" or not q_btn:
+                logger.warning("   ⚠️ 找不到「填寫問卷」按鈕（問卷頁未載入完成或版面不符），待人工確認")
+                return False
 
             # ── 3. 點「填寫問卷」──
-            self.driver.execute_script("arguments[0].click();", pay_btns[0])
+            self.driver.execute_script("arguments[0].click();", q_btn)
             self._auto_hide_popups_if_needed(settle=True)
             logger.info("   📋 已點擊「填寫問卷」")
             time.sleep(3)
@@ -2411,9 +2761,18 @@ class AdminEfficiencyPilot:
                 logger.warning(f"   ⚠️ 找不到「確定繳交」按鈕: {e}")
                 return False
 
-            # ── 7. 處理「你確定要繳交嗎？」alert ──
+            # ── 7. 處理「你確定要繳交嗎？」alert（並攔截必填缺漏警語）──
             time.sleep(1)
-            if self._accept_alert():
+            alert_msg = ""
+            try:
+                WebDriverWait(self.driver, 3).until(EC.alert_is_present())
+                alert_msg = self._accept_alert_if_present()
+            except Exception:
+                pass
+            if alert_msg:
+                if any(kw in alert_msg for kw in ("請填", "必填", "未填", "漏填", "不可為空", "尚有")):
+                    logger.warning(f"   ⚠️ 問卷送出遭平臺退回：{alert_msg}")
+                    return False
                 logger.info("   📋 已確認繳交")
             else:
                 logger.warning("   ⚠️ 未出現繳交確認框")
@@ -2776,6 +3135,18 @@ class AdminEfficiencyPilot:
                 "reason": reason,
             }
         logger.warning(f"   ⚠️ 測驗待處理：{course.get('caption', course_id)}｜{reason}")
+
+    def _record_unavailable_course(self, course, reason):
+        """記錄平臺已下架或非開課期間課程，本輪跳過且不與測驗失敗混淆。"""
+        course_id = str(course.get("course_id", ""))
+        caption = course.get("caption", course_id)
+        if course_id:
+            self._completed_in_session.add(course_id)
+            self.__dict__.setdefault("_unavailable_in_session", {})[course_id] = {
+                "caption": caption,
+                "reason": reason,
+            }
+        logger.info(f"   ⏩ 課程「{caption}」{reason}，本輪自動略過。")
 
     def auto_enroll_package_subcourses(self, courses) -> bool:
         """組裝課程子課程缺漏時的手動修復備援；正常執行流程不會自動呼叫。"""
@@ -3236,6 +3607,69 @@ class AdminEfficiencyPilot:
         except Exception:
             pass
         return False
+
+    def _detect_unavailable_course_on_info_page(self) -> str | None:
+        """在 /info/ 課程介紹頁即時判讀課程是否已下架或非開課期間。
+
+        僅在畫面上沒有任何可用上課入口按鈕時才認定下架，避免被課程簡介內的靜態文字誤判。
+        """
+        if not self.driver:
+            return None
+        try:
+            cur_u = str(getattr(self.driver, "current_url", "") or "")
+            if "/info/" not in cur_u:
+                return None
+            snapshot = self.driver.execute_script(
+                """
+                function isVisible(el) {
+                    var style = window.getComputedStyle(el);
+                    return el.getClientRects().length > 0 && style.display !== 'none' &&
+                        style.visibility !== 'hidden' && style.visibility !== 'collapse';
+                }
+                function getLabel(el) {
+                    return (el.innerText || el.value || el.textContent || '').replace(/\\s+/g, ' ').trim();
+                }
+                var entryLabels = ['上課去', '進入課程', '開始上課', '前往教室', '繼續學習', '觀看影片', '前往研習', '開始學習', '前往學習'];
+                var hasActiveEntry = false;
+                var disabledLabels = [];
+                var controls = document.querySelectorAll('button, a.btn, a, input[type="button"], input[type="submit"], span.btn, div.btn');
+                for (var i = 0; i < controls.length; i++) {
+                    var el = controls[i];
+                    if (!isVisible(el)) continue;
+                    var lbl = getLabel(el);
+                    var clean = lbl.replace(/\\s+/g, '');
+                    var isDisabled = !!el.disabled || el.getAttribute('aria-disabled') === 'true' ||
+                        (el.className && String(el.className).indexOf('disabled') !== -1);
+                    if (isDisabled) {
+                        if (lbl) disabledLabels.push(lbl);
+                        continue;
+                    }
+                    var href = (el.getAttribute('href') || '').toLowerCase();
+                    var onclick = (el.getAttribute('onclick') || '').toLowerCase();
+                    if (entryLabels.some(function(k) { return clean.indexOf(k) !== -1; }) ||
+                        onclick.indexOf('goclass') !== -1 || onclick.indexOf('gotocourse') !== -1 ||
+                        href.indexOf('action=learn') !== -1) {
+                        hasActiveEntry = true;
+                        break;
+                    }
+                }
+                var bodyText = document.body ? (document.body.innerText || '') : '';
+                return {
+                    hasActiveEntry: hasActiveEntry,
+                    disabledLabels: disabledLabels,
+                    bodyText: bodyText
+                };
+                """
+            )
+            if not isinstance(snapshot, dict):
+                return None
+            return _match_unavailable_course_reason(
+                snapshot.get("bodyText", ""),
+                snapshot.get("disabledLabels") or (),
+                bool(snapshot.get("hasActiveEntry", False)),
+            )
+        except Exception:
+            return None
 
     def find_classroom_window(self):
         """Return the browser window that owns the course frame tree or MOOCs/Hahow player."""
@@ -3765,13 +4199,18 @@ class AdminEfficiencyPilot:
                         return "SKIP"
                 cur_u = self.driver.current_url or ""
 
-            # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
+            # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過，或已下架／非開課期間
             if "/info/" in cur_u:
                 if self._is_course_already_completed_on_info_page():
                     logger.info(
                         f"   🎉 課程「{course.get('caption', '')}」平臺已記錄為已修畢（通過狀態已通過），自動標記完成並略過。"
                     )
                     self._completed_in_session.add(str(course.get("course_id", "")))
+                    return "SKIP"
+
+                unavail_reason = self._detect_unavailable_course_on_info_page()
+                if unavail_reason:
+                    self._record_unavailable_course(course, unavail_reason)
                     return "SKIP"
 
                 before_handles = list(self.driver.window_handles)
@@ -3815,6 +4254,10 @@ class AdminEfficiencyPilot:
 
             classroom_h = self.find_classroom_window()
             if not classroom_h:
+                unavail_reason = self._detect_unavailable_course_on_info_page()
+                if unavail_reason:
+                    self._record_unavailable_course(course, unavail_reason)
+                    return "SKIP"
                 logger.warning(
                     f"   ⚠️ 課程「{course.get('caption', '')}」無法載入有效教室介面（停留在介紹頁或首頁），自動略過並標記為待查核。"
                 )
@@ -4274,6 +4717,11 @@ class AdminEfficiencyPilot:
                 return "RELOGIN"
 
         except Exception as e:
+            err_str = str(e)
+            if _is_driver_disconnect_error(err_str):
+                err_line = (getattr(e, "msg", None) or err_str).splitlines()[0]
+                logger.warning(f"   ⚠️ 瀏覽器視窗已關閉或連線中斷：{err_line}")
+                return "DRIVER_LOST"
             logger.error(f"   ❌ 研習異常: {e}", exc_info=True)
             try:
                 self.driver.get(self.stat_url)
@@ -4294,6 +4742,7 @@ class AdminEfficiencyPilot:
     def run(self):
         """⭐ 正確位置：在類內"""
         tid = threading.get_ident()
+        self._ensure_file_handler()
         ThreadBoundUILogHandler.register(tid, self)
 
         if self.config.get("login_type") == "taipei_eda":
@@ -4334,8 +4783,8 @@ class AdminEfficiencyPilot:
         if ai_key:
             base_url = self.config.get("ai_base_url", "https://api.openai.com/v1")
             model = self.config.get("ai_model", "gpt-4o-mini")
-            if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5")):
-                model = "gemini-3.1-flash-lite"
+            if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5", "gemini-3.1-flash-lite")):
+                model = "gemini-3.5-flash-lite"
             logger.info(f"🤖 AI 補答已啟用（model: {model}，endpoint: {base_url}）")
         else:
             logger.info("📖 AI 補答未啟用，僅使用本地題庫作答")
@@ -4423,7 +4872,7 @@ class AdminEfficiencyPilot:
                         if len(courses) == 0:
                             if empty_api_count >= 3:
                                 logger.warning("🚀 API 連續 0 筆無法恢復，重啟輔助引擎後再試。")
-                                self._cleanup()
+                                self._close_driver_only()
                                 if not self.safe_sleep(5):
                                     break
                                 if not self.init_engine() or not self.login():
@@ -4574,13 +5023,18 @@ class AdminEfficiencyPilot:
                                         self._completed_in_session.add(c_id)
                                         continue
 
-                                # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過
+                                # 若停留在 /info/ 介紹頁，先檢查是否平臺已標註修畢/通過，或已下架／非開課期間
                                 if "/info/" in self.driver.current_url:
                                     if self._is_course_already_completed_on_info_page():
                                         logger.info(
                                             f"   🎉 課程「{c.get('caption', '')}」平臺顯示已全數修畢（已通過），免重複執行。"
                                         )
                                         self._completed_in_session.add(c_id)
+                                        continue
+                                    unavail_reason = self._detect_unavailable_course_on_info_page()
+                                    if unavail_reason:
+                                        self._record_unavailable_course(c, unavail_reason)
+                                        _emit_course_state(c, CourseStatus.SKIPPED, unavail_reason, "平臺已下架或非開課期間，本輪自動略過", is_comp=False)
                                         continue
 
                                 # 點「開始上課」/「進入課程」/「上課去」按鈕（如有）
@@ -4602,8 +5056,13 @@ class AdminEfficiencyPilot:
                                 logger.info(
                                     f"   📝 目前頁面 URL: {self.driver.current_url}"
                                 )
-                                # 💡 若當前依然停留在 /info/ 介紹頁（未能進入教室），不執行無效的測驗掃描
+                                # 💡 若當前依然停留在 /info/ 介紹頁（未能進入教室），先辨識是否下架再決定待查核
                                 if "/info/" in self.driver.current_url:
+                                    unavail_reason = self._detect_unavailable_course_on_info_page()
+                                    if unavail_reason:
+                                        self._record_unavailable_course(c, unavail_reason)
+                                        _emit_course_state(c, CourseStatus.SKIPPED, unavail_reason, "平臺已下架或非開課期間，本輪自動略過", is_comp=False)
+                                        continue
                                     logger.warning(
                                         f"   ⚠️ 課程「{c.get('caption', '')}」尚未載入教室介面（仍在介紹頁），暫緩本次測驗。"
                                     )
@@ -4806,9 +5265,14 @@ class AdminEfficiencyPilot:
                             self.current_idx -= 1
                             continue
 
+                        if res == "DRIVER_LOST":
+                            if not self._try_auto_healing("瀏覽器視窗已關閉或連線中斷"):
+                                break
+                            self.current_idx -= 1
+                            continue
                         if res == "STALLED":
                             logger.warning("🚀 偵測到停滯，正在重新啟動輔助引擎...")
-                            self._cleanup()
+                            self._close_driver_only()
                             if not self.safe_sleep(5):
                                 break
                             if not self.init_engine() or not self.login():
@@ -4849,20 +5313,24 @@ class AdminEfficiencyPilot:
 
                 except Exception as e:
                     logger.error(f"⚠️ 核心迴圈發生錯誤: {e}")
-                    # 偵測 WebDriver session 失效（Chrome crash / HTTPConnectionPool）
+                    # 偵測 WebDriver session 失效或視窗被關閉（Chrome crash / no such window / HTTPConnectionPool）
                     err_str = str(e)
-                    if (
-                        "HTTPConnectionPool" in err_str
-                        or "Failed to establish a new connection" in err_str
-                        or "session" in err_str.lower()
-                        or "WebDriver" in err_str
-                        or "chrome not reachable" in err_str.lower()
-                    ):
+                    if _is_driver_disconnect_error(err_str):
                         if not self._try_auto_healing(err_str):
                             break
                         continue
                     else:
                         self.safe_sleep(10)
+
+            unavailable = self.__dict__.get("_unavailable_in_session") or {}
+            if unavailable:
+                unavail_previews = "、".join(
+                    f"{item['caption'][:18]}（{item['reason']}）"
+                    for item in unavailable.values()
+                )
+                logger.info(
+                    f"ℹ️ 本次略過 {len(unavailable)} 門平臺已下架／非開課期間課程：{unavail_previews}"
+                )
 
             if self._exam_manual_review:
                 previews = "、".join(

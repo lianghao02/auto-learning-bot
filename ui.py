@@ -1462,7 +1462,7 @@ class PlatformTabPanel(QWidget):
             "• 1. 本機題庫秒殺：本機題庫優先作答（0 耗額）\n"
             "• 2. 人機協同助理：遇未收錄題目彈窗提供一鍵複製 Prompt、手動回貼與 Gemini 一鍵秒答\n"
             "• 3. 跳過測驗：跳過測驗並嘗試完成滿意度問卷調查\n"
-            "• 4. Gemini 批次作答：遇未收錄考卷直接背景呼叫 Gemini 3.1 Flash-Lite 批次解析（1 卷 1 次）"
+            "• 4. Gemini 批次作答：遇未收錄考卷直接背景呼叫 Gemini 3.5 Flash-Lite 批次解析（1 卷 1 次）"
         )
         self.exam_mode_combo.setMinimumWidth(200)
         self.exam_mode_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
@@ -2952,6 +2952,8 @@ class MainWindow(QWidget):
 
         def _dbg(msg):
             try:
+                if os.path.exists(_log_path) and os.path.getsize(_log_path) > 1024 * 1024:
+                    os.replace(_log_path, f"{_log_path}.1")
                 with open(_log_path, "a", encoding="utf-8") as f:
                     f.write(msg + "\n")
             except Exception:

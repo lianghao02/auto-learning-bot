@@ -13,7 +13,7 @@ QUESTIONS = [{
     "index": 1, "name": "q1", "type": "單選", "is_multiple": False, "q_text": "題目",
     "options": [{"label": "A", "text": "甲", "val": "0"}, {"label": "B", "text": "乙", "val": "1"}],
 }]
-CONFIG = {"ai_provider": "Gemini", "ai_api_key": "test-key", "ai_model": "gemini-3.1-flash-lite"}
+CONFIG = {"ai_provider": "Gemini", "ai_api_key": "test-key", "ai_model": "gemini-3.5-flash-lite"}
 
 
 def _http_error(code):
@@ -53,7 +53,11 @@ class AIBatchRetryTests(unittest.TestCase):
         self.assertTrue(result["success"])
         self.assertEqual(result["parsed_answers"], {"q1": "1"})
         models = [c.kwargs["json"]["model"] for c in post.call_args_list]
-        self.assertEqual(models, ["gemini-3.1-flash-lite", "gemini-3.1-flash-lite", "gemini-3.5-flash"])
+        self.assertEqual(models, ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.5-flash"])
+        # Gemini 3.5 Flash-Lite / 3.6+ 不應送出已棄用的 temperature 參數；3.5 Flash 維持相容
+        self.assertNotIn("temperature", post.call_args_list[0].kwargs["json"])
+        self.assertNotIn("temperature", post.call_args_list[1].kwargs["json"])
+        self.assertIn("temperature", post.call_args_list[2].kwargs["json"])
 
     def test_timeout_everywhere_marks_transient(self):
         result, post = self.solve(requests.exceptions.ReadTimeout("slow"))

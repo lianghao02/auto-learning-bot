@@ -122,6 +122,30 @@ class ValidateAiBaseUrlTests(unittest.TestCase):
                 self.assertIsNone(usage_tracker.ping("V2.1.0"))
                 mock_post.assert_not_called()
 
+    def test_usage_tracker_never_overwrites_config_json(self):
+        import usage_tracker
+        from unittest.mock import patch
+
+        with TemporaryDirectory() as temp_dir:
+            cfg_path = Path(temp_dir) / "config.json"
+            original_raw = '{"accounts":[{"account":"u1","password":"p1"}],"settings":{"ai_api_key":"secret"}}'
+            cfg_path.write_text(original_raw, encoding="utf-8")
+            with patch.object(usage_tracker, "_config_path", return_value=cfg_path):
+                dev_id = usage_tracker.get_device_id()
+                self.assertTrue(len(dev_id) >= 16)
+                # config.json 必須分毫不差保留原狀，device_id 獨立寫入 device_id.txt
+                self.assertEqual(cfg_path.read_text(encoding="utf-8"), original_raw)
+                self.assertEqual((Path(temp_dir) / "device_id.txt").read_text(encoding="utf-8").strip(), dev_id)
+
+            # 即使 config.json 暫時損毀或正在寫入中，get_device_id 也絕不覆寫它
+            broken_cfg = Path(temp_dir) / "sub" / "config.json"
+            broken_cfg.parent.mkdir(parents=True, exist_ok=True)
+            broken_cfg.write_text("{partial_json_being_written", encoding="utf-8")
+            with patch.object(usage_tracker, "_config_path", return_value=broken_cfg):
+                dev_id2 = usage_tracker.get_device_id()
+                self.assertTrue(len(dev_id2) >= 16)
+                self.assertEqual(broken_cfg.read_text(encoding="utf-8"), "{partial_json_being_written")
+
     def test_webdriver_missing_chrome_returns_none_without_hardcoded_120(self):
         from unittest.mock import patch
         from utils import webdriver_mgr

@@ -42,7 +42,11 @@ _COURSE_START = (
     re.compile(r"^📖\s*\[(\d+)/(\d+)\]\s*正在協助研習\s*[:：]\s*(.+)$"),
 )
 _QUIZ_DETAIL = re.compile(r"^(✓ \[|\? \[猜\]|📝 作答進度|🎲 |\[DOM\])")
-_DETAIL = re.compile(r"^(SCORM URL:|Player URL:|captcha \[|▶️ (進入|點擊|正式提交)|✅ 單元已完成|\(No symbol\)|Stacktrace|GetHandleVerifier|0x[0-9a-f]+|\w+ \[0x)")
+_DETAIL = re.compile(
+    r"^(SCORM URL:|Player URL:|captcha \[|▶️ (進入|點擊|正式提交)|✅ 單元已完成|\(No symbol\)|Stacktrace|"
+    r"Symbols not available|GetHandleVerifier|\(Session info:|For documentation on this error|"
+    r"0x[0-9a-f]+|\w+ \[0x)"
+)
 _TAG_CATEGORY = {
     "題庫": "bank", "測驗": "quiz", "成績": "quiz", "模組": "course", "掃描": "course",
     "config": "system", "Alert": "system", "驗證碼": "login", "AI批次": "quiz", "AI": "quiz",
@@ -120,6 +124,8 @@ def matches_filter(entry, key):
     if key == "all":
         return True
     if key == "key":
+        if entry.kind == "detail":
+            return False
         return entry.kind in ("header", "card") or entry.level in ("WARNING", "ERROR", "CRITICAL") or (
             entry.kind == "event" and entry.is_success
         )
@@ -214,7 +220,7 @@ class LogFeed:
                 last.repeat += 1
                 last.time = entry.time
                 return FeedUpdate(last, msg, live_changed, merged=True)
-            if entry.level in ("WARNING", "ERROR", "CRITICAL"):
+            if entry.kind != "detail" and entry.level in ("WARNING", "ERROR", "CRITICAL"):
                 self.issue_count += 1
             self.entries.append(entry)
         return FeedUpdate(entry, msg, live_changed)
@@ -249,7 +255,10 @@ class LogFeed:
 
         if _QUIZ_DETAIL.match(msg):
             kind, category = "detail", category or "quiz"
+        elif _DETAIL.match(msg):
+            kind = "detail"
+            category = category or "system"
         else:
-            kind = "detail" if _DETAIL.match(msg) else "event"
+            kind = "event"
         category = category or _category_for(text)
         return LogEntry(stamp, level or _guess_level(text), category, kind, text)

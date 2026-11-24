@@ -229,6 +229,101 @@ class EgovLoginRedirectTests(unittest.TestCase):
         self.assertFalse(ok)
         self.pilot.sync_session.assert_not_called()
 
+    def test_wait_s_main_polls_until_button_appears_and_questionnaire_rejects_timeout(self):
+        fake_btn = Mock()
+        fake_btn.is_displayed.return_value = True
+        calls = {"n": 0}
+
+        def find_elems(_by, selector):
+            calls["n"] += 1
+            if selector == "div.process-btn.pay.active" and calls["n"] >= 4:
+                return [fake_btn]
+            return []
+
+        self.pilot.driver.find_elements.side_effect = find_elems
+        self.pilot.driver.execute_script.return_value = ""
+        with patch("app.time.sleep"):
+            status, btn = self.pilot._wait_s_main_action_or_status(
+                done_keywords=("已通過",),
+                none_keywords=("目前沒有任何測驗",),
+                timeout=5.0,
+            )
+        self.assertEqual(status, "button")
+        self.assertIs(btn, fake_btn)
+
+        # 問卷若只遇 timeout 不可假完課回 True；需明確回 False
+        self.pilot.config = {}
+        self.pilot.driver.current_window_handle = "main"
+        with patch.object(self.pilot, "_wait_s_main_action_or_status", return_value=("timeout", None)):
+            q_ok = self.pilot.auto_questionnaire({"caption": "測試課", "fill": "0", "write_questionnaire": "1"})
+        self.assertFalse(q_ok)
+
+    def test_missing_exam_button_twice_marks_manual_review_to_stop_infinite_rescan(self):
+        self.pilot.config = {"ai_provider": "Gemini", "ai_api_key": ""}
+        self.pilot._answer_map = {"q": {"answer": "1"}}
+        self.pilot.answers = []
+        self.pilot._exam_fail_counts = {}
+        self.pilot._exam_manual_review = {}
+        self.pilot.driver.current_url = "https://scitechvista.elearn.hrd.gov.tw/learn/"
+        self.pilot.driver.current_window_handle = "main"
+        self.pilot.driver.window_handles = ["main"]
+
+        course = {"course_id": "999", "caption": "週日閱讀"}
+        with patch.object(self.pilot, "_wait_s_main_action_or_status", return_value=("timeout", None)):
+            self.assertFalse(self.pilot._auto_exam_attempt(course))
+            self.assertNotIn("999", self.pilot._exam_manual_review)
+            self.assertFalse(self.pilot._auto_exam_attempt(course))
+            self.assertIn("999", self.pilot._exam_manual_review)
+
+    def test_unavailable_info_page_detection_never_overrides_active_entry(self):
+        from app import _match_unavailable_course_reason
+
+        # 只要頁面上還有可用「上課去」入口，就算簡介內文含「已結束」「尚未上架」也不得誤判
+        self.assertIsNone(
+            _match_unavailable_course_reason(
+                "本課程介紹：課程已結束後可領證書，舊版已下架",
+                disabled_labels=["已結束"],
+                has_active_entry=True,
+            )
+        )
+        # 無可用入口且出現明確下架/非開課期間文案
+        self.assertIn(
+            "課程已下架",
+            _match_unavailable_course_reason("很抱歉，本課程已下架，無法進入。", [], has_active_entry=False) or "",
+        )
+        self.assertIn(
+            "非上課期間",
+            _match_unavailable_course_reason("目前非上課期間，請留意開課公告。", [], has_active_entry=False) or "",
+        )
+        # 無可用入口且停用按鈕顯示已結束
+        self.assertIn(
+            "已結束",
+            _match_unavailable_course_reason("課程資訊", ["課程已結束"], has_active_entry=False) or "",
+        )
+        # 無可用入口但也沒有任何下架線索 → 回 None 交給原本待查核防護
+        self.assertIsNone(_match_unavailable_course_reason("課程簡介載入中", [], has_active_entry=False))
+
+    def test_detect_unavailable_course_on_info_page_and_record_skips_manual_review(self):
+        self.pilot.driver.current_url = "https://elearn.hrd.gov.tw/info/10011810"
+        self.pilot.driver.execute_script.return_value = {
+            "hasActiveEntry": False,
+            "disabledLabels": ["已下架"],
+            "bodyText": "精神疾病與家庭暴力議題\n本課程已下架",
+        }
+        self.pilot._completed_in_session = set()
+        self.pilot._exam_manual_review = {}
+        self.pilot._unavailable_in_session = {}
+
+        reason = self.pilot._detect_unavailable_course_on_info_page()
+        self.assertIsNotNone(reason)
+        self.pilot._record_unavailable_course(
+            {"course_id": "10011810", "caption": "精神疾病與家庭暴力議題"},
+            reason,
+        )
+        self.assertIn("10011810", self.pilot._completed_in_session)
+        self.assertIn("10011810", self.pilot._unavailable_in_session)
+        self.assertNotIn("10011810", self.pilot._exam_manual_review)
+
 
 if __name__ == "__main__":
     unittest.main()

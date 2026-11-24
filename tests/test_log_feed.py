@@ -157,6 +157,56 @@ class TaipeiQuizFlowTests(unittest.TestCase):
         self.assertFalse(stats["score_unknown"])
         self.assertEqual(submits, 3)
 
+    def test_cloud_sync_disabled_prints_local_only_instead_of_sync_warning(self):
+        import io
+        from contextlib import redirect_stdout
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            score, is_100 = self.run_quiz("分數 得100.00分(滿分為100.00分)", None)[0]
+        output = buf.getvalue()
+        self.assertTrue(is_100)
+        self.assertIn("雲端共用題庫同步已停用，僅保留本機題庫", output)
+        self.assertNotIn("本次共用同步未確認成功", output)
+
+    def test_thread_bound_router_writes_to_pilot_file_handler(self):
+        import logging
+        import tempfile
+        import threading
+        from pathlib import Path
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        from app import ThreadBoundUILogHandler
+
+        with tempfile.TemporaryDirectory() as tmp:
+            log_file = Path(tmp) / "debug_egov.log"
+            fh = logging.FileHandler(log_file, mode="w", encoding="utf-8")
+            try:
+                fh.setFormatter(logging.Formatter("%(levelname)s - %(message)s"))
+                ui_handler = Mock()
+                stub_pilot = SimpleNamespace(ui_handler=ui_handler, file_handler=fh)
+                tid = threading.get_ident()
+                router = ThreadBoundUILogHandler()
+                ThreadBoundUILogHandler.register(tid, stub_pilot)
+                try:
+                    rec = logging.LogRecord("LearningPilot", logging.INFO, __file__, 1, "測試 E 政府落地日誌", (), None)
+                    router.emit(rec)
+                    fh.flush()
+                finally:
+                    ThreadBoundUILogHandler.unregister(tid)
+
+                ui_handler.emit.assert_called_once()
+                self.assertIn("測試 E 政府落地日誌", log_file.read_text(encoding="utf-8"))
+            finally:
+                fh.close()
+
+    def test_selenium_session_info_detail_is_not_classified_as_login(self):
+        feed = LogFeed()
+        entry = feed.add("13:15:04 [WARNING] (Session info: chrome=157.0.8103.80); For documentation...").entry
+        self.assertEqual(entry.kind, "detail")
+        self.assertEqual(entry.category, "system")
+        self.assertFalse(matches_filter(entry, "key"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -269,7 +269,7 @@ AI_SINGLE_TIMEOUT = 20                # 單題請求逾時秒數
 AI_RETRY_DELAYS = (5, 15)             # 暫時性錯誤的重試間隔（秒）
 AI_DEFAULT_MODELS = {
     "OpenAI": "gpt-4o-mini",
-    "Gemini": "gemini-3.1-flash-lite",
+    "Gemini": "gemini-3.5-flash-lite",
     "Claude": "claude-haiku-4-5",
     "Groq": "llama-3.1-8b-instant",
 }
@@ -281,11 +281,23 @@ AI_DEFAULT_BASE_URLS = {
 }
 AI_FALLBACK_MODELS = {
     "OpenAI": "gpt-4o",
-    "Gemini": "gemini-3.5-flash",
+    "Gemini": "gemini-3.6-flash",
     "Claude": "claude-sonnet-4-6",
     "Groq": "llama-3.3-70b-versatile",
 }
+# 跨節點備援鏈：當單一 Gemini 節點發生 HTTP 503 過載或逾時時，依序改打不同 GA 模型節點。
+AI_FALLBACK_CHAINS = {
+    "Gemini": ("gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.1-flash-lite"),
+}
 _TRANSIENT_HTTP = {500, 502, 503, 504}
+
+
+def _model_omits_temperature(provider: str, model_name: str) -> bool:
+    """Gemini 3.5 Flash-Lite / 3.6+ 官方已棄用 temperature，發送請求時應省略。"""
+    if provider != "Gemini":
+        return False
+    m = str(model_name or "").strip().lower()
+    return m.startswith(("gemini-3.5-flash-lite", "gemini-3.6", "gemini-3.7", "gemini-3.8", "gemini-4"))
 
 
 class _AIRateLimited(Exception):
@@ -328,10 +340,10 @@ def _resolve_ai_settings(config: dict | None) -> tuple[str, str, str, str]:
     default_url = AI_DEFAULT_BASE_URLS.get(provider, AI_DEFAULT_BASE_URLS["Gemini"])
     raw_url = cfg.get("ai_base_url") or default_url
     base_url = validate_ai_base_url(provider, raw_url)
-    default_model = AI_DEFAULT_MODELS.get(provider, "gemini-3.1-flash-lite")
+    default_model = AI_DEFAULT_MODELS.get(provider, "gemini-3.5-flash-lite")
     model = str(cfg.get("ai_model") or default_model).strip() or default_model
-    if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5")):
-        model = "gemini-3.1-flash-lite"
+    if provider == "Gemini" and any(v in model for v in ("gemini-2.0", "gemini-1.5", "gemini-2.5", "gemini-3.1-flash-lite")):
+        model = "gemini-3.5-flash-lite"
     return provider, api_key, base_url, model
 
 
@@ -402,19 +414,31 @@ def request_ai_completion(
             resp = requests.post(f"{base_url}/messages", headers=headers, json=claude_payload, timeout=timeout)
             resp.raise_for_status()
             return resp.json()["content"][0]["text"].strip()
+        req_payload = {**base_payload, "model": use_model}
+        if _model_omits_temperature(provider, use_model):
+            req_payload.pop("temperature", None)
         resp = requests.post(
             f"{base_url}/chat/completions",
             headers=headers,
-            json={**base_payload, "model": use_model},
+            json=req_payload,
             timeout=timeout,
         )
         resp.raise_for_status()
         return resp.json()["choices"][0]["message"]["content"].strip()
 
     # 暫時性錯誤（503 過載、逾時、連線中斷）才重試；401／429 等不重試，避免浪費額度
-    plan = [(model, 0), (model, AI_RETRY_DELAYS[0])]
-    fallback = AI_FALLBACK_MODELS.get(provider)
-    plan.append((fallback if fallback and fallback != model else model, AI_RETRY_DELAYS[1]))
+    chain = [m for m in AI_FALLBACK_CHAINS.get(provider, ()) if m and m != model]
+    if chain:
+        second_model = chain[0]
+        third_model = chain[1] if len(chain) > 1 else chain[0]
+        plan = [(model, 0), (second_model, AI_RETRY_DELAYS[0]), (third_model, AI_RETRY_DELAYS[1])]
+    else:
+        fallback = AI_FALLBACK_MODELS.get(provider)
+        plan = [
+            (model, 0),
+            (model, AI_RETRY_DELAYS[0]),
+            (fallback if fallback and fallback != model else model, AI_RETRY_DELAYS[1]),
+        ]
 
     try:
         last_exc = None
@@ -1032,8 +1056,11 @@ def do_quiz_with_bank(driver, wait, course_id, quiz_view_url, config=None, cours
                 record.update({f'opt{i}': q['options'][tokens[i]] if i < len(tokens) else '' for i in range(4)})
                 to_save.append(record)
         if to_save:
-            if gas_save_questions(course_id, to_save, course_name=course_name, username=username, config=config) is True:
+            saved = gas_save_questions(course_id, to_save, course_name=course_name, username=username, config=config)
+            if saved is True:
                 print(f'  [題庫] 本次成功同步共用題庫 {len(to_save)} 題')
+            elif not _is_cloud_sync_enabled(config):
+                print(f'  [題庫] 雲端共用題庫同步已停用，僅保留本機題庫（{len(to_save)} 題）。')
             else:
                 print('  [題庫] 本次共用同步未確認成功，不影響已取得的測驗結果。')
         if passed is True:

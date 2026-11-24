@@ -374,12 +374,50 @@ def do_login(driver, wait, username='', password=''):
 
     return False
 
+def _is_taipei_login_page(driver):
+    """偵測瀏覽器是否因 Session 逾時被導向臺北E大登入頁。"""
+    try:
+        url = str(getattr(driver, 'current_url', '') or '').lower()
+        if '/mpage/login' in url or '/login/index.php' in url or url.rstrip('/').endswith('/login'):
+            return True
+        if driver.find_elements(By.CSS_SELECTOR, 'input#pid') and driver.find_elements(By.CSS_SELECTOR, 'input#password'):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _relogin_taipei_session(driver, wait, config=None, *, reason='Session 已逾時'):
+    """偵測到登入逾時時重新登入並重建 Moodle SSO 工作階段（僅在有帳密時執行）。"""
+    cfg = config or {}
+    username = cfg.get('account') or cfg.get('username') or ''
+    password = cfg.get('password') or ''
+    if not username or not password:
+        return False
+    try:
+        print(f'  🔄 {reason}，正在自動重新登入臺北E大以恢復工作階段...')
+        active_wait = wait or WebDriverWait(driver, 20)
+        if not do_login(driver, active_wait, username=username, password=password):
+            print('  ⚠️ 自動重新登入臺北E大失敗')
+            return False
+        driver.get('https://elearning.taipei/mpage/sso_moodle?redirectPage=courserecord')
+        time.sleep(3)
+        print('  ✅ 已重新登入臺北E大並恢復工作階段')
+        return True
+    except Exception as e:
+        print(f'  ⚠️ 自動重新登入臺北E大異常: {e}')
+        return False
+
+
 # 課程清單
 
-def get_course_list(driver, wait):
+def get_course_list(driver, wait, config=None, _relogin_attempted=False):
     """讀取課程清單，回傳課程 list；首頁無法讀取時回傳 ``None``。"""
     driver.get('https://elearning.taipei/mpage/sso_moodle?redirectPage=courserecord')
     time.sleep(3)
+    if not _relogin_attempted and _is_taipei_login_page(driver):
+        if _relogin_taipei_session(driver, wait, config, reason='課程清單頁偵測到登入逾時'):
+            return get_course_list(driver, wait, config=config, _relogin_attempted=True)
     try:
         btn = wait.until(EC.element_to_be_clickable(
             (By.XPATH, '//button[contains(text(),"更新我的課程")]')
@@ -447,8 +485,15 @@ def get_course_list(driver, wait):
         if not parsed_page:
             print(f'  [掃描] 頁面 {page_num} 課程表格未讀到有效文字，row_count={last_row_count}')
             # 第一頁一筆都讀不到通常代表 Session 已失效或頁面尚未正確載入。
-            # 不可把這種情況當成「沒有待處理課程」，否則會產生錯誤的完成訊息。
+            # 若已有帳密且本輪尚未重登過，先自動重登並重建 SSO 工作階段再重試一次。
             if page_num == 1:
+                if not _relogin_attempted and _relogin_taipei_session(
+                    driver,
+                    wait,
+                    config,
+                    reason=f'首頁課程清單讀取為空（row_count={last_row_count}），疑似登入逾時',
+                ):
+                    return get_course_list(driver, wait, config=config, _relogin_attempted=True)
                 print('  [錯誤] [掃描] 首頁課程清單讀取失敗，停止本次流程以避免誤判為全部完成。')
                 return None
             break
@@ -587,7 +632,7 @@ def pending_courses_sorted(courses):
     return sorted(pending, key=lambda c: (taipei_course_priority(c), c.get('name', '')))
 
 
-def build_taipei_work_queue(driver, courses):
+def build_taipei_work_queue(driver, courses, wait=None, config=None):
     """Build the Taipei E-da queue with module-aware priority.
 
     The course-record table does not reliably tell whether score "-" means
@@ -603,7 +648,7 @@ def build_taipei_work_queue(driver, courses):
         item = dict(course)
         priority = taipei_course_priority(item)
         if not is_study_incomplete(item) and is_questionnaire_pending(item):
-            modules = get_course_modules(driver, item['href'])
+            modules = get_course_modules(driver, item['href'], wait=wait, config=config)
             item['_modules'] = modules
             if modules.get('quiz_url') and not is_quiz_passed(item):
                 priority = 0
@@ -616,7 +661,7 @@ def build_taipei_work_queue(driver, courses):
 
 # ── 課程模組偵測（quiz / feedback cmid）─────────────────
 
-def get_course_modules(driver, course_href):
+def get_course_modules(driver, course_href, wait=None, config=None, _relogin_attempted=False):
     """
     進入課程頁，掃描所有 mod/quiz 和 mod/feedback 連結。
     回傳 dict:
@@ -634,6 +679,15 @@ def get_course_modules(driver, course_href):
         driver.get(course_href)
         time.sleep(3)
         dismiss_alerts(driver)
+        if not _relogin_attempted and _is_taipei_login_page(driver):
+            if _relogin_taipei_session(driver, wait, config, reason='課程頁偵測到登入逾時'):
+                return get_course_modules(
+                    driver,
+                    course_href,
+                    wait=wait,
+                    config=config,
+                    _relogin_attempted=True,
+                )
 
         # 從 URL 抓 course_id（支援 course/view.php?id=XXX 或 courserecord 頁）
         m = re.search(r'course[/=](\d+)', driver.current_url)
@@ -643,8 +697,9 @@ def get_course_modules(driver, course_href):
             result['course_id'] = int(m.group(1))
 
         # 掃描頁面上的特定完成條件（例如「閱讀時間達36分鐘以上」、「測驗分數達80分以上」）
+        body_txt = ''
         try:
-            body_txt = driver.find_element(By.TAG_NAME, 'body').text
+            body_txt = driver.find_element(By.TAG_NAME, 'body').text or ''
             recorded = re.search(r'修課時間\s*[:：]\s*(\d+:\d{2}:\d{2})', body_txt)
             if recorded:
                 result['study'] = recorded.group(1)
@@ -673,6 +728,24 @@ def get_course_modules(driver, course_href):
                 # 已確認為 SCORM，僅排除明確標示補充教材者，不以課名「簡報」誤擋。
                 if '補充教材' not in txt:
                     result['scorm_url'] = href
+
+        if (
+            not _relogin_attempted
+            and not result['course_id']
+            and not result.get('study')
+            and not result.get('scorm_url')
+            and not result['quiz_url']
+            and not result['fb_url']
+            and any(kw in body_txt for kw in ('尚未登入', '請先登入', '登入逾時', '會員登入'))
+        ):
+            if _relogin_taipei_session(driver, wait, config, reason='課程頁顯示未登入狀態'):
+                return get_course_modules(
+                    driver,
+                    course_href,
+                    wait=wait,
+                    config=config,
+                    _relogin_attempted=True,
+                )
 
         scorm_disp = result.get('scorm_url') or '無直連'
         print(f'  [模組] course_id={result["course_id"]} scorm={scorm_disp} quiz={result["quiz_url"]} fb={result["fb_url"]}')
@@ -723,6 +796,11 @@ def get_scorm_player_url(driver, wait, course_url, config=None, modules=None):
         print('  ⚠️ 臺北E大發出多重視窗警告，嘗試重新登入重置 Session...')
         if not recover_from_multi_window_lock(driver, wait, course_url, config):
             return None
+    elif _is_taipei_login_page(driver):
+        if _relogin_taipei_session(driver, wait, config, reason='進入教材頁時偵測到登入逾時'):
+            driver.get(course_url)
+            time.sleep(3)
+            dismiss_alerts(driver)
 
     def current_is_player():
         url = driver.current_url or ''
@@ -1304,13 +1382,18 @@ def _is_pid_alive(pid):
         pid = int(pid)
         if pid <= 0:
             return False
-        os.kill(pid, 0)
-        return True
+        import psutil
+        if not psutil.pid_exists(pid):
+            return False
+        try:
+            return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return psutil.pid_exists(pid)
     except Exception:
         return False
 
 def _acquire_taipei_run_lock():
-    lock_path = os.path.join(os.path.dirname(__file__), ".taipei_eda_course.lock")
+    lock_path = str(user_data_path(".taipei_eda_course.lock", migrate=False))
     try:
         if os.path.exists(lock_path):
             try:
@@ -1450,11 +1533,11 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
         time.sleep(4)
 
         print('\n=== 掃描課程清單 ===')
-        courses = get_course_list(driver, wait)
+        courses = get_course_list(driver, wait, config=config)
         if courses is None:
             print('❌ 無法確認臺北E大課程清單，已停止本次流程；請確認登入狀態後再試。')
             return False
-        incomplete = build_taipei_work_queue(driver, courses)
+        incomplete = build_taipei_work_queue(driver, courses, wait=wait, config=config)
 
         print(f'  課程總數: {len(courses)} 筆，待處理: {len(incomplete)} 筆')
         if not incomplete:
@@ -1483,7 +1566,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
             print(f'\n{"="*60}')
             print(f'處理: {course["name"]}')
 
-            modules = course.pop('_modules', None) or get_course_modules(driver, course['href'])
+            modules = course.pop('_modules', None) or get_course_modules(driver, course['href'], wait=wait, config=config)
             course_id = modules.get('course_id')
             if not course_id:
                 m = re.search(r'id=(\d+)', course['href'] or '')
@@ -1531,7 +1614,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 # 本機等待時間不代表平台已入帳；離開教材後回課程頁確認。
                 study_confirmed = False
                 for record_attempt in range(2):
-                    refreshed = get_course_modules(driver, course['href'])
+                    refreshed = get_course_modules(driver, course['href'], wait=wait, config=config)
                     if not refreshed.get('study'):
                         print('  ⚠️ 無法讀取平台修課時間，不以本機計時宣告達標。')
                         break
@@ -1600,7 +1683,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
                 _report_state(CourseStatus.SURVEY, "測驗流程完成，進行課程滿意度問卷", "自動選取滿意選項並送出")
                 if not fb_url:
                     print('  重新掃描 feedback URL...')
-                    modules2 = get_course_modules(driver, course['href'])
+                    modules2 = get_course_modules(driver, course['href'], wait=wait, config=config)
                     fb_url = modules2.get('fb_url')
 
                 if fb_url:
@@ -1695,7 +1778,7 @@ def run_taipei_eda(config_override=None, should_continue=None, log_callback=None
 
 
         print('\n=== 最終課程狀態 ===')
-        courses_final = get_course_list(driver, wait)
+        courses_final = get_course_list(driver, wait, config=config)
         if courses_final is None:
             print('⚠️ 無法重新讀取最終課程清單，不能宣告全部完成。')
             return False

@@ -39,23 +39,36 @@ def _config_path() -> Path:
     return user_data_path("config.json")
 
 
+def _device_id_path() -> Path:
+    return _config_path().with_name("device_id.txt")
+
+
 def get_device_id() -> str:
-    path = _config_path()
-    data = {}
+    """取得匿名裝置識別碼；獨立存放於 device_id.txt，絕不覆寫 config.json 以保護使用者帳密與金鑰。"""
+    id_path = _device_id_path()
     try:
-        if path.exists():
-            data = json.loads(path.read_text(encoding="utf-8"))
+        if id_path.is_file():
+            existing = id_path.read_text(encoding="utf-8").strip()
+            if existing:
+                return existing
     except Exception:
-        data = {}
+        pass
 
-    device_id = str(data.get("usage_device_id") or "").strip()
-    if device_id:
-        return device_id
-
-    device_id = uuid.uuid4().hex
+    # 向後相容：唯讀讀取舊版存於 config.json 的 usage_device_id（絕不回寫 config.json）
+    cfg_path = _config_path()
+    legacy_id = ""
     try:
-        data["usage_device_id"] = device_id
-        write_json_atomically(path, data)
+        if cfg_path.is_file():
+            data = json.loads(cfg_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                legacy_id = str(data.get("usage_device_id") or "").strip()
+    except Exception:
+        legacy_id = ""
+
+    device_id = legacy_id or uuid.uuid4().hex
+    try:
+        id_path.parent.mkdir(parents=True, exist_ok=True)
+        id_path.write_text(device_id, encoding="utf-8")
     except Exception:
         pass
     return device_id
@@ -99,6 +112,8 @@ def _post(payload: dict) -> dict | None:
 
 
 def ping(version: str, screen: str = "entry", login_type: str = "") -> dict | None:
+    if not is_cloud_sync_enabled():
+        return None
     payload = {
         "action": "usage_ping",
         "device_id": get_device_id(),
@@ -113,6 +128,8 @@ def ping(version: str, screen: str = "entry", login_type: str = "") -> dict | No
 
 
 def fetch_stats(version: str = "") -> dict | None:
+    if not is_cloud_sync_enabled():
+        return None
     payload = {
         "action": "usage_stats",
         "device_id": get_device_id(),

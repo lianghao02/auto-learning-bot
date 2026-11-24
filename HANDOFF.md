@@ -3,88 +3,44 @@
 ## 核心元資料 (Metadata)
 - **Repository**：lianghao02/auto-learning-bot
 - **Branch**：main
-- **Commit SHA**：`442fd124`（V2.2.0 發布提交與 tag `V2.2.0`；前版 V2.1.0 基準 `930af2cb`）
+- **Commit SHA**：`5cefc669`（V2.2.0 後文件基準；工作目錄含 V2.2.1 候選維護修補待提交）
 - **Skill Version**：lianghao-development v1.0.0
-- **Task Type**：RELEASE
+- **Task Type**：FIX
 - **Local Path Hint**：07_auto-learning-bot
 
 ---
 
 ## 目前狀態
-2026-11-19：已發布 **V2.2.0**（雙平臺測驗政策與 AI 批次解題強化、`utils/security.py`／`usage_tracker.py` 安全防護、新增 `test_ai_batch_solver.py` 與 `test_egov_entry_and_usage.py` 回歸測試及可攜式發行）；目前依 `IMPROVEMENTS.md` 維持維護狀態。以下保留 V2.1.0 詳細交接脈絡。
+2026-11-24：基於 **V2.2.0** 實機執行日誌回饋與全專案 AUDIT 健檢，完成雙平臺穩定性、Gemini 3.5 Flash-Lite 升級與安全防線修補（尚未 commit，待使用者確認是否提交或發布 V2.2.1）。
 
-2026-10-30：已發布 V2.1.0（commit、annotated tag、GitHub Release 與可攜版 ZIP/SHA-256）。內容為前述雙平臺答題政策、冒險日誌、Q 版工作台與 AI 中斷防護。
-
-## 本輪目標
-依使用者要求，讓臺北 E 大與 e 等採相同答題原則：完整讀題、題庫優先、缺題補答、未及格覆核、漏答不交卷、未知成績不重考、確認完成才結算。保留各自登入、課程導覽與 DOM 操作。
-
-## 基準與已確認事實 (Baseline & Confirmed Facts)
-- 本輪承接前輪未提交的雙平臺整合、入口、用量與測試隔離修正，均為本對話已授權成果，完整保留。
-- 使用者截圖的臺北 E 大測驗有 20 題、7 題未回答，對應同次日誌只讀 13 題；課程頁顯示 50 分、門檻 80 分。
-- 原臺北 E 大只讀 radio；題庫全命中後未及格也不會切換 AI，且摘要把未及格計為完成。
-- 原正式 SCORM 連結可能因課名含「簡報」被排除；隔離重現已確認。
-- 前輪 e 等教室入口多步確認、跨重考 API 累計及 school_hash 訊息修正承接。
-
-## 已完成 (Completed)
-- 後續正式實測回報：課程 3597 本機計時 126 分鐘，平台只記錄 01:48:41，期間有多重視窗警告；課程 806 的部分複選實為文字輸入欄位。
-- 新增數字代號複選簡答：辨識依序編號選項，沿用題庫／AI 批次覆核，填入排序且無分隔的代號（例如 124），讀回驗證並支援審閱正解回存。未辨識的一般文字題繼續阻擋。
-- 平台修課時間支援 HH:MM:SS；研習後回課程頁核對正式入帳，不足時最多補課一次，仍不足或讀不到則保留待處理、不進行結案。遇多重視窗警告停止本課，不把後續等待算有效上課；本機達標訊息明確標為預估待平台確認。
-- 新增 utils/quiz_policy.py：集中三次上限、缺答／重考覆核、答案有效性、交卷完整性、三態成績與完成判定。
-- 臺北 E 大支援 radio／checkbox，保留每題控制項名稱與值；選項依文字對應，複選讀回完整集合驗證。
-- 導覽列題數與讀取題數不符、特殊題型或漏答時停止交卷；交卷摘要出現未回答警告也停止確認。
-- 題庫未及格且啟用 AI 時，每次重考一批覆核；AI 中斷或只回部分答案不沿用舊錯答、不猜答。
-- 審閱頁支援分行成績與答對／答錯標記；必要時回同課程頁查測驗分數，仍未知則待人工確認。
-- 僅回寫逐題已驗證答案或整卷滿分答案；恢復滿分 AI 答案的本機學習，複選以文字 JSON 保存。GAS 409 等失敗不再誤報成功同步。
-- e 等採相同缺答／覆核與完整性門檻；自動及人機協同均驗證勾選；移除自動猜答，未知成績不增加失敗次數，AI 中斷未交卷不倒扣先前失敗次數。
-- 跳過、未及格與未知狀態不增加完成門數；e 等上課後測驗未完成不再回報 SUCCESS；未知成績摘要不再顯示無測驗。
-- 正式 SCORM 不因課名「簡報」被誤擋；保留補充教材與非上課資源的排除。
-- 原有成績安全、日誌、主題、AI 重試備援與本地 fork 維護成果繼承，不更換 Selenium。
-
-- 後續補強最後確認視窗的漏答警告、人機協同缺答借用舊勾選的漏洞。
-- 共用成績證據判讀：不以及格門檻或操作說明推定成績，8/10 正規化為 80 分；零分母未知。既有 AI 覆核防護完整回歸。
-- 有問卷入口但完成狀態未知、有測驗卻缺課程識別碼均不視為免除；內部仍未確認完成的課程不因最終清單缺少資訊而消失。
-- SQLite 寫入以交易處理，成功後才更新記憶體與宣告同步；部分寫入失敗會回復交易，不污染記憶體。
+## 本輪已完成修補 (Completed)
+1. **e 等公務園登入、彈窗、下架課與測驗／問卷完整性**：
+   - 支援我的E政府跨站 SSO 長時間跳轉等待與平臺 Fancybox 公告彈窗自動關閉。
+   - 新增 `_wait_s_main_action_or_status()` 輪詢等待 `s_main` 框架載入；問卷逾時與必填 Alert 均回傳 `False`，不假宣告完課；連續 2 次找不到「進行測驗」按鈕標記待查核避免無限重抓。
+   - 新增 `_detect_unavailable_course_on_info_page()`：於 `/info/` 介紹頁即時判讀平臺已下架／非上課期間課程（以無可用上課入口為前提防止誤殺），免除 15 秒空等並獨立摘要，不污染測驗待查核清單。
+   - 測驗題庫預驗與模糊比對收緊：送 AI 前以 `_can_resolve_exam_answer()` 預驗題庫答案是否能對應當前頁面選項，無法對應者自動改納 AI 批次覆核；`_find_answer()` 模糊門檻提高至 `0.90`，強制檢查否定詞簽章一致且禁止單／多選題模糊配至純是非題。
+   - 交卷結果頁未顯示單次分數時，自動回 `s_main` 測驗清單複查是否「已通過」（確認通過即接續填問卷；無滿分證據仍不寫入題庫）；抓正解僅限明確不及格且改用瀏覽器同源 `fetch` 根除跨分站 `school_hash` 衝突。
+2. **Gemini 模型與備援鏈升級**：
+   - 預設主模型升級至 `gemini-3.5-flash-lite`（舊設定自動平滑升級），跨節點備援鏈為 `gemini-3.5-flash-lite` → `gemini-3.6-flash` → `gemini-3.5-flash`，並對 3.5-flash-lite／3.6+ 自動省略已棄用的 `temperature` 參數。
+3. **臺北 E 大長時數 Session 逾時自動恢復與執行鎖強化**：
+   - `get_course_list()`、`get_course_modules()` 與 `get_scorm_player_url()` 偵測到登入逾時重導或首頁 `row_count=0` 時，自動重新登入並重建 `sso_moodle` 工作階段重試一次（單次上限）。
+   - `.taipei_eda_course.lock` 移至 `data/` 目錄並改用 `psutil.pid_exists()` 取代 `os.kill(pid, 0)`。
+4. **系統可靠性、資料安全與日誌治理**：
+   - `usage_tracker.py` 將 `device_id` 獨立存於 `data/device_id.txt`，未開啟雲端同步時直接略過，徹底消除背景心跳讀寫例外覆寫 `config.json`（帳密與金鑰）之風險。
+   - 拆出 `_close_driver_only()` 供 `_try_auto_healing()` 與停滯重啟使用，保留 `self.running` 與日誌 Handler；補齊 `no such window` 視窗關閉自動恢復。
+   - 修復 `app.py` 備援題庫未定義 `base_dir` 之 `NameError`、`_update_db_from_gas()` 補齊 `GLOBAL_DB_LOCK` 與 `closing()`、`debug_*.log` 延後至 `run()` 建立（消除 0 bytes 空檔）並剝除 ANSI 色碼、弱參考集中管理 `atexit`/`signal`、`update_debug.log` 增加 1MB 輪替、`log_feed.py` 排除 WebDriver stacktrace 灌水 `issue_count`。
 
 ## 異動檔案 (Changed Files)
-- 共用與產品：utils/quiz_policy.py（新增）、app.py、quiz_bank.py、taipei_eda_course.py、utils/course_dashboard.py。
-- 測試：tests/test_taipei_text_and_time.py（後續新增）、tests/test_quiz_safety_boundaries.py（本輪新增）、tests/test_quiz_policy.py（前輪新增）、tests/test_egov_entry_and_usage.py（前輪新增）、test_ai_batch_solver.py、test_ai_outage_handling.py、test_log_feed.py、test_taipei_scan_safety.py。
-- 工具與文件：tools/quiz_policy_qa.py（新增）、IMPLEMENTATION_PLAN.md（新增）、docs/upstream-maintenance.md、HANDOFF.md。
-
-## 刻意未修改 (Do Not Do / Deliberately Omitted)
-未修改帳密、API Key、版本號、既有可攜版成品或正式平台資料；未登入正式課程、呼叫正式 AI、寫遠端題庫或交卷。三次上限與動態及格門檻保留。
-
-## 尚未完成 (Remaining Work)
-- **P1 (阻斷/必須)**：無已知本機實作阻斷。
-- **P2 (重要/當次)**：本機實作與必要驗證完成。
-- **P3 (改善建議/暫緩)**：使用者以來源版重跑臺北 E 大兩門與 e 等三門待處理課程；新增複選簡答與平台時數核對後仍需正式課程驗收；未知題型、跨頁題目或平台權限問題依明確待人工狀態處理，不擴大無限重試。
+- 核心程式：`app.py`、`quiz_bank.py`、`taipei_eda_course.py`、`ui.py`、`usage_tracker.py`、`utils/log_feed.py`。
+- 測試：`tests/test_ai_outage_handling.py`、`tests/test_egov_entry_and_usage.py`、`tests/test_log_feed.py`、`tests/test_quiz_safety_boundaries.py`、`tests/test_security.py`、`tests/test_taipei_scan_safety.py`。
+- 文件：`HANDOFF.md`（另 `00_Dev-Control-Center/IMPROVEMENTS.md` 同步更新版本紀錄）。
 
 ## 驗證結果 (Validation)
-### 已執行測試與結果
-- embedded Python：python -B -m unittest discover -s tests -q，164/164 通過。
-- 雙平臺政策與安全回歸共 39 項（另承接入口／用量 14 項）；涵蓋題庫錯答後 AI 覆核、AI 缺答不送卷、三次上限、未知成績、漏讀／漏填、摘要阻擋、409 失敗、未及格不計完成與複選文字存取。
-- 既有 Chrome 155 + Selenium 執行 tools/quiz_policy_qa.py：22/22 離線情境通過。包括 13 單選 + 7 複選共 20 題、複選勾選讀回、摘要未答阻擋、審閱正解、e 等 13/20 阻擋及 20/20 通過、簡報 SCORM 保留；另驗證末段確認視窗漏答、人機協同舊勾選、規則文字不當成績與實得比例分數。
-- 語法、git diff --check、新增內容敏感資料掃描通過。
-- 本機配額維持 3；Driver SHA256 維持 A53211711E0B86AB1A807D656E2008035C70478F835A463F1ED834E4680B0AEA。
-### 尚未驗證項目
-- 正式平台端到端與重新打包；不將離線 fixture 視為正式三門／兩門課已完成。
-- embedded Python 未安裝 pytest，沿用 unittest；未新增相依套件。
-### 已知風險 (Known Risks)
-- 未知題型或題目分頁未完整讀取時會停止交卷，保留待處理；不宣稱所有平台題型已支援。
-- 臺北 E 大多重視窗造成入帳中斷的根因尚未確認；警告會安全停止，不嘗試繞過平台限制。
-- 臺北 E 大成績回課程頁查核仍依平台更新速度與可見資訊；school_hash 根因尚未實測確認。
-- 同時執行兩平臺時，共用每日用量差額可能包含另一平臺呼叫，不能當作官方帳務。
+- `python_embed\python.exe -B -s -W error -m py_compile`：全數修改檔零警告通過。
+- `pwsh -NoProfile -File setup_and_run.ps1 -CheckOnly`：通過（Python 3.13.0，套件相依完整）。
+- `pwsh -NoProfile -File scripts/run_tests.ps1`：全套 `unittest` 100% 通過（193 項測試）。
+- `git diff --check`：通過。
 
-## Git 狀態
-- Commit：`chore(release): 發布 V2.1.0 ...`，SHA 以 `git log -1` 為準。
-- Push：是（main 與 tag V2.1.0）。
-- Working Tree：Clean。
-- Branch：main。
-
-## 下一步建議動作 (Next Recommended Action)
-既有使用者啟動後會收到 V2.1.0 更新通知；請以正式課程驗收：臺北 E 大完整讀題與漏答阻擋、AI 缺題覆核、e 等 AI 重試與延後重考、研習時數入帳核對。正式課程若仍失敗，依新日誌與題型檢查，不把未完成標為完成。
-
-## 發布狀態 (Release Status)
-V2.1.0 已發布。
-- 附件：`AdminEfficiencyPilot_V2.1.0_Portable.zip`（SHA-256：`3071ee99041f3f93d63d9c026c78099a796bd67593f08fb56c208022abc60319`）與 `.sha256`。
-- 發布前驗證：unittest 164/164 通過；`check_release_versions.py 07` 為 OK；ZIP 不含 config.json、questions.db、日誌與本機路徑；於含中文與空白的路徑解壓後，embedded runtime 可載入全部模組並建立主視窗（offscreen）。
-- 尚未驗證：正式平台端到端、實機 125% DPI。
+## Git 狀態與下一步建議動作
+- **Branch**：`main`（尚未 commit / push，保留供使用者實機驗收）。
+- **下一步建議**：實機執行雙平臺確認剛交卷之兩門課問卷補填與整體流程順暢後，可提交變更並依需求打包發布 `V2.2.1`。
