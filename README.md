@@ -1,6 +1,6 @@
 # 行政效能領航員（Admin Efficiency Pilot）
 
-[![Version](https://img.shields.io/badge/version-V2.2.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.2.0)
+[![Version](https://img.shields.io/badge/version-V2.3.0-blue.svg)](https://github.com/lianghao02/auto-learning-bot/releases/tag/V2.3.0)
 [![Python](https://img.shields.io/badge/Python-3.13-green.svg)](https://www.python.org/)
 [![Driver](https://img.shields.io/badge/Driver-Selenium-purple.svg)](https://www.selenium.dev/)
 [![Tests](https://img.shields.io/badge/tests-project%20runner-blue.svg)](scripts/run_tests.ps1)
@@ -24,7 +24,7 @@
 
 1. 前往 **[GitHub Releases 最新發行頁面](https://github.com/lianghao02/auto-learning-bot/releases/latest)**。
 2. 在 **Assets** 區塊點擊下載：
-   👉 **`AdminEfficiencyPilot_V2.2.0_Portable.zip`**
+   👉 **`AdminEfficiencyPilot_V2.3.0_Portable.zip`**
 3. **解壓縮**：將下載的 ZIP 壓縮檔完整解壓縮至本機任意資料夾（建議放置於桌面或非系統槽，避免路徑權限問題）。
 4. **啟動**：進入解壓縮後的資料夾，直接雙擊 **`行政效能領航員.exe`**（自帶專屬圖示，點擊直接啟動，無 CMD 黑窗）；亦可雙擊 **`啟動程式.bat`**。
    - 💡 可雙擊 **`建立桌面捷徑.bat`** 一鍵在桌面建立專屬圖示捷徑。
@@ -60,6 +60,12 @@
    若選擇略過測驗，程式檢查並嘗試接續處理問卷；是否可填問卷、是否取得時數仍依平臺規則與成績判定，需自行回平臺確認。
 
 ---
+
+## 🌟 V2.3.0 雙平臺穩定性強化、架構模組化與可攜版瘦身
+
+- ⚡ **Gemini 3.5 Flash-Lite 升級與備援鏈**：預設主模型升級至 `gemini-3.5-flash-lite`，遇 503／逾時自動切換 `gemini-3.6-flash` → `gemini-3.5-flash` 並相容新模型參數規範。
+- 🛡️ **雙平臺實戰修復與資安防護**：支援我的E政府跨站 SSO 等待、下架課即時判讀、題庫預驗與同源 `fetch` 抓正解、臺北 E 大長時數自動重登、獨立 `device_id.txt` 防覆寫 `config.json`，以及自癒重啟狀態保護。
+- 📦 **架構模組化與套件瘦身**：將 `ui.py` 與 `app.py` 拆分為 `ui_parts/` 與 `egov/` 專責模組；Qt 改用 `PySide6-Essentials` 移除未使用的附加元件，本機內嵌環境與可攜發行包大幅減肥（`site-packages` 淨減約 `391.5 MB`），介面與操作體驗 100% 不變。
 
 ## 🌟 V2.2.0 雙平臺測驗政策強化與批次解題安全防護
 

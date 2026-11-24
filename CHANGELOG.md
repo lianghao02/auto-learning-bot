@@ -1,6 +1,6 @@
 # 變更紀錄
 
-## 🧪 未發布 (Unreleased)
+## 🏆 [V2.3.0] - 2026-11-24
 
 ### 重點更新
 - **Gemini 3.5 Flash-Lite 升級與跨節點備援**：預設主模型升級至 `gemini-3.5-flash-lite`，遇 503／逾時自動切換 `gemini-3.6-flash` → `gemini-3.5-flash` 並自動省略新版模型已棄用的 `temperature` 參數。

@@ -253,10 +253,10 @@ def _read_local_changelog() -> str:
     except (OSError, UnicodeError):
         pass
     return (
-        "V2.2.0 雙平臺測驗政策強化與安全防護版\n"
-        "• 雙平臺共用答題政策、完整讀題與漏答禁止交卷\n"
-        "• 2D Q 版晴空糖果工作台與冒險日誌\n"
-        "• AI 服務暫時性錯誤重試與中斷延後防護"
+        "V2.3.0 雙平臺穩定性強化與架構瘦身版\n"
+        "• Gemini 3.5 Flash-Lite 升級與跨節點備援鏈\n"
+        "• 雙平臺下架判讀、同源抓正解、長時數重登與自癒修復\n"
+        "• ui_parts / egov 模組化架構與 PySide6-Essentials 瘦身"
     )
 
 
