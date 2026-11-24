@@ -7,6 +7,7 @@
 - **e 等公務園實戰穩定性強化**：支援我的E政府跨站 SSO 長時跳轉與公告彈窗自動關閉、`/info/` 介紹頁下架／非開課期間即時判讀略過、題庫答案預驗（不符選項自動改交 AI 覆核）、模糊比對否定詞與題型防誤配、交卷無單次分數時回 `s_main` 清單複查「已通過」接續填問卷、同源 `fetch` 擷取正解避免跨分站 `school_hash` 衝突。
 - **臺北 E 大長時數工作階段恢復與執行鎖強化**：清單與模組掃描偵測登入逾時或首頁讀空時自動重登重建 `sso_moodle`（單次上限）；執行鎖移至 `data/` 並改用 `psutil.pid_exists()`。
 - **系統安全與自癒修復**：`usage_tracker.py` 獨立存放 `device_id.txt` 消除覆寫 `config.json` 風險；拆出 `_close_driver_only()` 修復自動重啟自毀執行狀態與日誌管道；修復備援題庫未定義 `base_dir`、補齊背景雲端同步資料庫鎖、延後建立 `debug_*.log` 消除 0 bytes 空檔並剝除 ANSI 色碼、`update_debug.log` 增加 1 MB 輪替。
+- **架構模組化拆分與相依套件瘦身（100% 介面與行為相容）**：將 `ui.py`（3,259 → 957 行）拆分為 `ui_parts/`（`shared.py`、`dialogs.py`、`panels.py`），將 `app.py`（5,392 → 1,369 行）拆分為 `egov/`（`helpers.py`、`question_store.py`、`auth.py`、`exam_survey.py`、`study.py`），原入口與對外符號完整保留；Qt 依賴由整包 `PySide6` 改為 `PySide6-Essentials`（移除未使用的 `PySide6-Addons`，`site-packages` 淨減約 391.5 MB），並同步更新可攜版打包腳本。
 
 ## 🏆 [V2.2.0] - 2026-11-19
 

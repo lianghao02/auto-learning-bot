@@ -143,6 +143,32 @@ class PortableUpdateTests(unittest.TestCase):
         self.assertEqual(info[2], "https://github.example/release")
         self.assertEqual(info[4], "")
 
+    def test_build_portable_release_includes_split_package_dirs_and_slim_qt(self):
+        from scripts import build_portable_release
+
+        project_root = build_portable_release.PROJECT_ROOT
+        expected_dirs = {"egov", "icons", "models", "patches", "ui_parts", "utils"}
+        self.assertTrue(expected_dirs.issubset(set(build_portable_release.APP_DIRS)))
+        for dir_name in expected_dirs:
+            self.assertTrue((project_root / dir_name).is_dir(), f"缺少發行目錄：{dir_name}")
+        for pkg_name in ("egov", "models", "ui_parts", "utils"):
+            self.assertTrue(
+                (project_root / pkg_name / "__init__.py").is_file(),
+                f"套件目錄缺少 __init__.py：{pkg_name}",
+            )
+
+        release_reqs = (project_root / "requirements-release.txt").read_text(encoding="utf-8")
+        self.assertIn("PySide6-Essentials==", release_reqs)
+        self.assertNotIn("PySide6_Addons", release_reqs)
+        self.assertNotIn("PySide6-Addons", release_reqs)
+        for line in release_reqs.splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                self.assertFalse(
+                    stripped.startswith("PySide6=="),
+                    "發行套件清單應使用 PySide6-Essentials 而非整包 PySide6",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

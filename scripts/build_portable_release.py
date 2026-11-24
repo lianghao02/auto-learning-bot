@@ -56,7 +56,7 @@ APP_FILES = (
     "README.md",
     "CHANGELOG.md",
 )
-APP_DIRS = ("icons", "models", "patches", "utils")
+APP_DIRS = ("egov", "icons", "models", "patches", "ui_parts", "utils")
 OPTIONAL_DIRS = ("drivers",)
 
 LAUNCHER = r"""@echo off
@@ -258,7 +258,7 @@ def _prepare_runtime() -> None:
             str(runtime_python),
             "-B", "-s",
             "-c",
-            "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil; import app, quiz_bank, ui",
+            "import PySide6, selenium, requests, cv2, numpy, ddddocr, psutil; import app, egov, quiz_bank, ui, ui_parts",
         ],
         cwd=CURRENT_DIR,
         check=True,

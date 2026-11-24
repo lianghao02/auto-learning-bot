@@ -28,16 +28,16 @@
 ## 模組地圖
 | 檔案 | 職責 | 對應驗證 |
 |---|---|---|
-| app.py | AdminEfficiencyPilot 主協調器、登入、e等課程／測驗／問卷及研習流程 | course_completion_logic、session_refresh、package_enrollment、ai_outage_handling、window_visibility |
+| app.py、egov/ | `app.py` 保留 `AdminEfficiencyPilot` 主協調器與公開相容門面；內部拆分為 `egov/helpers.py`（純函式與代理）、`egov/question_store.py`（題庫與 AI 單題查詢）、`egov/auth.py`（登入、彈窗與自癒）、`egov/exam_survey.py`（自動測驗、交卷判分與問卷）、`egov/study.py`（課程 API、下架判讀與時數迴圈） | course_completion_logic、session_refresh、package_enrollment、ai_outage_handling、window_visibility、egov_entry_and_usage、quiz_safety_boundaries |
 | taipei_eda_course.py | 臺北 E 大課程與 SCORM 流程 | taipei_scan_safety、course_completion_logic |
 | quiz_bank.py | 本地／共用題庫與 AI 答案處理 | ai_batch_solver、quiz_answer_parsing、interactive_quiz_dialog、security |
 | models/course_state.py、utils/course_dashboard.py | 課程狀態與儀表板摘要 | course_state_model、course_dashboard |
 | utils/quiz_policy.py | 雙平臺共用答題政策、答案驗證與交卷門檻；DOM 操作各自維持 | quiz_policy；離線 Chrome：tools/quiz_policy_qa.py |
-| ui.py、utils/office_theme.py | PySide6 工作台與集中配色 | office_theme、interactive_quiz_dialog；介面異動另做 UI QA |
+| ui.py、ui_parts/、utils/office_theme.py | `ui.py` 保留 `ImmersivePage`／`MainWindow` 啟動門面；內部拆分為 `ui_parts/shared.py`（共用樣式與設定橋接）、`ui_parts/dialogs.py`（更新與互動測驗對話框）、`ui_parts/panels.py`（平臺工作台與帳號設定面板）；色票集中於 `utils/office_theme.py` | office_theme、interactive_quiz_dialog；介面異動另做 UI QA |
 | utils/log_feed.py | 雙平台日誌解析與顯示模型 | log_feed |
 | utils/app_paths.py、utils/config_io.py | 路徑、設定與資料庫入口 | app_paths、security |
 | utils/security.py、utils/webdriver_mgr.py | 敏感資料防護、URL 驗證與驅動管理 | security、window_visibility |
-| utils/portable_update.py、scripts/auto_update.ps1 | 可攜版本更新與交接 | portable_update；Windows 更新流程依既有模擬腳本 |
+| utils/portable_update.py、scripts/build_portable_release.py、scripts/auto_update.ps1 | 可攜版本封裝（`PySide6-Essentials` 精簡依賴）、更新與交接 | portable_update；Windows 更新流程依既有模擬腳本 |
 
 測試名稱指 tests/test_<名稱>.py。全套沿用 `pwsh -NoProfile -File scripts/run_tests.ps1`，由腳本選擇專案 embedded runtime 與隔離路徑。本輪只核對檔案與測試對應，沒有重新執行整套平台測試。
 
